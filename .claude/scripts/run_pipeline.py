@@ -1,0 +1,55 @@
+# /// script
+# requires-python = ">=3.8"
+# ///
+"""Run a single work request through the worca-cc pipeline."""
+import argparse
+import json
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+
+from worca.orchestrator.work_request import normalize
+from worca.orchestrator.runner import run_pipeline, LoopExhaustedError, PipelineError
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Run worca-cc pipeline")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--prompt", help="Text prompt for work request")
+    group.add_argument("--source", help="Source reference (gh:issue:42, bd:bd-abc)")
+    group.add_argument("--spec", help="Path to spec file")
+    parser.add_argument("--settings", default=".claude/settings.json",
+                        help="Path to settings.json")
+    parser.add_argument("--status-dir", default=".worca",
+                        help="Directory for pipeline status files")
+
+    args = parser.parse_args()
+
+    # Normalize input to WorkRequest
+    if args.prompt:
+        work_request = normalize("prompt", args.prompt)
+    elif args.spec:
+        work_request = normalize("spec", args.spec)
+    elif args.source:
+        work_request = normalize("source", args.source)
+
+    print(f"Starting pipeline: {work_request.title}")
+
+    try:
+        status = run_pipeline(
+            work_request,
+            settings_path=args.settings,
+            status_path=os.path.join(args.status_dir, "status.json"),
+        )
+        print(json.dumps(status, indent=2))
+    except LoopExhaustedError as e:
+        print(f"Loop exhausted: {e}", file=sys.stderr)
+        sys.exit(1)
+    except PipelineError as e:
+        print(f"Pipeline error: {e}", file=sys.stderr)
+        sys.exit(2)
+
+
+if __name__ == "__main__":
+    main()
