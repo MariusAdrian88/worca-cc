@@ -4,7 +4,6 @@
  */
 import { WebSocketServer } from 'ws';
 import { watch, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { isRequest, makeOk, makeError } from '../app/protocol.js';
 import { discoverRuns } from './watcher.js';
 import { readLastLines, resolveLogPath } from './log-tailer.js';
