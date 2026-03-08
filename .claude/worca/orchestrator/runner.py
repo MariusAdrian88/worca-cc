@@ -45,6 +45,33 @@ def _schema_path(schema_name: str) -> str:
     return f".claude/worca/schemas/{schema_name}"
 
 
+def _is_same_work_request(existing_wr: dict, new_wr: WorkRequest) -> bool:
+    """Check if the existing status file is for the same work request."""
+    # Match on source_ref first (most reliable), fall back to title
+    if existing_wr.get("source_ref") and new_wr.source_ref:
+        return existing_wr["source_ref"] == new_wr.source_ref
+    return existing_wr.get("title", "") == new_wr.title
+
+
+def _archive_run(status: dict, status_path: str) -> None:
+    """Move a status.json to the results directory as a completed/abandoned run."""
+    import hashlib
+    results_dir = os.path.join(os.path.dirname(status_path), "results")
+    os.makedirs(results_dir, exist_ok=True)
+    # Generate a deterministic ID from started_at + title
+    key = f"{status.get('started_at', '')}-{status.get('work_request', {}).get('title', '')}"
+    run_id = hashlib.md5(key.encode()).hexdigest()[:12]
+    result_path = os.path.join(results_dir, f"{run_id}.json")
+    with open(result_path, "w") as f:
+        json.dump(status, f, indent=2)
+    os.remove(status_path)
+    # Clean up old logs
+    logs_dir = os.path.join(os.path.dirname(status_path), "logs")
+    if os.path.isdir(logs_dir):
+        import shutil
+        shutil.rmtree(logs_dir, ignore_errors=True)
+
+
 def _save_stage_output(stage: Stage, result: dict, logs_dir: str = ".worca/logs") -> None:
     """Save stage output to a log file for resume support."""
     os.makedirs(logs_dir, exist_ok=True)
@@ -180,9 +207,12 @@ def run_pipeline(
     """
     logs_dir = os.path.join(os.path.dirname(status_path), "logs")
 
-    # Check for resume
+    # Check for resume vs fresh start
     existing = load_status(status_path)
-    if existing:
+    resume_stage = None
+
+    if existing and _is_same_work_request(existing.get("work_request", {}), work_request):
+        # Same work request — try to resume
         from worca.orchestrator.resume import find_resume_point
         resume_stage = find_resume_point(existing)
         if resume_stage is not None:
@@ -191,7 +221,10 @@ def run_pipeline(
         else:
             return existing  # all done
     else:
-        # Fresh start
+        # Different work request or no existing run — archive and start fresh
+        if existing:
+            _archive_run(existing, status_path)
+
         branch_name = _sanitize_branch_name(work_request.title)
         create_branch(branch_name)
 
@@ -204,7 +237,6 @@ def run_pipeline(
         }
         status = init_status(wr_dict, branch_name)
         save_status(status, status_path)
-        resume_stage = None
 
     context = {"prompt": work_request.description or work_request.title}
     loop_counters = {}
