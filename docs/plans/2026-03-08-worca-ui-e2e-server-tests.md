@@ -1,6 +1,6 @@
 # worca-ui End-to-End Server Tests
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For pipeline agents:** Follow your agent role instructions. Do not invoke skills.
 
 **Goal:** Add integration tests that boot the full server stack (Express app + WebSocket) via `createApp()` so that startup crashes like the Express 5 `'*'` route bug are caught.
 

@@ -1,6 +1,6 @@
 # worca-ui Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
+> **For pipeline agents:** Follow your agent role instructions. Do not invoke skills.
 
 **Goal:** Build a pipeline monitoring UI for worca-cc with vertical sidebar navigation, real-time status updates via WebSocket, and log streaming.
 
