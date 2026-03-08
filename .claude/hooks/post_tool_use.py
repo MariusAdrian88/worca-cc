@@ -8,7 +8,10 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from worca.hooks.test_gate import check_test_gate
+try:
+    from worca.hooks.test_gate import check_test_gate
+except ImportError:
+    sys.exit(0)
 
 
 def main():

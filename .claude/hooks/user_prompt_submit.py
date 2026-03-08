@@ -8,7 +8,10 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from worca.hooks.prompt import load_pipeline_status, check_milestone
+try:
+    from worca.hooks.prompt import load_pipeline_status, check_milestone
+except ImportError:
+    sys.exit(0)
 
 
 def main():

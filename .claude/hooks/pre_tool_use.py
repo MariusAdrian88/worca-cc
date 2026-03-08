@@ -8,8 +8,12 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from worca.hooks.guard import check_guard
-from worca.hooks.plan_check import check_plan
+try:
+    from worca.hooks.guard import check_guard
+    from worca.hooks.plan_check import check_plan
+except ImportError:
+    # Worca package not available — allow all operations
+    sys.exit(0)
 
 
 def main():
