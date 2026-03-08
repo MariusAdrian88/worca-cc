@@ -12,20 +12,26 @@ import shutil
 import subprocess
 import sys
 
+try:
+    from worca.utils.env import get_env
+except ImportError:
+    get_env = lambda **kw: None
+
 
 def handle_session_start() -> str:
     """Get git context and run bd prime. Returns context string."""
+    env = get_env()
     # Get git context
     branch_result = subprocess.run(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"], capture_output=True, text=True, env=env
     )
     branch = branch_result.stdout.strip() if branch_result.returncode == 0 else "unknown"
 
-    status_result = subprocess.run(["git", "status", "--short"], capture_output=True, text=True)
+    status_result = subprocess.run(["git", "status", "--short"], capture_output=True, text=True, env=env)
     status = status_result.stdout.strip() if status_result.returncode == 0 else ""
 
     # Run bd prime
-    subprocess.run(["bd", "prime"], capture_output=True, text=True)
+    subprocess.run(["bd", "prime"], capture_output=True, text=True, env=env)
 
     context = f"Branch: {branch}"
     if status:
@@ -35,7 +41,7 @@ def handle_session_start() -> str:
 
 def handle_pre_compact() -> str:
     """Run bd prime and return its output."""
-    result = subprocess.run(["bd", "prime"], capture_output=True, text=True)
+    result = subprocess.run(["bd", "prime"], capture_output=True, text=True, env=get_env())
     return result.stdout.strip() if result.returncode == 0 else ""
 
 

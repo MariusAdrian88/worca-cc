@@ -2,10 +2,12 @@
 
 import subprocess
 
+from worca.utils.env import get_env
+
 
 def _run_git(*args: str) -> subprocess.CompletedProcess:
     """Run a git command and return the CompletedProcess."""
-    return subprocess.run(["git", *args], capture_output=True, text=True)
+    return subprocess.run(["git", *args], capture_output=True, text=True, env=get_env())
 
 
 def create_branch(name: str) -> bool:

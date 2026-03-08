@@ -141,12 +141,14 @@ def handle_pr_review(outcome: str, status: dict) -> tuple:
 def _ensure_beads_initialized() -> None:
     """Check if beads is initialized in the current project, init if not."""
     import subprocess
+    from worca.utils.env import get_env
+    env = get_env()
     result = subprocess.run(
-        ["bd", "stats"], capture_output=True, text=True
+        ["bd", "stats"], capture_output=True, text=True, env=env
     )
     if result.returncode != 0:
         init_result = subprocess.run(
-            ["bd", "init"], capture_output=True, text=True
+            ["bd", "init"], capture_output=True, text=True, env=env
         )
         if init_result.returncode != 0:
             raise PipelineError(f"Failed to initialize beads: {init_result.stderr}")

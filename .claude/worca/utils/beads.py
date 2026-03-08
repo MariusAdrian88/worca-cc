@@ -4,14 +4,13 @@ import re
 import subprocess
 from typing import Optional
 
+from worca.utils.env import get_env
+
 
 def _run_bd(*args: str, beads_dir: Optional[str] = None) -> subprocess.CompletedProcess:
     """Run a bd CLI command and return the CompletedProcess."""
-    env = None
-    if beads_dir:
-        import os
-        env = {**os.environ, "BEADS_DIR": beads_dir}
-    return subprocess.run(["bd", *args], capture_output=True, text=True, env=env)
+    overrides = {"BEADS_DIR": beads_dir} if beads_dir else {}
+    return subprocess.run(["bd", *args], capture_output=True, text=True, env=get_env(**overrides))
 
 
 def bd_create(title: str, task_type: str = "task", priority: int = 2) -> str:

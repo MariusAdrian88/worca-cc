@@ -5,6 +5,8 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Optional
 
+from worca.utils.env import get_env
+
 
 @dataclass
 class WorkRequest:
@@ -48,6 +50,7 @@ def normalize_github_issue(ref: str) -> WorkRequest:
         ["gh", "issue", "view", issue_num, "--json", "title,body"],
         capture_output=True,
         text=True,
+        env=get_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to fetch issue {issue_num}: {result.stderr}")
@@ -68,6 +71,7 @@ def normalize_beads_task(ref: str) -> WorkRequest:
         ["bd", "show", task_id],
         capture_output=True,
         text=True,
+        env=get_env(),
     )
     if result.returncode != 0:
         raise RuntimeError(f"Failed to fetch beads task {task_id}: {result.stderr}")

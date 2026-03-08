@@ -4,6 +4,8 @@ import json
 import subprocess
 from typing import Optional
 
+from worca.utils.env import get_env
+
 
 def build_command(
     prompt: str,
@@ -65,7 +67,7 @@ def run_agent(
         output_format=output_format,
         json_schema=json_schema,
     )
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True, env=get_env())
     if result.returncode != 0:
         raise RuntimeError(f"claude agent failed: {result.stderr}")
     try:
