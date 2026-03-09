@@ -68,6 +68,16 @@ def _is_git_commit(command: str) -> bool:
     return "git commit" in command
 
 
+def _is_test_command(command: str) -> bool:
+    """Check if command runs tests."""
+    test_patterns = [
+        "pytest", "python -m pytest", "npm test", "npm run test",
+        "yarn test", "cargo test", "go test",
+    ]
+    cmd_lower = command.lower()
+    return any(p in cmd_lower for p in test_patterns)
+
+
 def check_guard(tool_name: str, tool_input: dict) -> tuple:
     """Check if tool use should be blocked.
 
@@ -95,6 +105,24 @@ def check_guard(tool_name: str, tool_input: dict) -> tuple:
         agent = os.environ.get("WORCA_AGENT")
         if agent is not None and agent != "guardian":
             return (2, "Blocked: only the guardian agent may commit. Current agent: {}.".format(agent))
+
+    # Role-based restrictions (only enforced when WORCA_AGENT is set)
+    agent = os.environ.get("WORCA_AGENT")
+    if agent is not None:
+        # Planner may only write MASTER_PLAN.md
+        if tool_name in ("Write", "Edit") and agent == "planner":
+            basename = os.path.basename(file_path)
+            if basename != "MASTER_PLAN.md":
+                return (2, "Blocked: planner agent may only write MASTER_PLAN.md, not {}.".format(basename))
+
+        # Planner and Coordinator may not run tests
+        if tool_name == "Bash" and agent in ("planner", "coordinator"):
+            if _is_test_command(command):
+                return (2, "Blocked: {} agent may not run tests.".format(agent))
+
+        # Tester is read-only
+        if tool_name in ("Write", "Edit") and agent == "tester":
+            return (2, "Blocked: tester agent is read-only — may not write files.")
 
     # Allow everything else
     return (0, "")

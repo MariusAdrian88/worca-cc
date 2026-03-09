@@ -136,3 +136,107 @@ class TestAllowDefault:
     def test_allows_write_to_normal_file(self):
         code, reason = check_guard("Write", {"file_path": "/project/app.py"})
         assert code == 0
+
+
+# --- Block Planner writes ---
+
+class TestBlockPlannerWrites:
+    def test_blocks_planner_write_to_py_file(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "planner" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_planner_edit_to_source_file(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, reason = check_guard("Edit", {"file_path": "/project/utils.js"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_planner_write_master_plan(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/MASTER_PLAN.md"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_implementer_write_source(self):
+        os.environ["WORCA_AGENT"] = "implementer"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/app.py"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+
+# --- Block Planner/Coordinator tests ---
+
+class TestBlockPlannerTests:
+    def test_blocks_planner_pytest(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, reason = check_guard("Bash", {"command": "pytest tests/ -v"})
+            assert code == 2
+            assert "planner" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_pytest(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "python -m pytest"})
+            assert code == 2
+            assert "coordinator" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_implementer_pytest(self):
+        os.environ["WORCA_AGENT"] = "implementer"
+        try:
+            code, reason = check_guard("Bash", {"command": "pytest tests/ -v"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_planner_safe_bash(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, reason = check_guard("Bash", {"command": "ls -la"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+
+# --- Block Tester writes ---
+
+class TestBlockTesterWrites:
+    def test_blocks_tester_write(self):
+        os.environ["WORCA_AGENT"] = "tester"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "tester" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_tester_edit(self):
+        os.environ["WORCA_AGENT"] = "tester"
+        try:
+            code, reason = check_guard("Edit", {"file_path": "/project/config.json"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_tester_read(self):
+        os.environ["WORCA_AGENT"] = "tester"
+        try:
+            code, reason = check_guard("Read", {"file_path": "/project/app.py"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]

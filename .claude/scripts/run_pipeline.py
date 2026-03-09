@@ -29,6 +29,7 @@ def main():
     parser.add_argument("--mloops", type=int, default=1, choices=range(1, 11),
                         metavar="[1-10]",
                         help="Loop multiplier for max loop iterations (default: 1)")
+    parser.add_argument("--plan", help="Path to pre-made plan file (skips PLAN stage)")
 
     args = parser.parse_args()
 
@@ -41,6 +42,8 @@ def main():
         work_request = normalize("source", args.source)
 
     print(f"Starting pipeline: {work_request.title}")
+    if args.plan:
+        print(f"  Pre-made plan: {args.plan} (skipping PLAN stage)")
     if args.msize > 1:
         print(f"  Size multiplier: {args.msize}x turns")
     if args.mloops > 1:
@@ -49,6 +52,7 @@ def main():
     try:
         status = run_pipeline(
             work_request,
+            plan_file=args.plan,
             settings_path=args.settings,
             status_path=os.path.join(args.status_dir, "status.json"),
             msize=args.msize,

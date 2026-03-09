@@ -231,9 +231,12 @@ def run_agent(
 
     global _current_proc
 
+    # Extract agent name from path so hooks can enforce role-based restrictions
+    agent_name = os.path.splitext(os.path.basename(agent))[0]
+
     proc = subprocess.Popen(
         cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, env=get_env(), start_new_session=True,
+        text=True, env=get_env(WORCA_AGENT=agent_name), start_new_session=True,
     )
 
     with _proc_lock:

@@ -189,3 +189,116 @@ def test_handle_pr_review_unknown_outcome():
     """Unknown outcome treated as approve (no next stage)."""
     stage, status = handle_pr_review("unknown", {"stage": "review"})
     assert stage is None
+
+
+# --- plan_file support ---
+
+def test_run_pipeline_with_plan_file_skips_plan_stage(tmp_path):
+    """When plan_file is provided, PLAN stage is skipped and COORDINATE starts first."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    # Create a plan file
+    plan = tmp_path / "my_plan.md"
+    plan.write_text("# My Plan\n\n## Tasks\n1. Do thing A\n2. Do thing B\n")
+
+    # Create settings
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": True},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "planner": {"model": "opus", "max_turns": 10},
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    status_path = str(tmp_path / "status.json")
+    wr = WorkRequest(source_type="prompt", title="Test plan skip")
+
+    stages_run = []
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1):
+        stages_run.append(stage.value)
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    run_pipeline = __import__(
+                        "worca.orchestrator.runner", fromlist=["run_pipeline"]
+                    ).run_pipeline
+                    status = run_pipeline(
+                        wr,
+                        plan_file=str(plan),
+                        settings_path=str(settings),
+                        status_path=status_path,
+                    )
+
+    # PLAN should not have been run; COORDINATE should be the only stage
+    assert "plan" not in stages_run
+    assert "coordinate" in stages_run
+
+
+def test_plan_file_creates_master_plan_md(tmp_path, monkeypatch):
+    """plan_file content is written to MASTER_PLAN.md."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan_content = "# Pre-made Plan\n\nDetailed tasks here.\n"
+    plan = tmp_path / "spec.md"
+    plan.write_text(plan_content)
+
+    # Change to tmp_path so MASTER_PLAN.md is written there
+    monkeypatch.chdir(tmp_path)
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": True},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    status_path = str(tmp_path / "status.json")
+    wr = WorkRequest(source_type="prompt", title="Test master plan")
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1):
+        return {"beads_ids": []}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    run_pipeline = __import__(
+                        "worca.orchestrator.runner", fromlist=["run_pipeline"]
+                    ).run_pipeline
+                    run_pipeline(
+                        wr,
+                        plan_file=str(plan),
+                        settings_path=str(settings),
+                        status_path=status_path,
+                    )
+
+    # MASTER_PLAN.md should exist with the plan content
+    master_plan = tmp_path / "MASTER_PLAN.md"
+    assert master_plan.exists()
+    assert master_plan.read_text() == plan_content

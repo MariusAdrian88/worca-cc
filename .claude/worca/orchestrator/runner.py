@@ -359,6 +359,7 @@ def _ensure_beads_initialized() -> None:
 
 def run_pipeline(
     work_request: WorkRequest,
+    plan_file: Optional[str] = None,
     settings_path: str = ".claude/settings.json",
     status_path: str = ".worca/status.json",
     msize: int = 1,
@@ -374,6 +375,8 @@ def run_pipeline(
     - review changes -> back to implement
 
     Args:
+        plan_file: Path to a pre-made plan file. When provided, its content is
+            written to MASTER_PLAN.md and the PLAN stage is skipped.
         msize: Multiplier for max_turns per stage (1-10).
         mloops: Multiplier for max loop iterations (1-10).
 
@@ -440,6 +443,27 @@ def run_pipeline(
         # Determine starting index
         if resume_stage:
             stage_idx = stage_order.index(resume_stage)
+        elif plan_file and not existing:
+            # Pre-made plan: write to MASTER_PLAN.md and skip PLAN stage
+            with open(plan_file) as f:
+                plan_content = f.read()
+            with open("MASTER_PLAN.md", "w") as f:
+                f.write(plan_content)
+            _log(f"Pre-made plan loaded from {plan_file}", "ok")
+
+            # Mark PLAN stage as completed with pre-loaded status
+            update_stage(status, Stage.PLAN.value,
+                         status="completed", skipped=True, plan_file=plan_file)
+            set_milestone(status, "plan_approved", True)
+            save_status(status, status_path)
+
+            # Start at COORDINATE (skip PLAN)
+            if Stage.COORDINATE in stage_order:
+                stage_idx = stage_order.index(Stage.COORDINATE)
+            elif Stage.PLAN in stage_order:
+                stage_idx = stage_order.index(Stage.PLAN) + 1
+            else:
+                stage_idx = 0
         else:
             stage_idx = 0
 
