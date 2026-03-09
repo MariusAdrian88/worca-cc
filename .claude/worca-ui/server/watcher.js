@@ -8,10 +8,11 @@ export function createRunId(status) {
 }
 
 function isTerminal(status) {
+  if (status.completed_at) return true;
   if (!status.stages) return false;
   const values = Object.values(status.stages);
   return values.length > 0 && values.every(s =>
-    s.status === 'completed' || s.status === 'error'
+    s.status === 'completed' || s.status === 'error' || s.status === 'interrupted'
   );
 }
 
