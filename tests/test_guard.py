@@ -240,3 +240,38 @@ class TestBlockTesterWrites:
             assert code == 0
         finally:
             del os.environ["WORCA_AGENT"]
+
+
+# --- Planner with WORCA_PLAN_FILE env var ---
+
+class TestPlannerPlanFileEnv:
+    def test_allows_planner_write_to_plan_file_from_env(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        os.environ["WORCA_PLAN_FILE"] = "/project/docs/plans/my-plan.md"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/docs/plans/my-plan.md"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+            del os.environ["WORCA_PLAN_FILE"]
+
+    def test_blocks_planner_write_wrong_file_with_env(self):
+        os.environ["WORCA_AGENT"] = "planner"
+        os.environ["WORCA_PLAN_FILE"] = "/project/docs/plans/my-plan.md"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "planner" in reason.lower() or "may only write" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+            del os.environ["WORCA_PLAN_FILE"]
+
+    def test_allows_planner_write_master_plan_without_env(self):
+        """Backward compat: without WORCA_PLAN_FILE, MASTER_PLAN.md is still allowed."""
+        os.environ["WORCA_AGENT"] = "planner"
+        os.environ.pop("WORCA_PLAN_FILE", None)
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/MASTER_PLAN.md"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]

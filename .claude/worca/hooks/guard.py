@@ -109,11 +109,18 @@ def check_guard(tool_name: str, tool_input: dict) -> tuple:
     # Role-based restrictions (only enforced when WORCA_AGENT is set)
     agent = os.environ.get("WORCA_AGENT")
     if agent is not None:
-        # Planner may only write MASTER_PLAN.md
+        # Planner may only write the plan file
         if tool_name in ("Write", "Edit") and agent == "planner":
-            basename = os.path.basename(file_path)
-            if basename != "MASTER_PLAN.md":
-                return (2, "Blocked: planner agent may only write MASTER_PLAN.md, not {}.".format(basename))
+            plan_file = os.environ.get("WORCA_PLAN_FILE")
+            if plan_file:
+                allowed = os.path.abspath(plan_file)
+                target = os.path.abspath(file_path)
+                if target != allowed:
+                    return (2, "Blocked: planner agent may only write {}, not {}.".format(plan_file, file_path))
+            else:
+                basename = os.path.basename(file_path)
+                if basename != "MASTER_PLAN.md":
+                    return (2, "Blocked: planner agent may only write MASTER_PLAN.md, not {}.".format(basename))
 
         # Planner and Coordinator may not run tests
         if tool_name == "Bash" and agent in ("planner", "coordinator"):

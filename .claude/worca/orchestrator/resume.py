@@ -40,12 +40,19 @@ def find_resume_point(status: dict) -> Optional[Stage]:
     return None  # all completed
 
 
-def reconstruct_context(status: dict, logs_dir: str = ".worca/logs") -> dict:
+def reconstruct_context(status: dict, logs_dir: str = None) -> dict:
     """Reconstruct pipeline context from saved stage output logs.
 
+    Derives logs_dir from status run_id if not provided.
     Reads saved stage outputs from {logs_dir}/{stage_name}.json for all
     completed stages. Returns a dict of {stage_name: output_data}.
     """
+    if logs_dir is None:
+        run_id = status.get("run_id")
+        if run_id:
+            logs_dir = os.path.join(".worca", "runs", run_id, "logs")
+        else:
+            logs_dir = ".worca/logs"
     context = {}
     stages = status.get("stages", {})
     for stage in STAGE_ORDER:
@@ -70,10 +77,24 @@ def reconstruct_context(status: dict, logs_dir: str = ".worca/logs") -> dict:
 def can_resume(status_path: str = ".worca/status.json") -> bool:
     """Check if a pipeline can be resumed from a status file.
 
+    Checks active_run pointer first for per-run status, then falls back
+    to the given status_path.
     Returns True if status file exists and has at least one completed stage.
     Returns False if no status file or all stages are pending.
     """
-    status = load_status(status_path)
+    # Try active_run pointer first
+    worca_dir = os.path.dirname(status_path)
+    active_run_path = os.path.join(worca_dir, "active_run")
+    status = None
+    if os.path.exists(active_run_path):
+        try:
+            run_id = open(active_run_path).read().strip()
+            candidate = os.path.join(worca_dir, "runs", run_id, "status.json")
+            status = load_status(candidate)
+        except OSError:
+            pass
+    if not status:
+        status = load_status(status_path)
     if not status:
         return False
     stages = status.get("stages", {})

@@ -87,7 +87,7 @@ export function attachWsServer(httpServer, config) {
     }
   }
 
-  // Watch .worca/status.json for changes
+  // Watch status.json for changes (both per-run and legacy)
   function scheduleRefresh() {
     if (REFRESH_TIMER) clearTimeout(REFRESH_TIMER);
     REFRESH_TIMER = setTimeout(() => {
@@ -102,16 +102,54 @@ export function attachWsServer(httpServer, config) {
     }, REFRESH_DEBOUNCE_MS);
   }
 
+  // Resolve the active run's base directory (for logs and status watching)
+  function resolveActiveRunDir() {
+    const activeRunPath = join(worcaDir, 'active_run');
+    if (existsSync(activeRunPath)) {
+      try {
+        const runId = readFileSync(activeRunPath, 'utf8').trim();
+        const runDir = join(worcaDir, 'runs', runId);
+        if (existsSync(join(runDir, 'status.json'))) return runDir;
+      } catch { /* ignore */ }
+    }
+    return worcaDir; // legacy fallback
+  }
+
   let statusWatcher = null;
+  let watchedRunDir = null;
+
+  function setupStatusWatcher() {
+    if (statusWatcher) statusWatcher.close();
+    const runDir = resolveActiveRunDir();
+    watchedRunDir = runDir;
+    try {
+      if (existsSync(runDir)) {
+        statusWatcher = watch(runDir, { recursive: false }, (_eventType, filename) => {
+          if (filename === 'status.json') {
+            scheduleRefresh();
+          }
+        });
+      }
+    } catch { /* ignore */ }
+  }
+  setupStatusWatcher();
+
+  // Also watch the worca dir for active_run pointer changes
+  let activeRunWatcher = null;
   try {
     if (existsSync(worcaDir)) {
-      statusWatcher = watch(worcaDir, { recursive: false }, (_eventType, filename) => {
-        if (filename === 'status.json') {
+      activeRunWatcher = watch(worcaDir, { recursive: false }, (_eventType, filename) => {
+        if (filename === 'active_run' || filename === 'status.json') {
+          // Re-setup status watcher if active run changed
+          const newRunDir = resolveActiveRunDir();
+          if (newRunDir !== watchedRunDir) {
+            setupStatusWatcher();
+          }
           scheduleRefresh();
         }
       });
     }
-  } catch { /* ignore - dir may not exist yet */ }
+  } catch { /* ignore */ }
 
   // Track line counts per log file so we only send new lines
   const logLineCounts = new Map();
@@ -161,19 +199,26 @@ export function attachWsServer(httpServer, config) {
     } catch { /* ignore */ }
   }
 
+  // Resolve the logs base dir for the active run
+  function resolveLogsBaseDir() {
+    const runDir = resolveActiveRunDir();
+    return runDir === worcaDir ? worcaDir : runDir;
+  }
+
   // Start watching log files for a stage (handles both nested iteration dirs and flat files)
   function watchLogFile(stage) {
+    const logsBase = resolveLogsBaseDir();
     if (!stage) {
       // Orchestrator — single flat file
-      const logPath = resolveLogPath(worcaDir, null);
+      const logPath = resolveLogPath(logsBase, null);
       watchSingleLogFile(null, logPath, null);
       return;
     }
     // Check if nested iteration directory exists
-    const stageDir = resolveLogPath(worcaDir, stage);
+    const stageDir = resolveLogPath(logsBase, stage);
     if (existsSync(stageDir) && statSync(stageDir).isDirectory()) {
       // Watch each existing iteration file
-      const iters = listIterationFiles(worcaDir, stage);
+      const iters = listIterationFiles(logsBase, stage);
       for (const { iteration, path } of iters) {
         watchSingleLogFile(stage, path, iteration);
       }
@@ -181,7 +226,7 @@ export function attachWsServer(httpServer, config) {
       watchStageDir(stage, stageDir);
     } else {
       // Directory doesn't exist yet — legacy flat file fallback
-      const logPath = join(worcaDir, 'logs', `${stage}.log`);
+      const logPath = join(logsBase, 'logs', `${stage}.log`);
       if (existsSync(logPath)) {
         watchSingleLogFile(stage, logPath, null);
       }
@@ -191,7 +236,8 @@ export function attachWsServer(httpServer, config) {
 
   // Watch all existing log files and the logs directory for new ones
   function watchAllLogFiles() {
-    const logFiles = listLogFiles(worcaDir);
+    const logsBase = resolveLogsBaseDir();
+    const logFiles = listLogFiles(logsBase);
     const watchedStages = new Set();
     for (const { stage } of logFiles) {
       if (watchedStages.has(stage)) continue;
@@ -200,7 +246,7 @@ export function attachWsServer(httpServer, config) {
       watchLogFile(actualStage);
     }
     // Watch logs directory for newly created files and directories
-    const logsDir = join(worcaDir, 'logs');
+    const logsDir = join(logsBase, 'logs');
     const dirKey = '__logs_dir__';
     if (logWatchers.has(dirKey)) return;
     if (!existsSync(logsDir)) return;
@@ -218,7 +264,7 @@ export function attachWsServer(httpServer, config) {
           try {
             if (existsSync(stagePath) && statSync(stagePath).isDirectory()) {
               // Watch existing iteration files
-              const iters = listIterationFiles(worcaDir, filename);
+              const iters = listIterationFiles(logsBase, filename);
               for (const { iteration, path } of iters) {
                 watchSingleLogFile(filename, path, iteration);
               }
@@ -265,6 +311,7 @@ export function attachWsServer(httpServer, config) {
   wss.on('close', () => {
     clearInterval(heartbeat);
     if (statusWatcher) statusWatcher.close();
+    if (activeRunWatcher) activeRunWatcher.close();
     for (const w of logWatchers.values()) w.close();
     logWatchers.clear();
   });
@@ -409,10 +456,11 @@ export function attachWsServer(httpServer, config) {
         _sendArchivedLogs(ws, archivedLogDir, stage, iteration);
       } else {
         // Live run — with file watching
+        const logsBase = resolveLogsBaseDir();
         if (stage) {
           if (iteration != null) {
             // Specific iteration
-            const logPath = resolveIterationLogPath(worcaDir, stage, iteration);
+            const logPath = resolveIterationLogPath(logsBase, stage, iteration);
             const lines = readLastLines(logPath, 200);
             if (lines.length > 0) {
               ws.send(JSON.stringify({
@@ -422,9 +470,9 @@ export function attachWsServer(httpServer, config) {
             }
           } else {
             // All iterations for this stage
-            const stageDir = resolveLogPath(worcaDir, stage);
+            const stageDir = resolveLogPath(logsBase, stage);
             if (existsSync(stageDir) && statSync(stageDir).isDirectory()) {
-              const iters = listIterationFiles(worcaDir, stage);
+              const iters = listIterationFiles(logsBase, stage);
               for (const { iteration: iterNum, path } of iters) {
                 const lines = readLastLines(path, 200);
                 if (lines.length > 0) {
@@ -436,7 +484,7 @@ export function attachWsServer(httpServer, config) {
               }
             } else {
               // Legacy flat file fallback
-              const logPath = join(worcaDir, 'logs', `${stage}.log`);
+              const logPath = join(logsBase, 'logs', `${stage}.log`);
               const lines = readLastLines(logPath, 200);
               if (lines.length > 0) {
                 ws.send(JSON.stringify({
@@ -448,7 +496,7 @@ export function attachWsServer(httpServer, config) {
           }
           watchLogFile(stage);
         } else {
-          const logFiles = listLogFiles(worcaDir);
+          const logFiles = listLogFiles(logsBase);
           for (const { stage: s2, iteration: iterNum, path } of logFiles) {
             const lines = readLastLines(path, 200);
             if (lines.length > 0) {
@@ -546,7 +594,9 @@ export function attachWsServer(httpServer, config) {
           try { unlinkSync(pidPath); } catch {}
         }
       }
-      const statusPath = join(worcaDir, 'status.json');
+      // Find status via active_run pointer or flat status.json
+      const runDir = resolveActiveRunDir();
+      const statusPath = join(runDir, 'status.json');
       if (!existsSync(statusPath)) {
         ws.send(JSON.stringify(makeError(req, 'no_status', 'No status.json found to resume')));
         return;

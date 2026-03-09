@@ -188,3 +188,53 @@ def test_reconstruct_context_picks_latest_iteration(tmp_path):
     }
     ctx = reconstruct_context(status, logs_dir)
     assert ctx["implement"] == {"files_changed": 1}
+
+
+def test_can_resume_via_active_run_pointer(tmp_path):
+    """can_resume finds status via active_run pointer."""
+    worca_dir = tmp_path / ".worca"
+    run_id = "20260309-171545"
+    run_dir = worca_dir / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    status = {
+        "run_id": run_id,
+        "stages": {
+            "plan": {"status": "completed"},
+            "coordinate": {"status": "pending"},
+        },
+    }
+    with open(str(run_dir / "status.json"), "w") as f:
+        json.dump(status, f)
+
+    # Write active_run pointer
+    with open(str(worca_dir / "active_run"), "w") as f:
+        f.write(run_id)
+
+    # The flat status.json doesn't exist
+    assert not (worca_dir / "status.json").exists()
+    # But can_resume should find it via active_run
+    assert can_resume(str(worca_dir / "status.json")) is True
+
+
+def test_reconstruct_context_uses_run_id(tmp_path, monkeypatch):
+    """reconstruct_context derives logs_dir from run_id when no explicit logs_dir given."""
+    monkeypatch.chdir(tmp_path)
+    worca_dir = tmp_path / ".worca"
+    run_id = "20260309-180000"
+    logs_dir = worca_dir / "runs" / run_id / "logs"
+    plan_dir = logs_dir / "plan"
+    plan_dir.mkdir(parents=True)
+
+    with open(str(plan_dir / "iter-1.json"), "w") as f:
+        json.dump({"approach": "per-run"}, f)
+
+    status = {
+        "run_id": run_id,
+        "stages": {
+            "plan": {"status": "completed"},
+            "coordinate": {"status": "pending"},
+        },
+    }
+    ctx = reconstruct_context(status)  # No explicit logs_dir
+    assert ctx["plan"] == {"approach": "per-run"}

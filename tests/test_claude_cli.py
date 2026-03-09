@@ -1,7 +1,7 @@
 """Tests for worca.utils.claude_cli - Claude CLI wrapper."""
 
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 from worca.utils.claude_cli import run_agent, build_command
 
@@ -21,7 +21,7 @@ def test_build_command_default_output_format():
     cmd = build_command("prompt", agent="coder")
     assert "--output-format" in cmd
     idx = cmd.index("--output-format")
-    assert cmd[idx + 1] == "json"
+    assert cmd[idx + 1] == "stream-json"
 
 
 def test_build_command_with_json_schema():
@@ -68,22 +68,32 @@ def test_build_command_reads_schema_file(tmp_path):
 
 # --- run_agent ---
 
+def _make_mock_popen(result_event, returncode=0):
+    """Create a mock Popen that yields a stream-json result event on stdout."""
+    mock_proc = MagicMock()
+    mock_proc.returncode = returncode
+    mock_proc.pid = 12345
+    # stdout yields NDJSON lines
+    result_line = json.dumps({"type": "result", **result_event})
+    mock_proc.stdout = iter([result_line + "\n"])
+    mock_proc.stderr = iter([])
+    mock_proc.wait.return_value = returncode
+    return mock_proc
+
+
 def test_run_agent_parses_json():
-    response_data = {"result": "success", "output": "done"}
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = json.dumps(response_data)
-    with patch("worca.utils.claude_cli.subprocess.run", return_value=mock_result):
+    result_event = {"result": "success", "output": "done"}
+    mock_proc = _make_mock_popen(result_event)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc):
         result = run_agent("do stuff", agent="planner", max_turns=40)
-    assert result == response_data
+    assert result["result"] == "success"
+    assert result["type"] == "result"
 
 
 def test_run_agent_raises_on_failure():
-    mock_result = MagicMock()
-    mock_result.returncode = 1
-    mock_result.stderr = "Error: agent failed"
-    mock_result.stdout = ""
-    with patch("worca.utils.claude_cli.subprocess.run", return_value=mock_result):
+    result_event = {"is_error": True, "result": "agent failed"}
+    mock_proc = _make_mock_popen(result_event, returncode=1)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc):
         try:
             run_agent("fail", agent="planner", max_turns=5)
             assert False, "Should have raised"
@@ -92,24 +102,26 @@ def test_run_agent_raises_on_failure():
 
 
 def test_run_agent_raises_on_invalid_json():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = "not valid json {{"
-    with patch("worca.utils.claude_cli.subprocess.run", return_value=mock_result):
+    mock_proc = MagicMock()
+    mock_proc.returncode = 0
+    mock_proc.pid = 12345
+    mock_proc.stdout = iter(["not valid json {{\n"])
+    mock_proc.stderr = iter([])
+    mock_proc.wait.return_value = 0
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc):
         try:
             run_agent("prompt", agent="planner", max_turns=5)
             assert False, "Should have raised"
         except RuntimeError as e:
-            assert "parse" in str(e).lower() or "json" in str(e).lower()
+            assert "result" in str(e).lower() or "stream" in str(e).lower()
 
 
 def test_run_agent_passes_correct_command():
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = '{"ok": true}'
-    with patch("worca.utils.claude_cli.subprocess.run", return_value=mock_result) as mock_run:
+    result_event = {"ok": True}
+    mock_proc = _make_mock_popen(result_event)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc) as mock_popen:
         run_agent("my prompt", agent="implementer", max_turns=20, json_schema='{"type":"object"}')
-    args = mock_run.call_args[0][0]
+    args = mock_popen.call_args[0][0]
     assert args[0] == "claude"
     assert "--agent" in args
     assert "implementer" in args
@@ -118,10 +130,9 @@ def test_run_agent_passes_correct_command():
 
 def test_run_agent_max_turns_accepted_but_ignored():
     """max_turns is accepted for API compatibility but not passed to CLI."""
-    mock_result = MagicMock()
-    mock_result.returncode = 0
-    mock_result.stdout = '{"ok": true}'
-    with patch("worca.utils.claude_cli.subprocess.run", return_value=mock_result) as mock_run:
+    result_event = {"ok": True}
+    mock_proc = _make_mock_popen(result_event)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc) as mock_popen:
         run_agent("prompt", agent="planner", max_turns=999)
-    args = mock_run.call_args[0][0]
+    args = mock_popen.call_args[0][0]
     assert "--max-turns" not in args

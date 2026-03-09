@@ -118,8 +118,10 @@ def init_status(work_request: dict, branch: str) -> dict:
     status = {
         "work_request": work_request,
         "stage": "plan",
+        "run_id": None,
         "branch": branch,
         "worktree": None,
+        "plan_file": None,
         "started_at": datetime.now(timezone.utc).isoformat(),
         "completed_at": None,
         "stages": {stage: {"status": "pending"} for stage in PIPELINE_STAGES},

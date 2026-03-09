@@ -144,3 +144,37 @@ class TestAllowNonWriteTools:
     def test_allows_grep(self, in_tmp):
         code, reason = check_plan("Grep", {"pattern": "def main"})
         assert code == 0
+
+
+# --- Custom plan file via WORCA_PLAN_FILE ---
+
+class TestCustomPlanFileEnv:
+    def test_allows_write_with_custom_plan_file_env(self, in_tmp):
+        plan = in_tmp / "docs" / "plans" / "my-plan.md"
+        plan.parent.mkdir(parents=True)
+        plan.write_text("# Plan")
+        os.environ["WORCA_PLAN_FILE"] = str(plan)
+        try:
+            code, reason = check_plan("Write", {"file_path": "/project/app.py"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_PLAN_FILE"]
+
+    def test_blocks_without_custom_plan_file_env(self, in_tmp):
+        os.environ["WORCA_PLAN_FILE"] = str(in_tmp / "missing-plan.md")
+        try:
+            code, reason = check_plan("Write", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "plan file" in reason.lower() or "plan" in reason.lower()
+        finally:
+            del os.environ["WORCA_PLAN_FILE"]
+
+    def test_falls_back_to_master_plan_without_env(self, in_tmp):
+        """Without WORCA_PLAN_FILE, falls back to MASTER_PLAN.md."""
+        os.environ.pop("WORCA_PLAN_FILE", None)
+        code, reason = check_plan("Write", {"file_path": "/project/app.py"})
+        assert code == 2
+        # Create MASTER_PLAN.md and try again
+        (in_tmp / "MASTER_PLAN.md").write_text("# Plan")
+        code, reason = check_plan("Write", {"file_path": "/project/app.py"})
+        assert code == 0

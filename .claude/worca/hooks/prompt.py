@@ -12,8 +12,23 @@ import os
 def load_status() -> dict | None:
     """Load pipeline status from the status file.
 
+    Checks active_run pointer first for per-run status, then falls back
+    to WORCA_STATUS_FILE env var or .worca/status.json.
     Returns the parsed status dict, or None if the file doesn't exist.
     """
+    # Try active_run pointer first
+    active_run_path = ".worca/active_run"
+    if os.path.exists(active_run_path):
+        try:
+            run_id = open(active_run_path).read().strip()
+            candidate = os.path.join(".worca", "runs", run_id, "status.json")
+            if os.path.exists(candidate):
+                with open(candidate) as f:
+                    return json.load(f)
+        except (OSError, json.JSONDecodeError):
+            pass
+
+    # Fall back to env var or default
     status_file = os.environ.get("WORCA_STATUS_FILE", ".worca/status.json")
     if not os.path.exists(status_file):
         return None
@@ -37,7 +52,8 @@ def check_milestone(status: dict | None) -> tuple:
     milestones = status.get("milestones", {})
 
     if stage == "plan" and milestones.get("plan_approved") is None:
-        return (0, "MILESTONE GATE: Review MASTER_PLAN.md and approve the plan before implementation begins.")
+        plan_file = status.get("plan_file", "MASTER_PLAN.md")
+        return (0, "MILESTONE GATE: Review {} and approve the plan before implementation begins.".format(plan_file))
 
     if stage == "review" and milestones.get("pr_approved") is None:
         return (0, "MILESTONE GATE: Review the PR and approve before merge.")

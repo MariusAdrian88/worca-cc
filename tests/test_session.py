@@ -57,8 +57,9 @@ def test_session_start_runs_bd_prime():
     ]
     with patch("worca.hooks.session.subprocess.run", side_effect=mock_results) as mock_run:
         handle_session_start()
+    # Check that bd prime was called (3rd call), ignoring env kwarg
     assert any(
-        call(["bd", "prime"], capture_output=True, text=True) == c
+        c[0][0] == ["bd", "prime"]
         for c in mock_run.call_args_list
     )
 

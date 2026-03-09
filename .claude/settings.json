@@ -103,6 +103,7 @@
       "pr_approval": true,
       "deploy_approval": true
     },
+    "plan_path_template": "docs/plans/{timestamp}-{title_slug}.md",
     "governance": {
       "guards": {
         "block_rm_rf": true,

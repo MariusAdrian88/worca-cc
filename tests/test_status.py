@@ -166,6 +166,18 @@ def test_init_status_has_pr_review_outcome():
     assert result["pr_review_outcome"] is None
 
 
+def test_init_status_has_run_id():
+    wr = {"title": "Task"}
+    result = init_status(wr, "feat/task")
+    assert result["run_id"] is None
+
+
+def test_init_status_has_plan_file():
+    wr = {"title": "Task"}
+    result = init_status(wr, "feat/task")
+    assert result["plan_file"] is None
+
+
 # --- start_iteration ---
 
 def test_start_iteration_creates_list():

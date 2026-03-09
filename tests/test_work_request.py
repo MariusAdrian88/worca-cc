@@ -1,6 +1,6 @@
 """Tests for worca.orchestrator.work_request module."""
 import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, ANY
 
 from worca.orchestrator.work_request import (
     WorkRequest,
@@ -111,6 +111,7 @@ class TestNormalizeGithubIssue:
             ["gh", "issue", "view", "42", "--json", "title,body"],
             capture_output=True,
             text=True,
+            env=ANY,
         )
 
     @patch("worca.orchestrator.work_request.subprocess")
@@ -157,6 +158,7 @@ class TestNormalizeBeadsTask:
             ["bd", "show", "bd-a1b2"],
             capture_output=True,
             text=True,
+            env=ANY,
         )
 
     @patch("worca.orchestrator.work_request.subprocess")

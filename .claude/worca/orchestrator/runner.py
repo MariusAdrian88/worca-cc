@@ -64,8 +64,54 @@ def _sanitize_branch_name(title: str) -> str:
     return f"worca/{name[:40]}-{suffix}"
 
 
-def _agent_path(agent_name: str) -> str:
-    """Resolve agent name to the .md definition file path."""
+def _generate_run_id(started_at_iso: str) -> str:
+    """Generate a run ID in YYYYMMDD-HHMMSS format from an ISO timestamp."""
+    dt = datetime.fromisoformat(started_at_iso)
+    return dt.strftime("%Y%m%d-%H%M%S")
+
+
+def _slugify(title: str) -> str:
+    """Convert a title to a URL-safe slug for filenames."""
+    slug = title.lower().strip()
+    slug = re.sub(r'[^a-z0-9\-]', '-', slug)
+    slug = re.sub(r'-+', '-', slug)
+    return slug.strip('-')[:60]
+
+
+def _resolve_plan_path(template: str, timestamp: str, title: str) -> str:
+    """Resolve a plan_path_template with variable substitution."""
+    return template.format(timestamp=timestamp, title_slug=_slugify(title))
+
+
+def _render_agent_templates(run_dir: str, template_vars: dict) -> None:
+    """Read agent .md templates from .claude/agents/core/, replace placeholders,
+    write rendered versions to {run_dir}/agents/."""
+    src_dir = ".claude/agents/core"
+    dst_dir = os.path.join(run_dir, "agents")
+    os.makedirs(dst_dir, exist_ok=True)
+    if not os.path.isdir(src_dir):
+        return
+    for filename in os.listdir(src_dir):
+        if not filename.endswith(".md"):
+            continue
+        with open(os.path.join(src_dir, filename)) as f:
+            content = f.read()
+        for key, value in template_vars.items():
+            content = content.replace(f"{{{key}}}", str(value))
+        with open(os.path.join(dst_dir, filename), "w") as f:
+            f.write(content)
+
+
+def _agent_path(agent_name: str, run_dir: str = None) -> str:
+    """Resolve agent name to the .md definition file path.
+
+    If run_dir is provided, checks for a rendered template there first.
+    Falls back to the static template in .claude/agents/core/.
+    """
+    if run_dir:
+        rendered = os.path.join(run_dir, "agents", f"{agent_name}.md")
+        if os.path.exists(rendered):
+            return rendered
     return f".claude/agents/core/{agent_name}.md"
 
 
@@ -83,24 +129,53 @@ def _is_same_work_request(existing_wr: dict, new_wr: WorkRequest) -> bool:
 
 
 def _archive_run(status: dict, status_path: str) -> None:
-    """Move a status.json to the results directory as a completed/abandoned run."""
+    """Move a completed/abandoned run to the results directory.
+
+    If status has a run_id (new format), moves the entire run dir.
+    Otherwise (legacy), archives as hash-based .json + logs dir.
+    Always cleans up the active_run pointer.
+    """
     import hashlib
     import shutil
-    results_dir = os.path.join(os.path.dirname(status_path), "results")
+    worca_dir = os.path.dirname(status_path)
+    # For per-run dirs, worca_dir is .worca/runs/{id} — go up two levels
+    if "/runs/" in status_path:
+        worca_dir = os.path.dirname(os.path.dirname(os.path.dirname(status_path)))
+    results_dir = os.path.join(worca_dir, "results")
     os.makedirs(results_dir, exist_ok=True)
-    # Generate a deterministic ID from started_at + title
-    # Uses SHA256 with ":" separator to match watcher.js createRunId()
-    key = f"{status.get('started_at', '')}:{status.get('work_request', {}).get('title', '')}"
-    run_id = hashlib.sha256(key.encode()).hexdigest()[:12]
-    result_path = os.path.join(results_dir, f"{run_id}.json")
-    with open(result_path, "w") as f:
-        json.dump(status, f, indent=2)
-    os.remove(status_path)
-    # Move logs into results/{run_id}/ for archived viewing
-    logs_dir = os.path.join(os.path.dirname(status_path), "logs")
-    if os.path.isdir(logs_dir):
-        archived_logs_dir = os.path.join(results_dir, run_id)
-        shutil.move(logs_dir, archived_logs_dir)
+
+    run_id = status.get("run_id")
+    if run_id:
+        # New format: move entire run dir to results/
+        run_dir = os.path.join(worca_dir, "runs", run_id)
+        dest = os.path.join(results_dir, run_id)
+        if os.path.isdir(run_dir):
+            shutil.move(run_dir, dest)
+        elif os.path.exists(status_path):
+            # Run dir missing but status exists — save status to results
+            os.makedirs(dest, exist_ok=True)
+            shutil.move(status_path, os.path.join(dest, "status.json"))
+    else:
+        # Legacy format: hash-based .json file + logs dir
+        key = f"{status.get('started_at', '')}:{status.get('work_request', {}).get('title', '')}"
+        legacy_id = hashlib.sha256(key.encode()).hexdigest()[:12]
+        result_path = os.path.join(results_dir, f"{legacy_id}.json")
+        with open(result_path, "w") as f:
+            json.dump(status, f, indent=2)
+        try:
+            os.remove(status_path)
+        except FileNotFoundError:
+            pass
+        logs_dir = os.path.join(worca_dir, "logs")
+        if os.path.isdir(logs_dir):
+            shutil.move(logs_dir, os.path.join(results_dir, legacy_id))
+
+    # Clean up active_run pointer
+    active_run_path = os.path.join(worca_dir, "active_run")
+    try:
+        os.remove(active_run_path)
+    except FileNotFoundError:
+        pass
 
 
 def _pid_path(status_path: str) -> str:
@@ -273,12 +348,14 @@ def run_stage(
     config = get_stage_config(stage, settings_path=settings_path)
     max_turns = config["max_turns"] * msize
     prompt = context.get("prompt", "")
-    log_dir = os.path.join(".worca/logs", stage.value)
+    logs_dir = context.get("_logs_dir", ".worca/logs")
+    run_dir = context.get("_run_dir")
+    log_dir = os.path.join(logs_dir, stage.value)
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"iter-{iteration}.log")
     raw = run_agent(
         prompt=prompt,
-        agent=_agent_path(config["agent"]),
+        agent=_agent_path(config["agent"], run_dir=run_dir),
         max_turns=max_turns,
         output_format="stream-json",
         json_schema=_schema_path(config["schema"]),
@@ -376,8 +453,8 @@ def run_pipeline(
     - review changes -> back to implement
 
     Args:
-        plan_file: Path to a pre-made plan file. When provided, its content is
-            written to MASTER_PLAN.md and the PLAN stage is skipped.
+        plan_file: Path to a pre-made plan file. When provided, the PLAN
+            stage is skipped and agents reference this file directly.
         resume: If True, attempt to resume a previous run for the same work
             request from status.json. If False (default), always start fresh
             and archive any existing run.
@@ -391,14 +468,28 @@ def run_pipeline(
     global _shutdown_requested
     _shutdown_requested = False
 
-    logs_dir = os.path.join(os.path.dirname(status_path), "logs")
+    worca_dir = os.path.dirname(status_path)  # e.g. ".worca"
+    run_dir = None
+    actual_status_path = status_path  # may be redirected to per-run dir
 
     # PID file and signal handlers
     _write_pid(status_path)
     _install_signal_handlers()
 
-    # Check for resume vs fresh start
-    existing = load_status(status_path)
+    # Check for resume via active_run pointer first, then flat status.json
+    active_run_path = os.path.join(worca_dir, "active_run")
+    existing = None
+    if os.path.exists(active_run_path):
+        active_id = open(active_run_path).read().strip()
+        candidate = os.path.join(worca_dir, "runs", active_id, "status.json")
+        if os.path.exists(candidate):
+            existing = load_status(candidate)
+            if existing:
+                actual_status_path = candidate
+                run_dir = os.path.join(worca_dir, "runs", active_id)
+    if existing is None:
+        existing = load_status(status_path)
+
     resume_stage = None
 
     if resume and existing and _is_same_work_request(existing.get("work_request", {}), work_request):
@@ -409,6 +500,10 @@ def run_pipeline(
             _log(f"Resuming from {resume_stage.value.upper()}")
             status = existing
             branch_name = status.get("branch", "")
+            # Derive run_dir from status if not already set
+            if not run_dir and status.get("run_id"):
+                run_dir = os.path.join(worca_dir, "runs", status["run_id"])
+                actual_status_path = os.path.join(run_dir, "status.json")
         else:
             _log("Pipeline already completed", "ok")
             return existing  # all done
@@ -417,7 +512,7 @@ def run_pipeline(
         if existing:
             old_title = existing.get("work_request", {}).get("title", "unknown")
             _log(f"Archiving previous run: {old_title}")
-            _archive_run(existing, status_path)
+            _archive_run(existing, actual_status_path)
 
         branch_name = _sanitize_branch_name(work_request.title)
         create_branch(branch_name)
@@ -430,8 +525,23 @@ def run_pipeline(
             "priority": work_request.priority,
         }
         status = init_status(wr_dict, branch_name)
-        save_status(status, status_path)
 
+        # Create per-run directory
+        run_id = _generate_run_id(status["started_at"])
+        status["run_id"] = run_id
+        run_dir = os.path.join(worca_dir, "runs", run_id)
+        os.makedirs(os.path.join(run_dir, "agents"), exist_ok=True)
+        os.makedirs(os.path.join(run_dir, "logs"), exist_ok=True)
+        actual_status_path = os.path.join(run_dir, "status.json")
+
+        # Write active_run pointer
+        os.makedirs(worca_dir, exist_ok=True)
+        with open(active_run_path, "w") as f:
+            f.write(run_id)
+
+        save_status(status, actual_status_path)
+
+    logs_dir = os.path.join(run_dir, "logs") if run_dir else os.path.join(worca_dir, "logs")
     _init_orchestrator_log(logs_dir)
 
     try:
@@ -439,27 +549,60 @@ def run_pipeline(
         _log(f"Branch: {branch_name}")
         pipeline_t0 = time.time()
 
-        context = {"prompt": work_request.description or work_request.title}
+        context = {
+            "prompt": work_request.description or work_request.title,
+            "_run_dir": run_dir,
+            "_logs_dir": logs_dir,
+        }
         loop_counters = {}
 
         stage_order = get_enabled_stages(settings_path)
+
+        # Handle plan file
+        if not resume_stage:
+            if plan_file:
+                # Pre-made plan: reference directly (no copy to MASTER_PLAN.md)
+                status["plan_file"] = plan_file
+                _log(f"Pre-made plan: {plan_file}", "ok")
+            else:
+                # Resolve plan path from template
+                try:
+                    with open(settings_path) as f:
+                        _settings = json.load(f)
+                    template = _settings.get("worca", {}).get(
+                        "plan_path_template", "docs/plans/{timestamp}-{title_slug}.md"
+                    )
+                except (FileNotFoundError, json.JSONDecodeError):
+                    template = "docs/plans/{timestamp}-{title_slug}.md"
+                status["plan_file"] = _resolve_plan_path(
+                    template,
+                    timestamp=status["run_id"] or datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
+                    title=work_request.title,
+                )
+
+            # Set env var for hooks
+            os.environ["WORCA_PLAN_FILE"] = status["plan_file"]
+
+            # Render agent templates with plan_file and other vars
+            if run_dir:
+                _render_agent_templates(run_dir, {
+                    "plan_file": status["plan_file"],
+                    "run_id": status.get("run_id", ""),
+                    "branch": branch_name,
+                    "title": work_request.title,
+                })
+
+            save_status(status, actual_status_path)
 
         # Determine starting index
         if resume_stage:
             stage_idx = stage_order.index(resume_stage)
         elif plan_file:
-            # Pre-made plan: write to MASTER_PLAN.md and skip PLAN stage
-            with open(plan_file) as f:
-                plan_content = f.read()
-            with open("MASTER_PLAN.md", "w") as f:
-                f.write(plan_content)
-            _log(f"Pre-made plan loaded from {plan_file}", "ok")
-
             # Mark PLAN stage as completed with pre-loaded status
             update_stage(status, Stage.PLAN.value,
                          status="completed", skipped=True, plan_file=plan_file)
             set_milestone(status, "plan_approved", True)
-            save_status(status, status_path)
+            save_status(status, actual_status_path)
 
             # Start at COORDINATE (skip PLAN)
             if Stage.COORDINATE in stage_order:
@@ -507,7 +650,7 @@ def run_pipeline(
                 trigger=trigger,
             )
             iter_num = iter_record["number"]
-            save_status(status, status_path)
+            save_status(status, actual_status_path)
 
             stage_label = current_stage.value.upper()
             iter_label = f" (iter {iter_num})" if iter_num > 1 else ""
@@ -518,7 +661,7 @@ def run_pipeline(
             if _shutdown_requested:
                 complete_iteration(status, current_stage.value, status="interrupted")
                 update_stage(status, current_stage.value, status="interrupted")
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
                 raise PipelineInterrupted("Pipeline interrupted before stage start")
 
             # Run the stage
@@ -543,7 +686,7 @@ def run_pipeline(
                     status="interrupted",
                     completed_at=stage_completed,
                 )
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
                 raise PipelineInterrupted(f"Pipeline interrupted during {current_stage.value}")
             except Exception as e:
                 stage_completed = datetime.now(timezone.utc).isoformat()
@@ -559,7 +702,7 @@ def run_pipeline(
                     completed_at=stage_completed,
                     error=str(e),
                 )
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
                 raise
 
             elapsed = time.time() - t0
@@ -602,7 +745,7 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 set_milestone(status, "plan_approved", approved)
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
                 if not approved:
                     _log("PLAN not approved — stopping", "err")
                     raise PipelineError("Plan not approved")
@@ -615,7 +758,7 @@ def run_pipeline(
                     iter_extras["outcome"] = "test_failure"
                     complete_iteration(status, current_stage.value, **iter_extras)
                     update_stage(status, current_stage.value, **stage_extras)
-                    save_status(status, status_path)
+                    save_status(status, actual_status_path)
                     if Stage.IMPLEMENT not in stage_order:
                         _log("Tests failed but IMPLEMENT stage is disabled — treating as pass", "warn")
                     else:
@@ -634,7 +777,7 @@ def run_pipeline(
                     iter_extras["outcome"] = "success"
                     complete_iteration(status, current_stage.value, **iter_extras)
                     update_stage(status, current_stage.value, **stage_extras)
-                    save_status(status, status_path)
+                    save_status(status, actual_status_path)
                 _log(f"Tests passed", "ok")
 
             # Handle review results
@@ -645,7 +788,7 @@ def run_pipeline(
                 iter_extras["outcome"] = outcome
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
                 if next_stage is None:
                     if outcome == "reject":
                         _log("PR rejected — stopping", "err")
@@ -686,7 +829,7 @@ def run_pipeline(
                 iter_extras["outcome"] = "success"
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
-                save_status(status, status_path)
+                save_status(status, actual_status_path)
 
             stage_idx += 1
 
@@ -710,7 +853,7 @@ def run_pipeline(
 
         # Mark pipeline as completed with timestamp
         status["completed_at"] = datetime.now(timezone.utc).isoformat()
-        save_status(status, status_path)
+        save_status(status, actual_status_path)
 
         _log(f"Pipeline completed in {_format_duration(total_elapsed)}", "ok")
         summary_parts = []
@@ -726,3 +869,4 @@ def run_pipeline(
         _restore_signal_handlers()
         _remove_pid(status_path)
         _close_orchestrator_log()
+        os.environ.pop("WORCA_PLAN_FILE", None)

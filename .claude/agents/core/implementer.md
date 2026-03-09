@@ -1,7 +1,5 @@
 # Implementer Agent
 
-**Model:** sonnet | **Max Turns:** 85
-
 ## Role
 
 You are an Implementer. You claim and complete individual Beads tasks by writing code following TDD.

@@ -33,8 +33,9 @@ def check_plan(tool_name: str, tool_input: dict) -> tuple:
     if any(p in basename for p in ALWAYS_ALLOW_PATTERNS):
         return (0, "")
 
-    if not os.path.exists("MASTER_PLAN.md"):
-        return (2, "Blocked: no approved MASTER_PLAN.md found. Create a plan first.")
+    plan_file = os.environ.get("WORCA_PLAN_FILE", "MASTER_PLAN.md")
+    if not os.path.exists(plan_file):
+        return (2, "Blocked: no approved plan file found ({}). Create a plan first.".format(plan_file))
 
     return (0, "")
 
