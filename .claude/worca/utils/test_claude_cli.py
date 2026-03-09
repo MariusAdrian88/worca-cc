@@ -70,6 +70,7 @@ class TestBuildCommand:
         assert "Skill" in disallowed
         assert "EnterPlanMode" in disallowed
         assert "EnterWorktree" in disallowed
+        assert "TodoWrite" in disallowed
 
 
 # ---------------------------------------------------------------------------
