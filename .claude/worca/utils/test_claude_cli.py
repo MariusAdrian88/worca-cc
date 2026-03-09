@@ -64,6 +64,12 @@ class TestBuildCommand:
         assert "--agent" in cmd
         assert "--no-session-persistence" in cmd
         assert "--dangerously-skip-permissions" in cmd
+        assert "--disallowedTools" in cmd
+        idx = cmd.index("--disallowedTools")
+        disallowed = cmd[idx + 1]
+        assert "Skill" in disallowed
+        assert "EnterPlanMode" in disallowed
+        assert "EnterWorktree" in disallowed
 
 
 # ---------------------------------------------------------------------------

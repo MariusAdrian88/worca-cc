@@ -61,6 +61,7 @@ def build_command(
         output_format,
         "--no-session-persistence",
         "--dangerously-skip-permissions",
+        "--disallowedTools", "Skill,EnterPlanMode,EnterWorktree",
     ]
     if output_format == "stream-json":
         cmd.append("--verbose")
