@@ -133,9 +133,11 @@ export function writeIterationSeparator(iterNum) {
   terminal.writeln(`\n${DIM}${'─'.repeat(40)} Iteration ${iterNum} ${'─'.repeat(40)}${RESET}\n`);
 }
 
-export function logViewerView(state, { onStageFilter, onIterationFilter, onSearch, onToggleAutoScroll, autoScroll, stageIterations }) {
-  const { logLines } = state;
-  const stages = [...new Set(logLines.map(l => l.stage).filter(Boolean))];
+export function logViewerView(state, { onStageFilter, onIterationFilter, onSearch, onToggleAutoScroll, autoScroll, stageIterations, runStages }) {
+  // Build stage list: orchestrator first, then pipeline stages from status.json
+  const configStages = runStages ? ['orchestrator', ...Object.keys(runStages)] : null;
+  const logStages = [...new Set(['orchestrator', ...state.logLines.map(l => l.stage).filter(Boolean)])];
+  const stages = configStages || logStages;
   const currentStage = state.currentLogStage;
   const iterCount = stageIterations?.[currentStage] || 0;
   const showIterationSelector = currentStage && currentStage !== '*' && iterCount > 1;

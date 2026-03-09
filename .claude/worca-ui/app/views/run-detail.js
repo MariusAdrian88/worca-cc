@@ -3,6 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { stageTimelineView } from './stage-timeline.js';
 import { statusClass, statusIcon, resolveStatus } from '../utils/status-badge.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
+import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw } from '../utils/icons.js';
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -46,21 +47,31 @@ function _outcomeLabel(outcome) {
   return html`<span class="iteration-outcome ${cls}">${outcome.replace(/_/g, ' ')}</span>`;
 }
 
-function _iterationDetailView(iter, agents, stageKey) {
-  const agent = agents[stageKey] || null;
-  const dur = iter.started_at
-    ? formatDuration(elapsed(iter.started_at, iter.completed_at || null))
-    : '';
+function timingStripView(startedAt, completedAt, extra = nothing) {
+  const dur = startedAt ? formatDuration(elapsed(startedAt, completedAt || null)) : '';
+  return html`
+    <div class="timing-strip">
+      ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> ${formatTimestamp(startedAt)}</span>` : nothing}
+      ${completedAt ? html`<span class="timing-strip-item"><span class="meta-label">Finished:</span> ${formatTimestamp(completedAt)}</span>` : nothing}
+      ${dur ? html`<span class="timing-strip-item"><span class="meta-label">Duration:</span> ${dur}</span>` : nothing}
+      ${extra}
+    </div>
+  `;
+}
+
+function _iterationDetailView(iter, stageKey, stageAgent) {
+  const agentName = iter.agent || stageAgent || stageKey;
+  const model = iter.model || '';
   return html`
     <div class="iteration-detail">
-      ${iter.trigger ? html`<div class="detail-row"><span class="detail-label">Trigger:</span> ${_triggerLabel(iter.trigger)}</div>` : nothing}
-      ${iter.started_at ? html`<div class="detail-row"><span class="detail-label">Started:</span> ${formatTimestamp(iter.started_at)}</div>` : nothing}
-      ${iter.completed_at ? html`<div class="detail-row"><span class="detail-label">Completed:</span> ${formatTimestamp(iter.completed_at)}</div>` : nothing}
-      ${dur ? html`<div class="detail-row"><span class="detail-label">Duration:</span> ${dur}</div>` : nothing}
-      ${agent ? html`<div class="detail-row"><span class="detail-label">Agent:</span> ${stageKey} (${iter.model || agent.model})</div>` : nothing}
-      ${iter.turns ? html`<div class="detail-row"><span class="detail-label">Turns:</span> ${iter.turns}</div>` : nothing}
-      ${iter.cost_usd != null ? html`<div class="detail-row"><span class="detail-label">Cost:</span> $${Number(iter.cost_usd).toFixed(2)}</div>` : nothing}
-      ${iter.outcome ? html`<div class="detail-row"><span class="detail-label">Outcome:</span> ${_outcomeLabel(iter.outcome)}</div>` : nothing}
+      ${timingStripView(iter.started_at, iter.completed_at)}
+      <div class="stage-info-strip">
+        ${agentName ? html`<span class="stage-info-item"><span class="stage-meta-icon">${unsafeHTML(iconSvg(Cpu, 12))}</span> ${agentName}${model ? html` <span class="text-muted">(${model})</span>` : ''}</span>` : nothing}
+        ${iter.turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> ${iter.turns}</span>` : nothing}
+        ${iter.cost_usd != null ? html`<span class="stage-info-item"><span class="meta-label">Cost:</span> $${Number(iter.cost_usd).toFixed(2)}</span>` : nothing}
+      </div>
+      ${iter.trigger ? html`<div class="detail-row">${_triggerLabel(iter.trigger)}</div>` : nothing}
+      ${iter.outcome ? html`<div class="detail-row">${_outcomeLabel(iter.outcome)}</div>` : nothing}
     </div>
   `;
 }
@@ -72,42 +83,33 @@ export function runDetailView(run, settings = {}) {
 
   const branch = run.branch || run.work_request?.branch || '';
   const pr = run.pr_url || null;
-  // Use completed_at if set; for non-active runs without it, freeze at last stage completion
   const endTime = run.completed_at
     || (!run.active ? _lastStageEnd(run.stages) : null);
-  const duration = run.started_at
-    ? formatDuration(elapsed(run.started_at, endTime))
-    : 'N/A';
   const stages = run.stages || {};
   const stageUi = settings.stageUi || {};
   const agents = settings.agents || {};
 
   return html`
     <div class="run-detail">
-      <div class="run-header">
-        <div class="run-header-left">
-          <sl-badge variant="${run.active ? 'warning' : 'success'}" pill>
-            ${unsafeHTML(statusIcon(run.active ? 'in_progress' : 'completed', 12))}
-            ${run.active ? 'Running' : 'Completed'}
-          </sl-badge>
-          ${pr ? html`<a class="run-meta run-pr-link" href="${pr}" target="_blank">View PR</a>` : nothing}
-        </div>
-      </div>
-      <div class="run-meta-grid">
-        <span class="run-meta-item"><span class="meta-label">Branch:</span> ${branch || 'N/A'}</span>
-        <span class="run-meta-item"><span class="meta-label">Started:</span> ${formatTimestamp(run.started_at)}</span>
-        <span class="run-meta-item"><span class="meta-label">Finished:</span> ${formatTimestamp(run.completed_at)}</span>
-        <span class="run-meta-item"><span class="meta-label">Duration:</span> ${duration}</span>
-      </div>
-
       ${stageTimelineView(stages, stageUi, run.active)}
+
+      <div class="run-info-section">
+        ${branch ? html`
+          <div class="run-branch">
+            <span class="stage-meta-icon">${unsafeHTML(iconSvg(GitBranch, 14))}</span>
+            <span>${branch}</span>
+            ${pr ? html`<a class="run-pr-link" href="${pr}" target="_blank">View PR</a>` : nothing}
+          </div>
+        ` : nothing}
+        ${timingStripView(run.started_at, endTime)}
+      </div>
 
       <div class="stage-panels">
         ${Object.entries(stages).map(([key, stage]) => {
           const label = stageUi[key]?.label || key.replace(/_/g, ' ').toUpperCase();
           const stageStatus = resolveStatus(stage.status || 'pending', run.active);
-          const agentKey = Object.keys(agents).find(a => a === key) || null;
-          const agent = agentKey ? agents[agentKey] : null;
+          const stageAgent = stage.agent || agents[key]?.agent || key;
+          const stageModel = stage.model || agents[key]?.model || '';
           const stageDuration = stage.started_at
             ? formatDuration(elapsed(stage.started_at, stage.completed_at || null))
             : '';
@@ -119,39 +121,53 @@ export function runDetailView(run, settings = {}) {
               <div slot="summary" class="stage-panel-header">
                 <span class="stage-panel-icon ${statusClass(stageStatus)}">${unsafeHTML(statusIcon(stageStatus))}</span>
                 <span class="stage-panel-label">${label}</span>
+                <span class="stage-panel-meta">
+                  ${hasMultipleIterations ? html`
+                    <span class="stage-meta-item stage-meta-iteration">
+                      <span class="stage-meta-icon">${unsafeHTML(iconSvg(RefreshCw, 11))}</span>
+                      ${iterations.length} iterations
+                    </span>
+                  ` : nothing}
+                  ${stage.completed_at ? html`
+                    <span class="stage-meta-item">
+                      <span class="stage-meta-icon">${unsafeHTML(iconSvg(Clock, 11))}</span>
+                      ${formatTimestamp(stage.completed_at)}
+                    </span>
+                  ` : nothing}
+                  ${stageDuration ? html`
+                    <span class="stage-meta-item">
+                      <span class="stage-meta-icon">${unsafeHTML(iconSvg(Timer, 11))}</span>
+                      ${stageDuration}
+                    </span>
+                  ` : nothing}
+                </span>
                 <sl-badge variant="${_badgeVariant(stageStatus)}" pill>
                   ${stageStatus.replace(/_/g, ' ')}
                 </sl-badge>
-                ${hasMultipleIterations ? html`
-                  <span class="stage-panel-meta">
-                    <span class="stage-meta-item stage-meta-iteration">${iterations.length} iterations</span>
-                    ${stageDuration ? html`<span class="stage-meta-item">${stageDuration}</span>` : nothing}
-                  </span>
-                ` : nothing}
               </div>
               ${hasMultipleIterations ? html`
                 <sl-tab-group>
                   ${iterations.map(iter => html`
-                    <sl-tab slot="nav" panel="iter-${iter.number}">
+                    <sl-tab slot="nav" panel="iter-${key}-${iter.number}">
                       Iter ${iter.number} ${_iterStatusIcon(iter)}
                     </sl-tab>
                   `)}
                   ${iterations.map(iter => html`
-                    <sl-tab-panel name="iter-${iter.number}">
-                      ${_iterationDetailView(iter, agents, key)}
+                    <sl-tab-panel name="iter-${key}-${iter.number}">
+                      ${_iterationDetailView(iter, key, stageAgent)}
                     </sl-tab-panel>
                   `)}
                 </sl-tab-group>
               ` : html`
                 <div class="stage-detail">
-                  ${stage.started_at ? html`<div class="detail-row"><span class="detail-label">Started:</span> ${formatTimestamp(stage.started_at)}</div>` : nothing}
-                  ${stage.completed_at ? html`<div class="detail-row"><span class="detail-label">Completed:</span> ${formatTimestamp(stage.completed_at)}</div>` : nothing}
-                  ${stageDuration ? html`<div class="detail-row"><span class="detail-label">Duration:</span> ${stageDuration}</div>` : nothing}
-                  ${agent ? html`<div class="detail-row"><span class="detail-label">Agent:</span> ${agentKey} (${agent.model})</div>` : nothing}
-                  ${iterations.length === 1 && iterations[0].trigger ? html`<div class="detail-row"><span class="detail-label">Trigger:</span> ${_triggerLabel(iterations[0].trigger)}</div>` : nothing}
-                  ${iterations.length === 1 && iterations[0].turns ? html`<div class="detail-row"><span class="detail-label">Turns:</span> ${iterations[0].turns}</div>` : nothing}
-                  ${iterations.length === 1 && iterations[0].cost_usd != null ? html`<div class="detail-row"><span class="detail-label">Cost:</span> $${Number(iterations[0].cost_usd).toFixed(2)}</div>` : nothing}
-                  ${iterations.length === 1 && iterations[0].outcome ? html`<div class="detail-row"><span class="detail-label">Outcome:</span> ${_outcomeLabel(iterations[0].outcome)}</div>` : nothing}
+                  ${timingStripView(stage.started_at, stage.completed_at)}
+                  <div class="stage-info-strip">
+                    ${stageAgent ? html`<span class="stage-info-item"><span class="stage-meta-icon">${unsafeHTML(iconSvg(Cpu, 12))}</span> ${stageAgent}${stageModel ? html` <span class="text-muted">(${stageModel})</span>` : ''}</span>` : nothing}
+                    ${iterations.length === 1 && iterations[0].turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> ${iterations[0].turns}</span>` : nothing}
+                    ${iterations.length === 1 && iterations[0].cost_usd != null ? html`<span class="stage-info-item"><span class="meta-label">Cost:</span> $${Number(iterations[0].cost_usd).toFixed(2)}</span>` : nothing}
+                  </div>
+                  ${iterations.length === 1 && iterations[0].trigger ? html`<div class="detail-row">${_triggerLabel(iterations[0].trigger)}</div>` : nothing}
+                  ${iterations.length === 1 && iterations[0].outcome ? html`<div class="detail-row">${_outcomeLabel(iterations[0].outcome)}</div>` : nothing}
                   ${stage.task_progress ? html`<div class="detail-row"><span class="detail-label">Progress:</span> ${stage.task_progress}</div>` : nothing}
                   ${stage.error ? html`<div class="detail-row detail-error"><span class="detail-label">Error:</span> ${stage.error}</div>` : nothing}
                 </div>

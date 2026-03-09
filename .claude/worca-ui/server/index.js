@@ -14,7 +14,7 @@ for (let i = 0; i < process.argv.length; i++) {
 }
 
 const cwd = process.cwd();
-const app = createApp();
+const app = createApp({ settingsPath: join(cwd, '.claude', 'settings.json') });
 const server = createServer(app);
 
 attachWsServer(server, {

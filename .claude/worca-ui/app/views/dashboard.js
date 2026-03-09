@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Activity, CircleCheck, CircleAlert, Zap } from '../utils/icons.js';
 import { runCardView } from './run-card.js';
 
-export function dashboardView(state) {
+export function dashboardView(state, { onSelectRun } = {}) {
   const runs = Object.values(state.runs);
   const active = runs.filter(r => r.active);
   const completed = runs.filter(r => !r.active);
@@ -49,7 +49,7 @@ export function dashboardView(state) {
       <h3 class="dashboard-section-title">Active Runs</h3>
       ${active.length > 0 ? html`
         <div class="run-list">
-          ${active.map(run => runCardView(run))}
+          ${active.map(run => runCardView(run, { onClick: onSelectRun }))}
         </div>
       ` : html`<div class="empty-state">No running pipelines</div>`}
     </div>

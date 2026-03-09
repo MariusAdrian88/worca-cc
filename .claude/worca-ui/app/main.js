@@ -364,6 +364,7 @@ function mainContentView() {
         onToggleAutoScroll: handleToggleAutoScroll,
         autoScroll,
         stageIterations,
+        runStages: run?.stages,
       })}
     `;
   }
