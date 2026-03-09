@@ -447,7 +447,7 @@ def run_pipeline(
         # Determine starting index
         if resume_stage:
             stage_idx = stage_order.index(resume_stage)
-        elif plan_file and not existing:
+        elif plan_file:
             # Pre-made plan: write to MASTER_PLAN.md and skip PLAN stage
             with open(plan_file) as f:
                 plan_content = f.read()
