@@ -1,6 +1,7 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, CircleCheck, CircleAlert } from '../utils/icons.js';
+import { iconSvg, Activity, CircleCheck, CircleAlert, Zap } from '../utils/icons.js';
+import { runCardView } from './run-card.js';
 
 export function dashboardView(state) {
   const runs = Object.values(state.runs);
@@ -10,39 +11,47 @@ export function dashboardView(state) {
     const stages = r.stages ? Object.values(r.stages) : [];
     return stages.some(s => s.status === 'error');
   });
+  const total = runs.length;
 
   return html`
     <div class="dashboard">
-      <h2 class="dashboard-title">Pipeline Overview</h2>
       <div class="dashboard-stats">
+        <div class="stat-card stat-total">
+          <div class="stat-icon-ring">${unsafeHTML(iconSvg(Zap, 20))}</div>
+          <div class="stat-body">
+            <span class="stat-number">${total}</span>
+            <span class="stat-label">Total Runs</span>
+          </div>
+        </div>
         <div class="stat-card stat-active">
-          <div class="stat-icon">${unsafeHTML(iconSvg(Activity, 28))}</div>
-          <span class="stat-number">${active.length}</span>
-          <span class="stat-label">Active</span>
+          <div class="stat-icon-ring">${unsafeHTML(iconSvg(Activity, 20))}</div>
+          <div class="stat-body">
+            <span class="stat-number">${active.length}</span>
+            <span class="stat-label">Active</span>
+          </div>
         </div>
         <div class="stat-card stat-completed">
-          <div class="stat-icon">${unsafeHTML(iconSvg(CircleCheck, 28))}</div>
-          <span class="stat-number">${completed.length}</span>
-          <span class="stat-label">Completed</span>
+          <div class="stat-icon-ring">${unsafeHTML(iconSvg(CircleCheck, 20))}</div>
+          <div class="stat-body">
+            <span class="stat-number">${completed.length}</span>
+            <span class="stat-label">Completed</span>
+          </div>
         </div>
         <div class="stat-card stat-errors">
-          <div class="stat-icon">${unsafeHTML(iconSvg(CircleAlert, 28))}</div>
-          <span class="stat-number">${errored.length}</span>
-          <span class="stat-label">Errors</span>
+          <div class="stat-icon-ring">${unsafeHTML(iconSvg(CircleAlert, 20))}</div>
+          <div class="stat-body">
+            <span class="stat-number">${errored.length}</span>
+            <span class="stat-label">Errors</span>
+          </div>
         </div>
       </div>
 
+      <h3 class="dashboard-section-title">Active Runs</h3>
       ${active.length > 0 ? html`
-        <h3 class="dashboard-section-title">Active Runs</h3>
-        ${active.map(run => html`
-          <div class="run-list-item">
-            <div class="run-list-info">
-              <span class="run-list-title">${run.work_request?.title || 'Untitled'}</span>
-              <span class="run-list-meta">Stage: ${run.stage || 'pending'}</span>
-            </div>
-          </div>
-        `)}
-      ` : html`<div class="empty-state">No active pipeline runs</div>`}
+        <div class="run-list">
+          ${active.map(run => runCardView(run))}
+        </div>
+      ` : html`<div class="empty-state">No running pipelines</div>`}
     </div>
   `;
 }

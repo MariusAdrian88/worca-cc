@@ -17,7 +17,7 @@ export function sidebarView(state, route, connectionState, { onNavigate, onTheme
 
   return html`
     <aside class="sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}">
-      <div class="sidebar-logo">
+      <div class="sidebar-logo" @click=${() => onNavigate('dashboard')} style="cursor:pointer">
         <span class="logo-text">WORCA</span>
       </div>
 

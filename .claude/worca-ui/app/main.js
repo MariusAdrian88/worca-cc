@@ -8,6 +8,8 @@ import { runDetailView } from './views/run-detail.js';
 import { runListView } from './views/run-list.js';
 import { dashboardView } from './views/dashboard.js';
 import { logViewerView, writeLogLine, clearTerminal, mountTerminal, disposeTerminal, searchTerminal } from './views/log-viewer.js';
+import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
+import { iconSvg, ArrowLeft } from './utils/icons.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
 import '@shoelace-style/shoelace/dist/components/details/details.js';
@@ -165,7 +167,44 @@ function handleToggleAutoScroll() {
   rerender();
 }
 
+function handleBack() {
+  if (route.runId) {
+    navigate(route.section, null);
+  } else if (route.section && route.section !== 'dashboard') {
+    navigate('dashboard', null);
+  }
+}
+
 // --- Render ---
+
+function contentHeaderView() {
+  const state = store.getState();
+  let title = 'Dashboard';
+  let showBack = false;
+
+  if (route.runId) {
+    const run = state.runs[route.runId];
+    title = run?.work_request?.title || 'Pipeline Details';
+    showBack = true;
+  } else if (route.section === 'active') {
+    title = 'Active Pipelines';
+    showBack = true;
+  } else if (route.section === 'history') {
+    title = 'History';
+    showBack = true;
+  }
+
+  return html`
+    <div class="content-header">
+      ${showBack ? html`
+        <button class="content-header-back" @click=${handleBack}>
+          ${unsafeHTML(iconSvg(ArrowLeft, 18))}
+        </button>
+      ` : ''}
+      <h1 class="content-header-title">${title}</h1>
+    </div>
+  `;
+}
 
 function mainContentView() {
   const state = store.getState();
@@ -224,6 +263,7 @@ function rerender() {
         onThemeToggle: handleThemeToggle
       })}
       <main class="main-content">
+        ${contentHeaderView()}
         ${mainContentView()}
       </main>
     </div>

@@ -1,21 +1,22 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { statusClass } from '../utils/status-badge.js';
-import { iconSvg, Circle, Loader, CircleCheck, CircleAlert, RefreshCw, Flag } from '../utils/icons.js';
+import { statusClass, resolveStatus } from '../utils/status-badge.js';
+import { iconSvg, Circle, Loader, CircleCheck, CircleAlert, Pause, RefreshCw } from '../utils/icons.js';
 
 const STAGE_ICON = {
   pending: Circle,
   in_progress: Loader,
   completed: CircleCheck,
-  error: CircleAlert
+  error: CircleAlert,
+  interrupted: Pause
 };
 
 function stageLabel(key, stageUi) {
   if (stageUi && stageUi[key]?.label) return stageUi[key].label;
-  return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  return key.replace(/_/g, ' ').toUpperCase();
 }
 
-export function stageTimelineView(stages, stageUi = {}, milestones = {}) {
+export function stageTimelineView(stages, stageUi = {}, isActive = true) {
   if (!stages || typeof stages !== 'object') return html``;
 
   const entries = Object.entries(stages);
@@ -24,11 +25,10 @@ export function stageTimelineView(stages, stageUi = {}, milestones = {}) {
   return html`
     <div class="stage-timeline">
       ${entries.map(([key, stage], i) => {
-        const status = stage.status || 'pending';
+        const status = resolveStatus(stage.status || 'pending', isActive);
         const iconData = STAGE_ICON[status] || Circle;
         const label = stageLabel(key, stageUi);
         const isPulse = status === 'in_progress';
-        const hasMilestone = milestones[`${key}_approval`];
         const iteration = stage.iteration;
         const iconClass = status === 'in_progress' ? 'icon-spin' : '';
 
@@ -38,7 +38,6 @@ export function stageTimelineView(stages, stageUi = {}, milestones = {}) {
             <div class="stage-icon">${unsafeHTML(iconSvg(iconData, 22, iconClass))}</div>
             <div class="stage-label">${label}</div>
             ${iteration > 1 ? html`<span class="loop-indicator">${unsafeHTML(iconSvg(RefreshCw, 10))}${iteration}</span>` : ''}
-            ${hasMilestone ? html`<span class="milestone-marker">${unsafeHTML(iconSvg(Flag, 12))}</span>` : ''}
           </div>
         `;
       })}

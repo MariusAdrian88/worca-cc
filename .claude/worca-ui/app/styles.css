@@ -202,7 +202,9 @@ h1, h2, h3, h4, h5, h6 {
 }
 
 .sidebar-item.active sl-badge {
-  --sl-color-neutral-0: transparent;
+  --sl-color-primary-600: #ffffff;
+  --sl-color-neutral-600: #ffffff;
+  --sl-color-neutral-0: var(--accent);
 }
 
 /* --- 8. Sidebar Footer --- */
@@ -242,6 +244,46 @@ h1, h2, h3, h4, h5, h6 {
   overflow: auto;
   padding: 24px 32px;
   background: var(--bg);
+}
+
+/* --- 9b. Content Header --- */
+.content-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 20px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.content-header-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.content-header-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--text-secondary);
+}
+
+.content-header-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
 }
 
 /* --- 10. Run Header --- */
@@ -292,6 +334,19 @@ h1, h2, h3, h4, h5, h6 {
 
 .run-pr-link:hover {
   text-decoration: underline;
+}
+
+.run-meta-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  padding: 12px 16px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-md);
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- 11. Stage Timeline --- */
@@ -352,12 +407,19 @@ h1, h2, h3, h4, h5, h6 {
   box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.15);
 }
 
+.stage-node.status-interrupted .stage-icon {
+  border-color: var(--status-in-progress);
+  opacity: 0.6;
+}
+
 .stage-label {
   font-size: 11px;
   font-weight: 500;
   color: var(--muted);
   text-align: center;
   white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 /* --- 12. Pulse & Spin Animations --- */
@@ -508,7 +570,9 @@ sl-details.stage-panel::part(content) {
 /* --- 16. Milestone Marker --- */
 .milestone-marker {
   position: absolute;
-  bottom: -6px;
+  bottom: -18px;
+  left: 50%;
+  transform: translateX(-50%);
   color: var(--status-in-progress);
 }
 
@@ -572,8 +636,8 @@ sl-details.stage-panel::part(content) {
   border-radius: 12px;
   font-size: 11px;
   font-weight: 600;
-  text-transform: capitalize;
-  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .status-badge svg {
@@ -595,6 +659,11 @@ sl-details.stage-panel::part(content) {
 
 .status-error {
   color: var(--status-error);
+}
+
+.status-interrupted {
+  color: var(--status-in-progress);
+  opacity: 0.6;
 }
 
 /* --- 19. Connection Indicator --- */
@@ -631,56 +700,80 @@ sl-details.stage-panel::part(content) {
   50% { opacity: 0.3; }
 }
 
-/* --- 20. Run List --- */
+/* --- 20. Run List & Run Card --- */
 .run-list {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.run-list-item {
+.run-card {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  gap: 10px;
   padding: 14px 18px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  background: var(--bg);
+  background: var(--surface);
   transition: background var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
-.run-list-item:hover {
-  background: var(--bg-secondary);
+.run-card:hover {
+  background: var(--bg-hover);
   box-shadow: var(--shadow-md);
   transform: translateY(-1px);
 }
 
-.run-list-status {
+.run-card-top {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
-.run-list-status svg {
-  width: 18px;
-  height: 18px;
-}
-
-.run-list-info {
+.run-card-status {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
-.run-list-title {
+.run-card-title {
   font-weight: 500;
   font-size: 14px;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
 }
 
-.run-list-meta {
+.run-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  padding-left: 26px;
   font-size: 12px;
   color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-card-stages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding-left: 26px;
+}
+
+.run-card-stage-badge {
+  font-size: 10px;
+}
+
+.run-card-stage-badge::part(base) {
+  font-size: 10px;
+  padding: 2px 8px;
+  letter-spacing: 0.03em;
 }
 
 /* --- 21. Dashboard --- */
@@ -688,66 +781,79 @@ sl-details.stage-panel::part(content) {
   padding: 0;
 }
 
-.dashboard-title {
-  font-size: 22px;
-  font-weight: 600;
-  margin-bottom: 20px;
-  letter-spacing: -0.01em;
-}
-
 .dashboard-section-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
-  margin: 24px 0 12px;
+  margin: 28px 0 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 
 .dashboard-stats {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
 }
 
 /* --- 22. Stat Card --- */
 .stat-card {
-  padding: 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  background: var(--bg);
+  background: var(--surface);
   box-shadow: var(--shadow-sm);
-  text-align: center;
   transition: box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 
 .stat-card:hover {
   box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
 }
 
-.stat-icon {
-  margin-bottom: 8px;
+.stat-icon-ring {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  flex-shrink: 0;
+  background: var(--bg-hover);
   color: var(--muted);
-  opacity: 0.6;
 }
 
-.stat-active .stat-icon { color: var(--status-in-progress); opacity: 1; }
-.stat-completed .stat-icon { color: var(--status-completed); opacity: 1; }
-.stat-errors .stat-icon { color: var(--status-error); opacity: 1; }
+.stat-total .stat-icon-ring { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.stat-active .stat-icon-ring { background: color-mix(in srgb, var(--status-in-progress) 12%, transparent); color: var(--status-in-progress); }
+.stat-completed .stat-icon-ring { background: color-mix(in srgb, var(--status-completed) 12%, transparent); color: var(--status-completed); }
+.stat-errors .stat-icon-ring { background: color-mix(in srgb, var(--status-error) 12%, transparent); color: var(--status-error); }
+
+.stat-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
 
 .stat-card .stat-number {
-  font-size: 32px;
+  font-size: 26px;
   font-weight: 700;
   color: var(--fg);
-  line-height: 1.2;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 .stat-card .stat-label {
   font-size: 12px;
   color: var(--muted);
-  margin-top: 4px;
+  margin-top: 2px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.04em;
   font-weight: 500;
 }
+
 
 /* --- 23. Empty State --- */
 .empty-state {

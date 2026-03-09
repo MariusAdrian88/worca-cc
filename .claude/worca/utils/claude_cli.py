@@ -2,6 +2,7 @@
 
 import json
 import subprocess
+import sys
 from typing import Optional
 
 from worca.utils.env import get_env
@@ -67,9 +68,10 @@ def run_agent(
         output_format=output_format,
         json_schema=json_schema,
     )
-    result = subprocess.run(cmd, capture_output=True, text=True, env=get_env())
+    # Stream stderr to terminal for live progress; capture stdout for JSON parsing
+    result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=sys.stderr, text=True, env=get_env())
     if result.returncode != 0:
-        raise RuntimeError(f"claude agent failed: {result.stderr}")
+        raise RuntimeError(f"claude agent failed (exit code {result.returncode})")
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as e:

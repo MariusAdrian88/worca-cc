@@ -20,6 +20,7 @@ import AlertTriangle from 'lucide/dist/esm/icons/triangle-alert';
 import Activity from 'lucide/dist/esm/icons/activity';
 import Archive from 'lucide/dist/esm/icons/archive';
 import Search from 'lucide/dist/esm/icons/search';
+import ArrowLeft from 'lucide/dist/esm/icons/arrow-left';
 
 function renderChildren(nodes) {
   return nodes.map(([tag, attrs]) => {
@@ -45,5 +46,5 @@ export {
   Circle, CircleCheck, CircleAlert, Loader,
   Sun, Moon, Flag, RefreshCw, ArrowDown, Pause,
   Zap, Clock, AlertTriangle,
-  Activity, Archive, Search
+  Activity, Archive, Search, ArrowLeft
 };
