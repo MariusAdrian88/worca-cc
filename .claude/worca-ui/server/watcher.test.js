@@ -20,7 +20,7 @@ describe('watcher', () => {
     expect(createRunId(status)).toBe(id);
   });
 
-  it('discoverRuns finds active run from status.json', () => {
+  it('discoverRuns finds active run from status.json when PID alive', () => {
     const status = {
       started_at: '2026-03-08T10:00:00Z',
       stage: 'implement',
@@ -28,10 +28,25 @@ describe('watcher', () => {
       stages: { plan: { status: 'completed' }, implement: { status: 'in_progress' } }
     };
     writeFileSync(join(dir, 'status.json'), JSON.stringify(status));
+    writeFileSync(join(dir, 'pipeline.pid'), String(process.pid));
     const runs = discoverRuns(dir);
     expect(runs.length).toBe(1);
     expect(runs[0].stage).toBe('implement');
     expect(runs[0].active).toBe(true);
+  });
+
+  it('discoverRuns marks run inactive when no PID file', () => {
+    const status = {
+      started_at: '2026-03-08T10:00:00Z',
+      stage: 'implement',
+      work_request: { title: 'test' },
+      stages: { plan: { status: 'completed' }, implement: { status: 'in_progress' } }
+    };
+    writeFileSync(join(dir, 'status.json'), JSON.stringify(status));
+    // No pipeline.pid file
+    const runs = discoverRuns(dir);
+    expect(runs.length).toBe(1);
+    expect(runs[0].active).toBe(false);
   });
 
   it('discoverRuns finds completed runs from results/', () => {

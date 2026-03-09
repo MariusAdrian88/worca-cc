@@ -16,14 +16,28 @@ function isTerminal(status) {
   );
 }
 
+function isPipelineRunning(worcaDir) {
+  const pidPath = join(worcaDir, 'pipeline.pid');
+  if (!existsSync(pidPath)) return false;
+  try {
+    const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
+    process.kill(pid, 0); // signal 0 = check if alive
+    return true;
+  } catch {
+    return false; // stale PID or unreadable
+  }
+}
+
 export function discoverRuns(worcaDir) {
   const runs = [];
+  const pipelineRunning = isPipelineRunning(worcaDir);
 
   const statusPath = join(worcaDir, 'status.json');
   if (existsSync(statusPath)) {
     try {
       const status = JSON.parse(readFileSync(statusPath, 'utf8'));
-      runs.push({ id: createRunId(status), active: !isTerminal(status), ...status });
+      const active = !isTerminal(status) && pipelineRunning;
+      runs.push({ id: createRunId(status), active, ...status });
     } catch { /* ignore malformed */ }
   }
 
