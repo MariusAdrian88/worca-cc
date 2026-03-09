@@ -175,3 +175,17 @@ def test_ensure_beads_initialized_raises_on_init_failure():
             assert False, "Should have raised"
         except PipelineError as e:
             assert "beads" in str(e).lower()
+
+
+# --- get_enabled_stages integration ---
+
+def test_runner_imports_get_enabled_stages():
+    """Verify runner can import get_enabled_stages."""
+    from worca.orchestrator.stages import get_enabled_stages
+    assert callable(get_enabled_stages)
+
+
+def test_handle_pr_review_unknown_outcome():
+    """Unknown outcome treated as approve (no next stage)."""
+    stage, status = handle_pr_review("unknown", {"stage": "review"})
+    assert stage is None

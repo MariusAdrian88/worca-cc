@@ -1189,7 +1189,8 @@ sl-details.stage-panel::part(content) {
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   background: var(--bg-secondary);
-  min-width: 90px;
+  min-width: 140px;
+  transition: opacity 0.2s, border-color 0.2s, background 0.2s;
 }
 
 .pipeline-stage-name {
@@ -1210,6 +1211,40 @@ sl-details.stage-panel::part(content) {
   align-items: center;
   color: var(--muted);
   flex-shrink: 0;
+}
+
+/* Pipeline stage states */
+.pipeline-stage-node--enabled {
+  border-color: var(--sl-color-primary-300);
+  background: color-mix(in srgb, var(--sl-color-primary-500) 8%, var(--bg-secondary));
+}
+
+.pipeline-stage-node--disabled {
+  opacity: 0.55;
+  border-color: var(--border-subtle);
+  background: var(--bg-secondary);
+}
+
+.pipeline-stage-name--disabled {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.pipeline-stage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.pipeline-stage-field {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pipeline-stage-field .settings-label {
+  font-size: 10px;
 }
 
 /* Dispatch table */

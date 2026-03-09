@@ -16,6 +16,15 @@ const STAGE_ORDER = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr'];
 const AGENT_NAMES = ['planner', 'coordinator', 'implementer', 'tester', 'guardian'];
 const MODEL_OPTIONS = ['opus', 'sonnet', 'haiku'];
 
+const DEFAULT_STAGES = {
+  plan:       { agent: 'planner',     enabled: true },
+  coordinate: { agent: 'coordinator', enabled: true },
+  implement:  { agent: 'implementer', enabled: true },
+  test:       { agent: 'tester',      enabled: true },
+  review:     { agent: 'guardian',     enabled: true },
+  pr:         { agent: 'guardian',     enabled: true }
+};
+
 const GUARD_RULES = [
   { key: 'block_rm_rf', label: 'Block rm -rf', description: 'Prevent recursive force-delete commands' },
   { key: 'block_env_write', label: 'Block .env writes', description: 'Prevent writing to .env files' },
@@ -47,6 +56,16 @@ export async function loadSettings() {
     settingsData = await res.json();
     // Ensure worca and governance defaults exist
     if (!settingsData.worca) settingsData.worca = {};
+    // Ensure stages defaults exist
+    if (!settingsData.worca.stages) {
+      settingsData.worca.stages = { ...DEFAULT_STAGES };
+    } else {
+      for (const stage of STAGE_ORDER) {
+        if (!settingsData.worca.stages[stage]) {
+          settingsData.worca.stages[stage] = { ...DEFAULT_STAGES[stage] };
+        }
+      }
+    }
     if (!settingsData.worca.governance) {
       settingsData.worca.governance = { ...DEFAULT_GOVERNANCE };
     } else {
@@ -120,6 +139,19 @@ function readPipelineFromDom() {
   return { loops };
 }
 
+function readStagesFromDom() {
+  const stages = {};
+  for (const stage of STAGE_ORDER) {
+    const enabledEl = document.getElementById(`stage-${stage}-enabled`);
+    const agentEl = document.getElementById(`stage-${stage}-agent`);
+    stages[stage] = {
+      agent: agentEl?.value || DEFAULT_STAGES[stage].agent,
+      enabled: enabledEl?.checked ?? true
+    };
+  }
+  return stages;
+}
+
 function readGovernanceFromDom() {
   const guards = {};
   for (const rule of GUARD_RULES) {
@@ -185,20 +217,45 @@ function agentsTab(worca, rerender) {
 
 function pipelineTab(worca, rerender) {
   const loops = worca.loops || {};
+  const stages = worca.stages || DEFAULT_STAGES;
 
   return html`
     <div class="settings-tab-content">
-      <h3 class="settings-section-title">Stage Order</h3>
+      <h3 class="settings-section-title">Stage Configuration</h3>
       <div class="pipeline-flow">
-        ${STAGE_ORDER.map((stage, i) => html`
-          <div class="pipeline-stage-node">
-            <div class="pipeline-stage-name">${stage}</div>
-            <div class="pipeline-stage-agent">${STAGE_AGENT_MAP[stage]}</div>
-          </div>
-          ${i < STAGE_ORDER.length - 1 ? html`
-            <span class="pipeline-arrow">${unsafeHTML(iconSvg(ChevronRight, 16))}</span>
-          ` : nothing}
-        `)}
+        ${STAGE_ORDER.map((stage, i) => {
+          const stageConfig = stages[stage] || DEFAULT_STAGES[stage];
+          const enabled = stageConfig.enabled !== false;
+          return html`
+            <div class="pipeline-stage-node ${enabled ? 'pipeline-stage-node--enabled' : 'pipeline-stage-node--disabled'}">
+              <div class="pipeline-stage-header">
+                <span class="pipeline-stage-name ${enabled ? '' : 'pipeline-stage-name--disabled'}">${stage}</span>
+                <sl-switch id="stage-${stage}-enabled" ?checked=${enabled} size="small"
+                  @sl-change=${(e) => {
+                    const node = e.target.closest('.pipeline-stage-node');
+                    if (e.target.checked) {
+                      node.classList.remove('pipeline-stage-node--disabled');
+                      node.classList.add('pipeline-stage-node--enabled');
+                      node.querySelector('.pipeline-stage-name').classList.remove('pipeline-stage-name--disabled');
+                    } else {
+                      node.classList.remove('pipeline-stage-node--enabled');
+                      node.classList.add('pipeline-stage-node--disabled');
+                      node.querySelector('.pipeline-stage-name').classList.add('pipeline-stage-name--disabled');
+                    }
+                  }}></sl-switch>
+              </div>
+              <div class="settings-field pipeline-stage-field">
+                <label class="settings-label">Agent</label>
+                <sl-select id="stage-${stage}-agent" .value="${stageConfig.agent || STAGE_AGENT_MAP[stage]}" size="small">
+                  ${AGENT_NAMES.map(a => html`<sl-option value="${a}">${a}</sl-option>`)}
+                </sl-select>
+              </div>
+            </div>
+            ${i < STAGE_ORDER.length - 1 ? html`
+              <span class="pipeline-arrow">${unsafeHTML(iconSvg(ChevronRight, 16))}</span>
+            ` : nothing}
+          `;
+        })}
       </div>
 
       <h3 class="settings-section-title">Loop Limits</h3>
@@ -219,7 +276,8 @@ function pipelineTab(worca, rerender) {
       <div class="settings-tab-actions">
         <sl-button variant="primary" size="small" @click=${() => {
           const { loops } = readPipelineFromDom();
-          saveSettings({ worca: { ...settingsData.worca, loops }, permissions: settingsData.permissions }, rerender);
+          const stages = readStagesFromDom();
+          saveSettings({ worca: { ...settingsData.worca, loops, stages }, permissions: settingsData.permissions }, rerender);
         }}>
           ${unsafeHTML(iconSvg(Save, 14))}
           Save Pipeline

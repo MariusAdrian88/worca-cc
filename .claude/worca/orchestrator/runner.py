@@ -13,7 +13,9 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from worca.orchestrator.stages import Stage, can_transition, get_stage_config, STAGE_AGENT_MAP
+from worca.orchestrator.stages import (
+    Stage, can_transition, get_stage_config, get_enabled_stages, STAGE_AGENT_MAP,
+)
 from worca.orchestrator.work_request import WorkRequest
 from worca.state.status import load_status, save_status, update_stage, set_milestone, init_status
 from worca.utils.claude_cli import run_agent, terminate_current
@@ -328,7 +330,7 @@ def handle_pr_review(outcome: str, status: dict) -> tuple:
     elif outcome == "restart_planning":
         return (Stage.PLAN, status)
     else:
-        raise PipelineError(f"Unknown PR review outcome: {outcome}")
+        return (None, status)
 
 
 def _ensure_beads_initialized() -> None:
@@ -425,7 +427,7 @@ def run_pipeline(
         context = {"prompt": work_request.description or work_request.title}
         loop_counters = {}
 
-        stage_order = [Stage.PLAN, Stage.COORDINATE, Stage.IMPLEMENT, Stage.TEST, Stage.REVIEW, Stage.PR]
+        stage_order = get_enabled_stages(settings_path)
 
         # Determine starting index
         if resume_stage:
@@ -526,18 +528,21 @@ def run_pipeline(
             if current_stage == Stage.TEST:
                 passed = result.get("passed", False)
                 if not passed:
-                    loop_key = "implement_test"
-                    loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
-                    _log(f"Tests failed — looping back to IMPLEMENT (iteration {loop_counters[loop_key]})", "warn")
-                    if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
-                        _log(f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations", "err")
-                        raise LoopExhaustedError(
-                            f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
-                        )
-                    update_stage(status, Stage.IMPLEMENT.value, iteration=loop_counters[loop_key])
-                    save_status(status, status_path)
-                    stage_idx = stage_order.index(Stage.IMPLEMENT)
-                    continue
+                    if Stage.IMPLEMENT not in stage_order:
+                        _log("Tests failed but IMPLEMENT stage is disabled — treating as pass", "warn")
+                    else:
+                        loop_key = "implement_test"
+                        loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                        _log(f"Tests failed — looping back to IMPLEMENT (iteration {loop_counters[loop_key]})", "warn")
+                        if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
+                            _log(f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations", "err")
+                            raise LoopExhaustedError(
+                                f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
+                            )
+                        update_stage(status, Stage.IMPLEMENT.value, iteration=loop_counters[loop_key])
+                        save_status(status, status_path)
+                        stage_idx = stage_order.index(Stage.IMPLEMENT)
+                        continue
                 _log(f"Tests passed", "ok")
 
             # Handle review results
@@ -551,30 +556,36 @@ def run_pipeline(
                         raise PipelineError("PR rejected")
                     _log("Review approved", "ok")
                 elif next_stage == Stage.IMPLEMENT:
-                    loop_key = "pr_changes"
-                    loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
-                    _log(f"Changes requested — looping back to IMPLEMENT (iteration {loop_counters[loop_key]})", "warn")
-                    if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
-                        _log(f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations", "err")
-                        raise LoopExhaustedError(
-                            f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
-                        )
-                    update_stage(status, Stage.IMPLEMENT.value, iteration=loop_counters[loop_key])
-                    save_status(status, status_path)
-                    stage_idx = stage_order.index(Stage.IMPLEMENT)
-                    continue
+                    if Stage.IMPLEMENT not in stage_order:
+                        _log("Changes requested but IMPLEMENT stage is disabled — skipping loop", "warn")
+                    else:
+                        loop_key = "pr_changes"
+                        loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                        _log(f"Changes requested — looping back to IMPLEMENT (iteration {loop_counters[loop_key]})", "warn")
+                        if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
+                            _log(f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations", "err")
+                            raise LoopExhaustedError(
+                                f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
+                            )
+                        update_stage(status, Stage.IMPLEMENT.value, iteration=loop_counters[loop_key])
+                        save_status(status, status_path)
+                        stage_idx = stage_order.index(Stage.IMPLEMENT)
+                        continue
                 elif next_stage == Stage.PLAN:
-                    loop_key = "restart_planning"
-                    loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
-                    _log(f"Restart planning requested (iteration {loop_counters[loop_key]})", "warn")
-                    if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
-                        raise LoopExhaustedError(
-                            f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
-                        )
-                    update_stage(status, Stage.PLAN.value, iteration=loop_counters[loop_key])
-                    save_status(status, status_path)
-                    stage_idx = stage_order.index(Stage.PLAN)
-                    continue
+                    if Stage.PLAN not in stage_order:
+                        _log("Restart planning requested but PLAN stage is disabled — skipping loop", "warn")
+                    else:
+                        loop_key = "restart_planning"
+                        loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                        _log(f"Restart planning requested (iteration {loop_counters[loop_key]})", "warn")
+                        if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
+                            raise LoopExhaustedError(
+                                f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
+                            )
+                        update_stage(status, Stage.PLAN.value, iteration=loop_counters[loop_key])
+                        save_status(status, status_path)
+                        stage_idx = stage_order.index(Stage.PLAN)
+                        continue
 
             stage_idx += 1
 

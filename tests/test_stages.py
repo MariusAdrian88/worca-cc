@@ -7,6 +7,7 @@ from worca.orchestrator.stages import (
     STAGE_AGENT_MAP,
     can_transition,
     get_stage_config,
+    get_enabled_stages,
 )
 
 
@@ -193,3 +194,135 @@ class TestGetStageConfig:
         assert config["agent"] == "guardian"
         assert config["model"] == "sonnet"
         assert config["max_turns"] == 30
+
+
+class TestGetStageConfigWithStages:
+    """Tests for get_stage_config reading agent from worca.stages."""
+
+    def test_reads_agent_from_stages_config(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "plan": {"agent": "guardian", "enabled": True}
+                },
+                "agents": {
+                    "guardian": {"model": "opus", "max_turns": 30}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        config = get_stage_config(Stage.PLAN, settings_path=str(settings_file))
+        assert config["agent"] == "guardian"
+        assert config["model"] == "opus"
+        assert config["max_turns"] == 30
+
+    def test_falls_back_to_hardcoded_when_no_stages_config(self, tmp_path):
+        settings = {
+            "worca": {
+                "agents": {
+                    "planner": {"model": "opus", "max_turns": 40}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        config = get_stage_config(Stage.PLAN, settings_path=str(settings_file))
+        assert config["agent"] == "planner"
+        assert config["model"] == "opus"
+
+    def test_falls_back_to_hardcoded_when_stage_missing_from_stages(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "plan": {"agent": "guardian", "enabled": True}
+                },
+                "agents": {
+                    "planner": {"model": "opus", "max_turns": 40}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        # coordinate is not in stages config, falls back to STAGE_AGENT_MAP
+        config = get_stage_config(Stage.COORDINATE, settings_path=str(settings_file))
+        assert config["agent"] == "coordinator"
+
+
+class TestGetEnabledStages:
+    """Tests for get_enabled_stages filtering and ordering."""
+
+    def test_all_stages_enabled_by_default(self, tmp_path):
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({}))
+        stages = get_enabled_stages(str(settings_file))
+        assert stages == [
+            Stage.PLAN, Stage.COORDINATE, Stage.IMPLEMENT,
+            Stage.TEST, Stage.REVIEW, Stage.PR
+        ]
+
+    def test_disabled_stage_excluded(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "test": {"agent": "tester", "enabled": False}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        stages = get_enabled_stages(str(settings_file))
+        assert Stage.TEST not in stages
+        assert stages == [
+            Stage.PLAN, Stage.COORDINATE, Stage.IMPLEMENT,
+            Stage.REVIEW, Stage.PR
+        ]
+
+    def test_multiple_disabled_stages(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "test": {"agent": "tester", "enabled": False},
+                    "review": {"agent": "guardian", "enabled": False}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        stages = get_enabled_stages(str(settings_file))
+        assert stages == [
+            Stage.PLAN, Stage.COORDINATE, Stage.IMPLEMENT, Stage.PR
+        ]
+
+    def test_preserves_stage_order(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "coordinate": {"agent": "coordinator", "enabled": False}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        stages = get_enabled_stages(str(settings_file))
+        # Order is preserved: plan, implement, test, review, pr
+        assert stages[0] == Stage.PLAN
+        assert stages[1] == Stage.IMPLEMENT
+
+    def test_handles_missing_settings_file(self, tmp_path):
+        missing = str(tmp_path / "nonexistent.json")
+        stages = get_enabled_stages(missing)
+        assert len(stages) == 6  # all enabled by default
+
+    def test_enabled_true_explicitly(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "plan": {"agent": "planner", "enabled": True}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        stages = get_enabled_stages(str(settings_file))
+        assert Stage.PLAN in stages
