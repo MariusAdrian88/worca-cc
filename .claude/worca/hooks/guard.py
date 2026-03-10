@@ -78,6 +78,50 @@ def _is_test_command(command: str) -> bool:
     return any(p in cmd_lower for p in test_patterns)
 
 
+def _is_file_write_via_bash(command: str) -> bool:
+    """Detect Bash commands that write files, bypassing Write/Edit tools.
+
+    Catches patterns like: cat > file, echo > file, tee file,
+    python3 -c "open(f,'w')", heredocs writing files, sed -i, etc.
+    """
+    # Shell redirection: > or >> to a file (but allow bd commands and read-only redirects)
+    # Match: cat > file, echo > file, printf > file, etc.
+    if re.search(r'(?<!\|)\s*>\s*[^\s|&;]', command):
+        # Allow: bd commands that may redirect internally
+        if not command.strip().startswith("bd "):
+            return True
+
+    # Heredoc writes: << 'EOF' or <<EOF combined with > or cat >
+    if re.search(r'<<\s*[\'"]?\w+[\'"]?', command) and ">" in command:
+        return True
+
+    # tee command (writes to files)
+    if re.search(r'\btee\b', command):
+        return True
+
+    # sed -i (in-place edit)
+    if re.search(r'\bsed\b.*\s-i', command):
+        return True
+
+    # python/python3 with file write patterns
+    if re.search(r'\bpython[3]?\b', command):
+        if re.search(r'open\s*\(.*["\']w["\']', command) or \
+           re.search(r'\.write\s*\(', command) or \
+           re.search(r'\.writelines\s*\(', command) or \
+           re.search(r'pathlib.*write_', command):
+            return True
+
+    # cp or mv (can overwrite files)
+    if re.search(r'\b(cp|mv)\b', command):
+        return True
+
+    # dd command
+    if re.search(r'\bdd\b.*\bof=', command):
+        return True
+
+    return False
+
+
 def check_guard(tool_name: str, tool_input: dict) -> tuple:
     """Check if tool use should be blocked.
 
@@ -122,18 +166,18 @@ def check_guard(tool_name: str, tool_input: dict) -> tuple:
                 if basename != "MASTER_PLAN.md":
                     return (2, "Blocked: planner agent may only write MASTER_PLAN.md, not {}.".format(basename))
 
-        # Coordinator may not write implementation code
-        if tool_name in ("Write", "Edit") and agent == "coordinator":
-            return (2, "Blocked: coordinator agent is read-only — may not write files.")
+        # Read-only agents: coordinator and tester may not write files
+        read_only_agents = ("coordinator", "tester")
+        if agent in read_only_agents:
+            if tool_name in ("Write", "Edit"):
+                return (2, "Blocked: {} agent is read-only — may not write files.".format(agent))
+            if tool_name == "Bash" and _is_file_write_via_bash(command):
+                return (2, "Blocked: {} agent is read-only — file writes via Bash are not allowed.".format(agent))
 
         # Planner and Coordinator may not run tests
         if tool_name == "Bash" and agent in ("planner", "coordinator"):
             if _is_test_command(command):
                 return (2, "Blocked: {} agent may not run tests.".format(agent))
-
-        # Tester is read-only
-        if tool_name in ("Write", "Edit") and agent == "tester":
-            return (2, "Blocked: tester agent is read-only — may not write files.")
 
     # Allow everything else
     return (0, "")

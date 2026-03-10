@@ -305,3 +305,122 @@ class TestPlannerPlanFileEnv:
             assert code == 0
         finally:
             del os.environ["WORCA_AGENT"]
+
+
+# --- Block Bash file writes for read-only agents ---
+
+class TestBlockBashFileWrites:
+    """Coordinator and tester must not bypass Write/Edit guards via Bash."""
+
+    def test_blocks_coordinator_cat_redirect(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "cat > /project/app.py << 'EOF'\nprint('hello')\nEOF"})
+            assert code == 2
+            assert "coordinator" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_echo_redirect(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": 'echo "hello" > /project/file.txt'})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_tee(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "echo 'data' | tee /project/file.txt"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_python_file_write(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": """python3 -c "open('file.py','w').write('code')" """})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_python_heredoc_write(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "python3 << 'PYSCRIPT'\nopen('file.py','w').write('x')\nPYSCRIPT"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_sed_inplace(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "sed -i 's/old/new/g' file.py"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_cp(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "cp source.py dest.py"})
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_tester_cat_redirect(self):
+        os.environ["WORCA_AGENT"] = "tester"
+        try:
+            code, reason = check_guard("Bash", {"command": "cat > /project/app.py << 'EOF'\ncode\nEOF"})
+            assert code == 2
+            assert "tester" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_coordinator_bd_commands(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "bd create --title='task' --type=task"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_coordinator_bd_list(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "bd list --status=open"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_coordinator_ls(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "ls -la /project/"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_coordinator_grep(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Bash", {"command": "grep -r 'pattern' /project/"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_implementer_cat_redirect(self):
+        """Implementer is not read-only, should be allowed."""
+        os.environ["WORCA_AGENT"] = "implementer"
+        try:
+            code, reason = check_guard("Bash", {"command": "cat > /project/app.py << 'EOF'\ncode\nEOF"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_no_agent_cat_redirect(self):
+        """No WORCA_AGENT set — no restrictions."""
+        os.environ.pop("WORCA_AGENT", None)
+        code, reason = check_guard("Bash", {"command": "cat > /project/app.py << 'EOF'\ncode\nEOF"})
+        assert code == 0
