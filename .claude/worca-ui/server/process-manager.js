@@ -32,14 +32,22 @@ export function getRunningPid(worcaDir) {
 /**
  * Start a new pipeline run.
  * @param {string} worcaDir - Path to .worca directory
- * @param {{ inputType?: string, inputValue?: string, msize?: number, mloops?: number, planFile?: string, resume?: boolean }} opts
- * @returns {{ pid: number }}
+ * @param {{ inputType?: string, inputValue?: string, msize?: number, mloops?: number, planFile?: string, resume?: boolean, projectRoot?: string }} opts
+ * @returns {Promise<{ pid: number }>}
  */
-export function startPipeline(worcaDir, opts = {}) {
+export async function startPipeline(worcaDir, opts = {}) {
   const running = getRunningPid(worcaDir);
   if (running) {
     const err = new Error(`Pipeline already running (PID ${running.pid})`);
     err.code = 'already_running';
+    throw err;
+  }
+
+  const cwd = opts.projectRoot || process.cwd();
+  const scriptPath = join(cwd, '.claude/scripts/run_pipeline.py');
+  if (!existsSync(scriptPath)) {
+    const err = new Error(`Pipeline script not found at ${scriptPath}`);
+    err.code = 'script_not_found';
     throw err;
   }
 
@@ -67,15 +75,49 @@ export function startPipeline(worcaDir, opts = {}) {
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
-  const child = spawn('python', args, {
-    detached: true,
-    stdio: 'ignore',
-    cwd: process.cwd(),
-    env,
-  });
-  child.unref();
+  return new Promise((resolve, reject) => {
+    const child = spawn('python', args, {
+      detached: true,
+      stdio: 'ignore',
+      cwd,
+      env,
+    });
 
-  return { pid: child.pid };
+    const timeout = setTimeout(() => {
+      cleanup();
+      child.unref();
+      resolve({ pid: child.pid });
+    }, 2000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      child.removeAllListeners('error');
+      child.removeAllListeners('exit');
+    }
+
+    child.on('error', (spawnErr) => {
+      cleanup();
+      const err = new Error(`Failed to start pipeline: ${spawnErr.message}`);
+      err.code = 'spawn_error';
+      reject(err);
+    });
+
+    child.on('exit', (code, signal) => {
+      cleanup();
+      if (code !== null && code !== 0) {
+        const err = new Error(`Pipeline exited immediately with code ${code}`);
+        err.code = 'spawn_error';
+        reject(err);
+      } else if (signal) {
+        const err = new Error(`Pipeline killed by signal ${signal}`);
+        err.code = 'spawn_error';
+        reject(err);
+      }
+      // code === 0 or code === null (still running) — resolve
+      child.unref();
+      resolve({ pid: child.pid });
+    });
+  });
 }
 
 /**
@@ -141,13 +183,22 @@ export function stopPipeline(worcaDir) {
  * Restart a failed stage by resetting it and spawning with --resume.
  * @param {string} worcaDir - Path to .worca directory
  * @param {string} stageKey - The stage key to restart
- * @returns {{ pid: number, stage: string }}
+ * @param {{ projectRoot?: string }} opts
+ * @returns {Promise<{ pid: number, stage: string }>}
  */
-export function restartStage(worcaDir, stageKey) {
+export async function restartStage(worcaDir, stageKey, opts = {}) {
   const running = getRunningPid(worcaDir);
   if (running) {
     const err = new Error(`Pipeline already running (PID ${running.pid})`);
     err.code = 'already_running';
+    throw err;
+  }
+
+  const cwd = opts.projectRoot || process.cwd();
+  const scriptPath = join(cwd, '.claude/scripts/run_pipeline.py');
+  if (!existsSync(scriptPath)) {
+    const err = new Error(`Pipeline script not found at ${scriptPath}`);
+    err.code = 'script_not_found';
     throw err;
   }
 
@@ -196,13 +247,46 @@ export function restartStage(worcaDir, stageKey) {
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
-  const child = spawn('python', ['.claude/scripts/run_pipeline.py', '--resume'], {
-    detached: true,
-    stdio: 'ignore',
-    cwd: process.cwd(),
-    env,
-  });
-  child.unref();
+  return new Promise((resolve, reject) => {
+    const child = spawn('python', ['.claude/scripts/run_pipeline.py', '--resume'], {
+      detached: true,
+      stdio: 'ignore',
+      cwd,
+      env,
+    });
 
-  return { pid: child.pid, stage: stageKey };
+    const timeout = setTimeout(() => {
+      cleanup();
+      child.unref();
+      resolve({ pid: child.pid, stage: stageKey });
+    }, 2000);
+
+    function cleanup() {
+      clearTimeout(timeout);
+      child.removeAllListeners('error');
+      child.removeAllListeners('exit');
+    }
+
+    child.on('error', (spawnErr) => {
+      cleanup();
+      const err = new Error(`Failed to restart stage: ${spawnErr.message}`);
+      err.code = 'spawn_error';
+      reject(err);
+    });
+
+    child.on('exit', (code, signal) => {
+      cleanup();
+      if (code !== null && code !== 0) {
+        const err = new Error(`Pipeline exited immediately with code ${code}`);
+        err.code = 'spawn_error';
+        reject(err);
+      } else if (signal) {
+        const err = new Error(`Pipeline killed by signal ${signal}`);
+        err.code = 'spawn_error';
+        reject(err);
+      }
+      child.unref();
+      resolve({ pid: child.pid, stage: stageKey });
+    });
+  });
 }

@@ -104,6 +104,8 @@ describe('server e2e', () => {
       stages: { plan: { status: 'completed' }, implement: { status: 'in_progress' } }
     };
     writeFileSync(join(dir, 'worca', 'status.json'), JSON.stringify(status));
+    // discoverRuns checks pipeline.pid to determine active status
+    writeFileSync(join(dir, 'worca', 'pipeline.pid'), String(process.pid));
 
     const res = await fetch(`http://127.0.0.1:${port}/`);
     expect(res.status).toBe(200);

@@ -83,7 +83,7 @@ export function createApp(options = {}) {
   });
 
   // POST /api/runs — start a new pipeline
-  app.post('/api/runs', (req, res) => {
+  app.post('/api/runs', async (req, res) => {
     if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
 
     const { inputType, inputValue, msize, mloops, planFile } = req.body || {};
@@ -105,12 +105,13 @@ export function createApp(options = {}) {
     }
 
     try {
-      const result = startPipeline(worcaDir, {
+      const result = await startPipeline(worcaDir, {
         inputType,
         inputValue: inputValue.trim(),
         msize: msizeVal,
         mloops: mloopsVal,
         planFile: planFile || undefined,
+        projectRoot,
       });
       // Broadcast run-started if broadcast is available
       if (app.locals.broadcast) {
@@ -173,11 +174,11 @@ export function createApp(options = {}) {
   });
 
   // POST /api/runs/:id/stages/:stage/restart — restart a failed stage
-  app.post('/api/runs/:id/stages/:stage/restart', (req, res) => {
+  app.post('/api/runs/:id/stages/:stage/restart', async (req, res) => {
     if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
     const { stage } = req.params;
     try {
-      const result = restartStage(worcaDir, stage);
+      const result = await restartStage(worcaDir, stage, { projectRoot });
       if (app.locals.broadcast) {
         app.locals.broadcast('stage-restarted', { stage, pid: result.pid });
       }

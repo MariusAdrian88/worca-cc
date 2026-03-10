@@ -17,6 +17,19 @@
 
 **Plans:** [settings-page.md](plans/2026-03-09-settings-page.md), [pipeline-stage-editor.md](plans/2026-03-09-pipeline-stage-editor.md)
 
+### W-009: Pipeline Control Actions
+
+**Status:** Done
+
+**Problem:** The UI is read-only. Users must use the CLI to start, stop, or manage pipeline runs.
+
+**Proposal:** Add control actions to the UI:
+- **Start Run:** Form with prompt input, work request type selector, and optional settings overrides
+- **Stop Run:** Cancel button on active runs (sends SIGTERM to pipeline process)
+- **Restart Stage:** Re-run a failed stage without restarting the entire pipeline
+
+**Plan:** [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md)
+
 ---
 
 ## 1. worca-cc — Orchestration Engine
@@ -153,22 +166,6 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 ---
 
 ## 2. worca-ui — Dashboard
-
-### W-009: Pipeline Control Actions
-
-**Problem:** The UI is read-only. Users must use the CLI to start, stop, or manage pipeline runs.
-
-**Proposal:** Add control actions to the UI:
-- **Start Run:** Form with prompt input, work request type selector, and optional settings overrides
-- **Stop Run:** Cancel button on active runs (sends SIGTERM to pipeline process)
-- **Restart Stage:** Re-run a failed stage without restarting the entire pipeline
-
-**Considerations:**
-- Requires a REST API: `POST /api/runs`, `DELETE /api/runs/:id`, `POST /api/runs/:id/restart`
-- Security: confirm destructive actions (stop/restart) with a dialog
-- Process management: server needs to spawn and track pipeline processes
-
----
 
 ### W-010: Approval Gate UI
 
@@ -327,7 +324,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | ID | Priority | Feature | Area | Status | Plan |
 |----|----------|---------|------|--------|------|
 | W-000 | P0 | Settings REST API | ui | [x] Done | [W-000-settings-rest-api.md](plans/W-000-settings-rest-api.md) |
-| W-009 | P1 | Pipeline Control Actions | ui | [ ] | [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md) |
+| W-009 | P1 | Pipeline Control Actions | ui | [x] Done | [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md) |
 | W-010 | P1 | Approval Gate UI | ui | [ ] | [W-010-approval-gate-ui.md](plans/W-010-approval-gate-ui.md) |
 | W-001 | P1 | Pipeline Resume & Checkpointing | cc | [ ] | [W-001-pipeline-resume-checkpointing.md](plans/W-001-pipeline-resume-checkpointing.md) |
 | W-011 | P1 | Beads Integration Panel | ui | [ ] | [W-011-beads-integration-panel.md](plans/W-011-beads-integration-panel.md) |

@@ -8,7 +8,7 @@ describe('state store', () => {
     expect(s.activeRunId).toBe(null);
     expect(s.runs).toEqual({});
     expect(s.logLines).toEqual([]);
-    expect(s.preferences).toEqual({ theme: 'light', sidebarCollapsed: false });
+    expect(s.preferences).toEqual({ theme: 'light', sidebarCollapsed: false, notifications: null });
   });
 
   it('accepts initial overrides', () => {

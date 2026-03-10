@@ -70,6 +70,8 @@ describe('WebSocket integration', () => {
       stages: { plan: { status: 'completed' }, implement: { status: 'in_progress' } }
     };
     writeFileSync(join(dir, 'worca', 'status.json'), JSON.stringify(status));
+    // discoverRuns checks pipeline.pid to determine active status
+    writeFileSync(join(dir, 'worca', 'pipeline.pid'), String(process.pid));
 
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     await waitForOpen(ws);
@@ -195,6 +197,8 @@ describe('WebSocket integration', () => {
     writeFileSync(join(dir, 'worca', 'runs', runId, 'agents', 'implementer.md'),
       '# Implementer Agent\n\nYou are the Implementer.');
     writeFileSync(join(dir, 'worca', 'active_run'), runId);
+    // discoverRuns checks pipeline.pid to determine active status for active_run entries
+    writeFileSync(join(dir, 'worca', 'pipeline.pid'), String(process.pid));
 
     const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
     await waitForOpen(ws);
@@ -210,7 +214,8 @@ describe('WebSocket integration', () => {
     });
     expect(reply.ok).toBe(true);
     expect(reply.payload.agent).toBe('implementer');
-    expect(reply.payload.userPrompt).toBe('Implement the test feature');
+    expect(reply.payload.userPrompt).toContain('Implement the test feature');
+    expect(reply.payload.promptSource).toBe('reconstructed');
     expect(reply.payload.agentInstructions).toContain('Implementer Agent');
     ws.close();
   });
