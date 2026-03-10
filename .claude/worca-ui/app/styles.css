@@ -2277,3 +2277,174 @@ sl-details.live-output-panel::part(content) {
   margin-top: 8px;
   overflow-x: auto;
 }
+
+/* --- 31. Token & Cost Dashboard --- */
+
+.costs-dashboard {
+  padding: 0;
+}
+
+.costs-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.costs-section-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 12px;
+}
+
+.cost-run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cost-run-row {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.cost-run-row.expanded {
+  border-color: var(--accent);
+}
+
+.cost-run-summary {
+  display: grid;
+  grid-template-columns: 1fr 130px 80px 80px 80px 24px;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: background var(--transition-fast);
+}
+
+.cost-run-summary:hover {
+  background: var(--bg-hover);
+}
+
+.cost-run-title {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cost-run-date {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.cost-run-cost {
+  font-weight: 600;
+  color: var(--accent);
+  text-align: right;
+}
+
+.cost-run-turns {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.cost-run-duration {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+}
+
+.cost-run-chevron {
+  color: var(--muted);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.cost-run-detail {
+  padding: 12px 14px;
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg);
+}
+
+/* Cost breakdown bar */
+
+.cost-bar-container {
+  margin-bottom: 14px;
+}
+
+.cost-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--bg-secondary);
+}
+
+.cost-bar-segment {
+  min-width: 3px;
+  transition: width 0.3s ease;
+}
+
+.cost-bar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.cost-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.cost-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Cost detail table */
+
+.cost-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.cost-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.cost-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.cost-table-stage td:first-child {
+  font-weight: 500;
+}
+
+.cost-table-iter td {
+  color: var(--muted);
+}
+
+.cost-muted {
+  color: var(--muted);
+}

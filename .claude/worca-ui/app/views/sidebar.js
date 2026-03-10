@@ -1,6 +1,6 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, Archive, Settings, Plus, List } from '../utils/icons.js';
+import { iconSvg, Activity, Archive, Settings, Plus, List, Coins } from '../utils/icons.js';
 
 export function sidebarView(state, route, connectionState, { onNavigate }) {
   const { runs, preferences } = state;
@@ -47,6 +47,17 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
             <span>History</span>
           </span>
           ${historyCount > 0 ? html`<sl-badge variant="neutral" pill>${historyCount}</sl-badge>` : ''}
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Analytics</div>
+        <div class="sidebar-item ${route.section === 'costs' ? 'active' : ''}"
+             @click=${() => onNavigate('costs')}>
+          <span class="sidebar-item-left">
+            ${unsafeHTML(iconSvg(Coins, 16))}
+            <span>Costs</span>
+          </span>
         </div>
       </div>
 

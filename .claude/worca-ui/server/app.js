@@ -241,6 +241,57 @@ export function createApp(options = {}) {
     }
   });
 
+  // GET /api/costs — token & cost data for all runs
+  app.get('/api/costs', (_req, res) => {
+    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    const resultsDir = join(worcaDir, 'results');
+    if (!existsSync(resultsDir)) return res.json({ ok: true, tokenData: {} });
+
+    const tokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
+
+    for (const entry of readdirSync(resultsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const runDir = join(resultsDir, entry.name);
+      const stageNames = [];
+      try {
+        for (const sub of readdirSync(runDir, { withFileTypes: true })) {
+          if (sub.isDirectory()) stageNames.push(sub.name);
+        }
+      } catch { continue; }
+
+      if (stageNames.length === 0) continue;
+      tokenData[entry.name] = {};
+
+      for (const stage of stageNames) {
+        const stageDir = join(runDir, stage);
+        const iters = [];
+        try {
+          const files = readdirSync(stageDir).filter(f => f.startsWith('iter-') && f.endsWith('.json')).sort();
+          for (const file of files) {
+            try {
+              const data = JSON.parse(readFileSync(join(stageDir, file), 'utf8'));
+              const mu = data.modelUsage || {};
+              // Aggregate across all models in this iteration
+              let inputTokens = 0, outputTokens = 0, cacheReadInputTokens = 0, cacheCreationInputTokens = 0;
+              const models = [];
+              for (const [model, usage] of Object.entries(mu)) {
+                inputTokens += usage.inputTokens || 0;
+                outputTokens += usage.outputTokens || 0;
+                cacheReadInputTokens += usage.cacheReadInputTokens || 0;
+                cacheCreationInputTokens += usage.cacheCreationInputTokens || 0;
+                models.push(model);
+              }
+              iters.push({ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, models });
+            } catch { /* skip bad files */ }
+          }
+        } catch { /* skip */ }
+        if (iters.length > 0) tokenData[entry.name][stage] = iters;
+      }
+    }
+
+    res.json({ ok: true, tokenData });
+  });
+
   app.use(express.static(appDir));
   app.get('/{*splat}', (_req, res) => {
     res.sendFile('index.html', { root: appDir });

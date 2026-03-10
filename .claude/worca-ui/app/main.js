@@ -16,6 +16,7 @@ import { iconSvg, ArrowLeft, Square, Play, Loader, AlertTriangle, Database } fro
 import { statusIcon } from './utils/status-badge.js';
 import { createNotificationManager } from './notifications.js';
 import { beadsPanelView } from './views/beads-panel.js';
+import { tokenCostsView } from './views/token-costs.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
 import '@shoelace-style/shoelace/dist/components/details/details.js';
@@ -57,6 +58,9 @@ let beadsStarting = null; // null | issueId
 let beadsStartError = null; // null | string
 const runBeads = new Map(); // runId → issues[]
 const stageIterationTab = new Map(); // stageKey → iterationNumber (user's last manual choice)
+let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
+let costsExpanded = null; // runId or null
+let costsFetched = false;
 
 function handleStageTabChange(stageKey, iterationNumber) {
   stageIterationTab.set(stageKey, iterationNumber);
@@ -279,6 +283,11 @@ onHashChange((newRoute) => {
 
   if (route.section === 'settings') {
     loadSettings().then(() => rerender());
+  }
+
+  if (route.section === 'costs') {
+    costsFetched = false;
+    fetchCostsData();
   }
 
   if (!route.runId && prevRunId) {
@@ -505,6 +514,26 @@ function handleDismissBeadsError() {
   rerender();
 }
 
+// --- Costs actions ---
+
+function fetchCostsData() {
+  fetch('/api/costs')
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        costsTokenData = data.tokenData || {};
+        costsFetched = true;
+        rerender();
+      }
+    })
+    .catch(() => {});
+}
+
+function handleToggleCostRun(runId) {
+  costsExpanded = costsExpanded === runId ? null : runId;
+  rerender();
+}
+
 // --- Render ---
 
 function contentHeaderView() {
@@ -582,6 +611,9 @@ function contentHeaderView() {
         ${unsafeHTML(iconSvg(Play, 14))}
         ${nrs.isSubmitting ? 'Starting\u2026' : 'Start'}
       </button>`;
+  } else if (route.section === 'costs') {
+    title = 'Token & Cost Dashboard';
+    showBack = true;
   } else if (route.section === 'settings') {
     title = 'Settings';
     showBack = true;
@@ -646,6 +678,15 @@ function mainContentView() {
         </div>
       </div>
     `;
+  }
+
+  if (route.section === 'costs') {
+    if (!costsFetched) fetchCostsData();
+    return tokenCostsView(state, {
+      expandedRun: costsExpanded,
+      tokenData: costsTokenData,
+      onToggleRun: handleToggleCostRun,
+    });
   }
 
   if (route.section === 'beads') {
