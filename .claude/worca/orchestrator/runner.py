@@ -9,9 +9,11 @@ import re
 import subprocess
 from typing import Optional
 
+from worca.orchestrator.prompt_builder import PromptBuilder
 from worca.orchestrator.stages import Stage, can_transition, get_stage_config, STAGE_AGENT_MAP
 from worca.orchestrator.work_request import WorkRequest
 from worca.state.status import load_status, save_status, update_stage, set_milestone, init_status
+from worca.utils.beads import bd_ready, bd_update
 from worca.utils.claude_cli import run_agent
 from worca.utils.git import create_branch
 
@@ -55,7 +57,7 @@ def _save_stage_output(stage: Stage, result: dict, logs_dir: str = ".worca/logs"
 
 def run_stage(
     stage: Stage,
-    context: dict,
+    prompt: str,
     settings_path: str = ".claude/settings.json",
     msize: int = 1,
 ) -> tuple[dict, dict]:
@@ -65,6 +67,7 @@ def run_stage(
     appropriate agent path, prompt, max_turns, and schema.
 
     Args:
+        prompt: The rendered user prompt for this stage.
         msize: Multiplier for max_turns (1-10). E.g. msize=2 doubles turns.
 
     Returns (structured_output, raw_envelope) tuple. The structured_output
@@ -73,7 +76,6 @@ def run_stage(
     """
     config = get_stage_config(stage, settings_path=settings_path)
     max_turns = config["max_turns"] * msize
-    prompt = context.get("prompt", "")
     raw = run_agent(
         prompt=prompt,
         agent=_agent_path(config["agent"]),
@@ -138,9 +140,24 @@ def handle_pr_review(outcome: str, status: dict) -> tuple:
         raise PipelineError(f"Unknown PR review outcome: {outcome}")
 
 
+def _query_ready_bead() -> dict | None:
+    """Query bd ready and return the first available bead, or None."""
+    try:
+        items = bd_ready()
+        if items:
+            return items[0]
+    except Exception:
+        pass
+    return None
+
+
+def _claim_bead(bead_id: str) -> bool:
+    """Claim a bead by setting its status to in_progress."""
+    return bd_update(bead_id, status="in_progress")
+
+
 def _ensure_beads_initialized() -> None:
     """Check if beads is initialized in the current project, init if not."""
-    import subprocess
     result = subprocess.run(
         ["bd", "stats"], capture_output=True, text=True
     )
@@ -204,7 +221,10 @@ def run_pipeline(
         save_status(status, status_path)
         resume_stage = None
 
-    context = {"prompt": work_request.description or work_request.title}
+    prompt_builder = PromptBuilder(
+        work_request.title,
+        work_request.description,
+    )
     loop_counters = {}
 
     stage_order = [Stage.PLAN, Stage.COORDINATE, Stage.IMPLEMENT, Stage.TEST, Stage.REVIEW, Stage.PR]
@@ -225,12 +245,32 @@ def run_pipeline(
         if current_stage == Stage.COORDINATE:
             _ensure_beads_initialized()
 
+        # Try to assign a specific bead before implement stage
+        if current_stage == Stage.IMPLEMENT:
+            bead = _query_ready_bead()
+            if bead:
+                _claim_bead(bead["id"])
+                prompt_builder.update_context("assigned_bead_id", bead["id"])
+                prompt_builder.update_context("assigned_bead_title", bead["title"])
+                prompt_builder.update_context("assigned_bead_description", bead["description"])
+
+        # Build stage-specific prompt
+        iteration = loop_counters.get(f"{current_stage.value}_iteration", 0)
+        rendered_prompt = prompt_builder.build(current_stage.value, iteration)
+
+        # Store rendered prompt in status for UI visibility
+        if "stages" not in status:
+            status["stages"] = {}
+        if current_stage.value not in status.get("stages", {}):
+            status["stages"][current_stage.value] = {}
+        status["stages"][current_stage.value]["prompt"] = rendered_prompt
+
         # Mark stage as in_progress
         update_stage(status, current_stage.value, status="in_progress")
         save_status(status, status_path)
 
-        # Run the stage
-        result, raw_envelope = run_stage(current_stage, context, settings_path, msize=msize)
+        # Run the stage with rendered prompt
+        result, raw_envelope = run_stage(current_stage, rendered_prompt, settings_path, msize=msize)
 
         # Save full envelope for resume/debugging
         _save_stage_output(current_stage, raw_envelope, logs_dir)
@@ -239,20 +279,37 @@ def run_pipeline(
         update_stage(status, current_stage.value, status="completed")
         save_status(status, status_path)
 
-        # Milestone gate after PLAN
+        # Thread stage outputs into PromptBuilder for downstream stages
         if current_stage == Stage.PLAN:
+            prompt_builder.update_context("plan_approach", result.get("approach", ""))
+            prompt_builder.update_context("plan_tasks_outline", result.get("tasks_outline", []))
+            # Milestone gate
             approved = result.get("approved", True)
             set_milestone(status, "plan_approved", approved)
             save_status(status, status_path)
             if not approved:
                 raise PipelineError("Plan not approved")
 
-        # Handle test results
-        if current_stage == Stage.TEST:
+        elif current_stage == Stage.COORDINATE:
+            prompt_builder.update_context("beads_ids", result.get("beads_ids", []))
+            prompt_builder.update_context("dependency_graph", result.get("dependency_graph", {}))
+
+        elif current_stage == Stage.IMPLEMENT:
+            prompt_builder.update_context("files_changed", result.get("files_changed", []))
+            prompt_builder.update_context("tests_added", result.get("tests_added", []))
+
+        elif current_stage == Stage.TEST:
             passed = result.get("passed", False)
+            prompt_builder.update_context("test_passed", passed)
+            prompt_builder.update_context("test_coverage", result.get("coverage_pct"))
+            prompt_builder.update_context("proof_artifacts", result.get("proof_artifacts", []))
             if not passed:
+                # Thread test failures for the implement retry; clear stale review context
+                prompt_builder.update_context("test_failures", result.get("failures", []))
+                prompt_builder.update_context("review_issues", None)
                 loop_key = "implement_test"
                 loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                loop_counters["implement_iteration"] = loop_counters.get("implement_iteration", 0) + 1
                 if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
                     raise LoopExhaustedError(
                         f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
@@ -260,8 +317,7 @@ def run_pipeline(
                 stage_idx = stage_order.index(Stage.IMPLEMENT)
                 continue
 
-        # Handle review results
-        if current_stage == Stage.REVIEW:
+        elif current_stage == Stage.REVIEW:
             outcome = result.get("outcome", "approve")
             next_stage, status = handle_pr_review(outcome, status)
             if next_stage is None:
@@ -269,8 +325,12 @@ def run_pipeline(
                     raise PipelineError("PR rejected")
                 # approved — continue to PR
             elif next_stage == Stage.IMPLEMENT:
+                # Thread review feedback for the implement retry; clear stale test context
+                prompt_builder.update_context("review_issues", result.get("issues", []))
+                prompt_builder.update_context("test_failures", None)
                 loop_key = "pr_changes"
                 loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                loop_counters["implement_iteration"] = loop_counters.get("implement_iteration", 0) + 1
                 if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
                     raise LoopExhaustedError(
                         f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
