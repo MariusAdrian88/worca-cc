@@ -55,6 +55,15 @@ let beadsStatusFilter = 'all';
 let beadsPriorityFilter = 'all';
 let beadsStarting = null; // null | issueId
 let beadsStartError = null; // null | string
+const runBeads = new Map(); // runId → issues[]
+
+function fetchRunBeads(runId) {
+  if (!runId) return;
+  ws.send('list-beads-by-run', { runId }).then(payload => {
+    runBeads.set(runId, payload.issues || []);
+    rerender();
+  }).catch(() => {});
+}
 
 function fetchAgentPrompts(runId, stages) {
   if (!runId || !stages) return;
@@ -174,6 +183,8 @@ ws.on('preferences', (payload) => {
 ws.on('beads-update', (payload) => {
   if (payload) {
     store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
+    // Re-fetch run-specific beads if viewing a run
+    if (route.runId) fetchRunBeads(route.runId);
   }
 });
 
@@ -232,6 +243,7 @@ ws.onConnection((state) => {
     if (route.runId) {
       ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
       ws.send('subscribe-log', { stage: logFilter === '*' ? null : logFilter, runId: route.runId }).catch(() => {});
+      fetchRunBeads(route.runId);
     }
   }
   rerender();
@@ -256,6 +268,7 @@ onHashChange((newRoute) => {
     logIterationFilter = null;
     ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
     ws.send('subscribe-log', { stage: null, runId: route.runId }).catch(() => {});
+    fetchRunBeads(route.runId);
   }
 
   if (route.section === 'settings') {
@@ -611,7 +624,7 @@ function mainContentView() {
     return html`
       <div class="run-detail-layout">
         <div class="run-detail-layout__stages">
-          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage })}
+          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, beads: runBeads.get(route.runId) })}
         </div>
         <div class="run-detail-layout__logs">
           ${liveOutputView(getActiveStage(), isRunning)}

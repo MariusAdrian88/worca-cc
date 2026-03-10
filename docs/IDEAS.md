@@ -185,6 +185,8 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 
 ### W-011: Beads Integration Panel
 
+**Status:** Done
+
 **Problem:** Beads issues (the task management layer) are invisible in the UI. Users must use the CLI to browse and select work.
 
 **Proposal:** Add a Beads panel:
@@ -192,6 +194,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 - **Beads view:** List all open issues with status, priority, and dependencies
 - **Quick actions:** Start a pipeline run from a beads issue, mark issues as in-progress
 - **Dependency graph:** Visual representation of issue dependencies
+- **Bidirectional linking:** Coordinator tags beads with `--external-ref="worca:{run_id}"`, run detail page shows linked issues
 
 **Considerations:**
 - Requires `bd` CLI calls from the server (or direct SQLite reads from `.beads/beads.db`)
@@ -327,7 +330,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-009 | P1 | Pipeline Control Actions | ui | [x] Done | [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md) |
 | W-010 | P1 | Approval Gate UI | ui | [ ] | [W-010-approval-gate-ui.md](plans/W-010-approval-gate-ui.md) |
 | W-001 | P1 | Pipeline Resume & Checkpointing | cc | [ ] | [W-001-pipeline-resume-checkpointing.md](plans/W-001-pipeline-resume-checkpointing.md) |
-| W-011 | P1 | Beads Integration Panel | ui | [ ] | [W-011-beads-integration-panel.md](plans/W-011-beads-integration-panel.md) |
+| W-011 | P1 | Beads Integration Panel | ui | [x] Done | [W-011-beads-integration-panel.md](plans/W-011-beads-integration-panel.md) |
 | W-002 | P2 | Parallel Implementer Execution | cc | [ ] | [W-002-parallel-implementer-execution.md](plans/W-002-parallel-implementer-execution.md) |
 | W-005 | P2 | Agent Memory & Context Sharing | cc | [ ] | [W-005-agent-memory-context-sharing.md](plans/W-005-agent-memory-context-sharing.md) |
 | W-006 | P2 | Cost & Token Tracking | cc | [x] Done | [W-006-cost-token-tracking.md](plans/W-006-cost-token-tracking.md) |

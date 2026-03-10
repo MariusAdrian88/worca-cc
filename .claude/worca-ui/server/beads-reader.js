@@ -33,6 +33,33 @@ export function listIssues(beadsDb) {
   }
 }
 
+export function listIssuesByExternalRef(beadsDb, externalRef) {
+  let db;
+  try {
+    db = new Database(beadsDb, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(
+      `SELECT id, title, body, status, priority, created_at, external_ref
+       FROM issues WHERE external_ref = ?
+       ORDER BY priority ASC, id ASC`
+    ).all(externalRef);
+
+    const depStmt = db.prepare(
+      `SELECT depends_on_id FROM issue_dependencies WHERE issue_id = ?`
+    );
+    const statusMap = new Map(rows.map(r => [r.id, r.status]));
+
+    return rows.map(row => {
+      const depends_on = depStmt.all(row.id).map(d => d.depends_on_id);
+      const blocked_by = depends_on.filter(depId => statusMap.has(depId));
+      return { ...row, depends_on, blocked_by };
+    });
+  } catch {
+    return [];
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
+
 export function getIssue(beadsDb, id) {
   let db;
   try {

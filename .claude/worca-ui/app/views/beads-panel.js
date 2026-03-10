@@ -2,19 +2,19 @@ import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Lock, Loader } from '../utils/icons.js';
 
-function priorityVariant(priority) {
+export function priorityVariant(priority) {
   if (priority === 'high') return 'danger';
   if (priority === 'medium') return 'warning';
   return 'neutral';
 }
 
-function statusVariant(status) {
+export function statusVariant(status) {
   if (status === 'ready') return 'success';
   if (status === 'in_progress') return 'primary';
   return 'neutral';
 }
 
-function statusClass(issue) {
+export function beadsStatusClass(issue) {
   if (issue.blocked_by && issue.blocked_by.length > 0) return 'blocked';
   return issue.status;
 }
@@ -39,7 +39,7 @@ function computeLayers(issues) {
   return layer;
 }
 
-function beadsDependencyGraph(issues) {
+export function beadsDependencyGraph(issues) {
   if (!issues || issues.length === 0) return '';
 
   const NODE_W = 140, NODE_H = 40, H_GAP = 60, V_GAP = 24, PADDING = 16;
@@ -91,7 +91,7 @@ function beadsDependencyGraph(issues) {
   for (const issue of issues) {
     const pos = positions.get(issue.id);
     if (!pos) continue;
-    const sc = statusClass(issue);
+    const sc = beadsStatusClass(issue);
     const title = issue.title || '';
     const label = title.length > 18 ? title.slice(0, 18) + '...' : title;
     nodes += `<g class="beads-graph-node beads-graph-node--${sc}" transform="translate(${pos.x},${pos.y})">

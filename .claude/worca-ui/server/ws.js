@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { stopPipeline as pmStopPipeline, startPipeline as pmStartPipeline } from './process-manager.js';
 import { isRequest, makeOk, makeError } from '../app/protocol.js';
 import { discoverRuns } from './watcher.js';
-import { listIssues, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
+import { listIssues, listIssuesByExternalRef, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
 import { readLastLines, resolveLogPath, resolveIterationLogPath, countLines, readLinesFrom, listLogFiles, listIterationFiles } from './log-tailer.js';
 import { readSettings } from './settings-reader.js';
 import { readPreferences, writePreferences } from './preferences.js';
@@ -718,6 +718,22 @@ export function attachWsServer(httpServer, config) {
       }
       const issues = listIssues(beadsDbPath);
       ws.send(JSON.stringify(makeOk(req, { issues, dbExists: true, dbPath: beadsDbPath })));
+      return;
+    }
+
+    // list-beads-by-run
+    if (req.type === 'list-beads-by-run') {
+      const { runId } = req.payload || {};
+      if (!runId) {
+        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        return;
+      }
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(JSON.stringify(makeOk(req, { issues: [], runId })));
+        return;
+      }
+      const issues = listIssuesByExternalRef(beadsDbPath, 'worca:' + runId);
+      ws.send(JSON.stringify(makeOk(req, { issues, runId })));
       return;
     }
 

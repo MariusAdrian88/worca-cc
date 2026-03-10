@@ -2200,3 +2200,80 @@ sl-details.live-output-panel::part(content) {
   stroke: var(--status-error);
   stroke-dasharray: 4 2;
 }
+
+/* --- Run-detail linked Beads section --- */
+.run-beads-section {
+  margin: 0 0 8px;
+  padding: 12px 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius);
+}
+
+.run-beads-header {
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.run-beads-count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.run-beads-empty {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+.run-beads-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.run-bead-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+}
+
+.run-bead-row sl-badge::part(base) {
+  font-size: 0.68rem;
+  padding: 0 5px;
+}
+
+.run-bead-id {
+  color: var(--muted);
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+  min-width: 28px;
+}
+
+.run-bead-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-beads-graph {
+  margin-top: 8px;
+  overflow-x: auto;
+}

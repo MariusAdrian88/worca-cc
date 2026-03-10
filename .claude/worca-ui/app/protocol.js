@@ -12,7 +12,7 @@ export const MESSAGE_TYPES = [
   'get-agent-prompt',
   'get-preferences', 'set-preferences',
   'stop-run', 'resume-run',
-  'list-beads-issues', 'start-beads-issue',
+  'list-beads-issues', 'start-beads-issue', 'list-beads-by-run',
   // Server → Client events
   'run-snapshot', 'run-update', 'runs-list',
   'log-line', 'log-bulk',
