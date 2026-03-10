@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { stageTimelineView } from './stage-timeline.js';
 import { statusClass, statusIcon, resolveStatus } from '../utils/status-badge.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
-import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText } from '../utils/icons.js';
+import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy } from '../utils/icons.js';
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -76,6 +76,13 @@ function _iterationDetailView(iter, stageKey, stageAgent) {
   `;
 }
 
+function _copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+
 function _agentPromptSection(stageKey, promptData) {
   if (!promptData) return nothing;
   const { agentInstructions, userPrompt } = promptData;
@@ -88,13 +95,23 @@ function _agentPromptSection(stageKey, promptData) {
       </div>
       ${userPrompt ? html`
         <div class="agent-prompt-block">
-          <div class="agent-prompt-label">User Prompt (-p)</div>
+          <div class="agent-prompt-label-row">
+            <span class="agent-prompt-label">User Prompt (-p)</span>
+            <button class="copy-btn" @click=${(e) => _copyToClipboard(userPrompt, e.currentTarget)}>
+              ${unsafeHTML(iconSvg(ClipboardCopy, 11))} Copy
+            </button>
+          </div>
           <pre class="agent-prompt-content">${userPrompt}</pre>
         </div>
       ` : nothing}
       ${agentInstructions ? html`
         <div class="agent-prompt-block">
-          <div class="agent-prompt-label">System Prompt (agent .md)</div>
+          <div class="agent-prompt-label-row">
+            <span class="agent-prompt-label">System Prompt (agent .md)</span>
+            <button class="copy-btn" @click=${(e) => _copyToClipboard(agentInstructions, e.currentTarget)}>
+              ${unsafeHTML(iconSvg(ClipboardCopy, 11))} Copy
+            </button>
+          </div>
           <pre class="agent-prompt-content">${agentInstructions}</pre>
         </div>
       ` : nothing}
