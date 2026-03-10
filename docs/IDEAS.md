@@ -328,23 +328,23 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 |----|----------|---------|------|--------|------|
 | W-000 | P0 | Settings REST API | ui | [x] Done | [W-000-settings-rest-api.md](plans/W-000-settings-rest-api.md) |
 | W-009 | P1 | Pipeline Control Actions | ui | [ ] | [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md) |
-| W-010 | P1 | Approval Gate UI | ui | [ ] | — |
-| W-001 | P1 | Pipeline Resume & Checkpointing | cc | [ ] | — |
-| W-011 | P1 | Beads Integration Panel | ui | [ ] | — |
-| W-002 | P2 | Parallel Implementer Execution | cc | [ ] | — |
-| W-005 | P2 | Agent Memory & Context Sharing | cc | [ ] | — |
+| W-010 | P1 | Approval Gate UI | ui | [ ] | [W-010-approval-gate-ui.md](plans/W-010-approval-gate-ui.md) |
+| W-001 | P1 | Pipeline Resume & Checkpointing | cc | [ ] | [W-001-pipeline-resume-checkpointing.md](plans/W-001-pipeline-resume-checkpointing.md) |
+| W-011 | P1 | Beads Integration Panel | ui | [ ] | [W-011-beads-integration-panel.md](plans/W-011-beads-integration-panel.md) |
+| W-002 | P2 | Parallel Implementer Execution | cc | [ ] | [W-002-parallel-implementer-execution.md](plans/W-002-parallel-implementer-execution.md) |
+| W-005 | P2 | Agent Memory & Context Sharing | cc | [ ] | [W-005-agent-memory-context-sharing.md](plans/W-005-agent-memory-context-sharing.md) |
 | W-006 | P2 | Cost & Token Tracking | cc | [x] Done | [W-006-cost-token-tracking.md](plans/W-006-cost-token-tracking.md) |
 | W-015 | P2 | Token & Cost Dashboard | ui | [ ] | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) |
-| W-014 | P2 | Browser Notifications | ui | [ ] | [W-014-browser-notifications.md](plans/W-014-browser-notifications.md) |
+| W-014 | P2 | Browser Notifications | ui | [x] Done | [W-014-browser-notifications.md](plans/W-014-browser-notifications.md) |
 | W-003 | P2 | Pipeline Events & Webhooks | cc | [ ] | [W-003-pipeline-events-webhooks.md](plans/W-003-pipeline-events-webhooks.md) |
-| W-004 | P3 | Work Request Queue | cc | [ ] | — |
-| W-012 | P3 | Log Search & Filtering | ui | [ ] | — |
-| W-013 | P3 | Run Comparison View | ui | [ ] | — |
+| W-004 | P3 | Work Request Queue | cc | [ ] | [W-004-work-request-queue.md](plans/W-004-work-request-queue.md) |
+| W-012 | P3 | Log Search & Filtering | ui | [ ] | [W-012-log-search-filtering.md](plans/W-012-log-search-filtering.md) |
+| W-013 | P3 | Run Comparison View | ui | [ ] | [W-013-run-comparison-view.md](plans/W-013-run-comparison-view.md) |
 | W-007 | P3 | Dry Run Mode | cc | [ ] | [W-007-dry-run-mode.md](plans/W-007-dry-run-mode.md) |
-| W-008 | P3 | Configurable Agent Prompts | cc | [ ] | — |
-| W-016 | P4 | Pipeline Templates | ui | [ ] | — |
-| W-017 | P4 | Multi-Project Support | ui | [ ] | — |
-| W-018 | P4 | Run Annotations | ui | [ ] | — |
+| W-008 | P3 | Configurable Agent Prompts | cc | [ ] | [W-008-configurable-agent-prompts.md](plans/W-008-configurable-agent-prompts.md) |
+| W-016 | P4 | Pipeline Templates | ui | [ ] | [W-016-pipeline-templates.md](plans/W-016-pipeline-templates.md) |
+| W-017 | P4 | Multi-Project Support | ui | [ ] | [W-017-multi-project-support.md](plans/W-017-multi-project-support.md) |
+| W-018 | P4 | Run Annotations | ui | [ ] | [W-018-run-annotations.md](plans/W-018-run-annotations.md) |
 
 **Legend:**
 - **ID:** Unique identifier (`W-` prefix). Use to reference ideas in plans, beads, and commits.
@@ -357,12 +357,24 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | File | Covers |
 |------|--------|
 | [W-000-settings-rest-api.md](plans/W-000-settings-rest-api.md) | W-000: Settings REST API (consolidated) |
+| [W-001-pipeline-resume-checkpointing.md](plans/W-001-pipeline-resume-checkpointing.md) | W-001: Pipeline Resume & Checkpointing |
+| [W-002-parallel-implementer-execution.md](plans/W-002-parallel-implementer-execution.md) | W-002: Parallel Implementer Execution |
 | [W-003-pipeline-events-webhooks.md](plans/W-003-pipeline-events-webhooks.md) | W-003: Pipeline Events & Webhooks |
+| [W-004-work-request-queue.md](plans/W-004-work-request-queue.md) | W-004: Work Request Queue |
+| [W-005-agent-memory-context-sharing.md](plans/W-005-agent-memory-context-sharing.md) | W-005: Agent Memory & Context Sharing |
 | [W-006-cost-token-tracking.md](plans/W-006-cost-token-tracking.md) | W-006: Cost & Token Tracking |
 | [W-007-dry-run-mode.md](plans/W-007-dry-run-mode.md) | W-007: Dry Run Mode |
+| [W-008-configurable-agent-prompts.md](plans/W-008-configurable-agent-prompts.md) | W-008: Configurable Agent Prompts |
 | [W-009-pipeline-control-actions.md](plans/W-009-pipeline-control-actions.md) | W-009: Pipeline Control Actions |
+| [W-010-approval-gate-ui.md](plans/W-010-approval-gate-ui.md) | W-010: Approval Gate UI |
+| [W-011-beads-integration-panel.md](plans/W-011-beads-integration-panel.md) | W-011: Beads Integration Panel |
+| [W-012-log-search-filtering.md](plans/W-012-log-search-filtering.md) | W-012: Log Search & Filtering |
+| [W-013-run-comparison-view.md](plans/W-013-run-comparison-view.md) | W-013: Run Comparison View |
 | [W-014-browser-notifications.md](plans/W-014-browser-notifications.md) | W-014: Browser Notifications |
 | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) | W-015: Token & Cost Dashboard |
+| [W-016-pipeline-templates.md](plans/W-016-pipeline-templates.md) | W-016: Pipeline Templates |
+| [W-017-multi-project-support.md](plans/W-017-multi-project-support.md) | W-017: Multi-Project Support |
+| [W-018-run-annotations.md](plans/W-018-run-annotations.md) | W-018: Run Annotations |
 | [worca-ui-design.md](plans/2026-03-08-worca-ui-design.md) | Original UI architecture and design spec |
 | [worca-ui-plan.md](plans/2026-03-08-worca-ui-plan.md) | UI implementation plan (initial build) |
 | [worca-ui-modernize-design.md](plans/2026-03-08-worca-ui-modernize-design.md) | Shoelace + xterm.js modernization |
