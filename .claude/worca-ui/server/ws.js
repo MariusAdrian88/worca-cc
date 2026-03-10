@@ -575,7 +575,7 @@ export function attachWsServer(httpServer, config) {
       return;
     }
 
-    // stop-run: send SIGTERM to the running pipeline
+    // stop-run: send SIGTERM to the running pipeline, then confirm death
     if (req.type === 'stop-run') {
       let pid = null;
       const pidPath = join(worcaDir, 'pipeline.pid');
@@ -601,6 +601,9 @@ export function attachWsServer(httpServer, config) {
       }
 
       if (!pid) {
+        // Process already gone — clean up and force refresh so UI updates
+        try { unlinkSync(pidPath); } catch {}
+        scheduleRefresh();
         ws.send(JSON.stringify(makeError(req, 'not_running', 'No running pipeline found')));
         return;
       }
@@ -610,8 +613,33 @@ export function attachWsServer(httpServer, config) {
         ws.send(JSON.stringify(makeOk(req, { stopped: true, pid })));
       } catch (e) {
         try { unlinkSync(pidPath); } catch {}
+        scheduleRefresh();
         ws.send(JSON.stringify(makeError(req, 'not_running', `Failed to stop pipeline: ${e.message}`)));
+        return;
       }
+
+      // Poll until process is confirmed dead, then force a refresh.
+      // The pipeline may not update status.json on unclean exit, so
+      // fs.watch() alone won't detect the stop — we must check the PID.
+      let checks = 0;
+      const maxChecks = 20; // 20 * 500ms = 10s max wait
+      const pollInterval = setInterval(() => {
+        checks++;
+        let alive = false;
+        try {
+          process.kill(pid, 0);
+          alive = true;
+        } catch { /* dead */ }
+
+        if (!alive || checks >= maxChecks) {
+          clearInterval(pollInterval);
+          // Clean up stale PID file
+          try { unlinkSync(pidPath); } catch {}
+          // Force refresh so UI sees active=false regardless of status.json changes
+          scheduleRefresh();
+        }
+      }, 500);
+      pollInterval.unref?.();
       return;
     }
 
