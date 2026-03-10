@@ -1,9 +1,9 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, CircleCheck, CircleAlert, Zap } from '../utils/icons.js';
+import { iconSvg, Activity, CircleCheck, CircleAlert, Zap, Plus } from '../utils/icons.js';
 import { runCardView } from './run-card.js';
 
-export function dashboardView(state, { onSelectRun } = {}) {
+export function dashboardView(state, { onSelectRun, onNavigate } = {}) {
   const runs = Object.values(state.runs);
   const active = runs.filter(r => r.active);
   const completed = runs.filter(r => !r.active);
@@ -44,6 +44,13 @@ export function dashboardView(state, { onSelectRun } = {}) {
             <span class="stat-label">Errors</span>
           </div>
         </div>
+      </div>
+
+      <div class="dashboard-actions">
+        <sl-button variant="primary" @click=${() => onNavigate && onNavigate('new-run')}>
+          ${unsafeHTML(iconSvg(Plus, 16))}
+          New Pipeline
+        </sl-button>
       </div>
 
       <h3 class="dashboard-section-title">Active Runs</h3>

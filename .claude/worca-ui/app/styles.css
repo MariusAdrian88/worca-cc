@@ -1815,3 +1815,182 @@ sl-details.live-output-panel::part(content) {
 .notification-banner-dismiss:hover {
   opacity: 1;
 }
+
+/* --- 30. New Pipeline Page --- */
+.new-run-page {
+  max-width: 640px;
+  margin: 0 auto;
+}
+
+.new-run-header {
+  margin-bottom: 24px;
+}
+
+.new-run-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.new-run-header p {
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.new-run-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.new-run-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+}
+
+.new-run-advanced {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 8px 0;
+}
+
+.new-run-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.new-run-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 8px;
+}
+
+.new-run-warning {
+  font-size: 13px;
+  color: var(--status-in-progress);
+  font-weight: 500;
+}
+
+.new-run-error {
+  font-size: 13px;
+  color: var(--status-error);
+  font-weight: 500;
+}
+
+/* Plan file autocomplete */
+.plan-autocomplete {
+  position: relative;
+}
+
+.plan-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  margin-top: 4px;
+}
+
+.plan-group-header {
+  padding: 6px 12px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.plan-item {
+  padding: 8px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.plan-item:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Sidebar new run button */
+.sidebar-new-run {
+  padding: 12px 8px 4px;
+}
+
+.sidebar-new-run-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.sidebar-new-run-btn:hover {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.sidebar.collapsed .sidebar-new-run-btn span {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-new-run-btn {
+  padding: 8px;
+}
+
+/* Dashboard actions */
+.dashboard-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.dashboard-actions sl-button svg {
+  width: 16px;
+  height: 16px;
+  margin-right: 4px;
+}
+
+/* Stage restart button */
+.stage-restart-btn {
+  padding: 8px 0 4px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.stage-restart-btn sl-button svg {
+  width: 14px;
+  height: 14px;
+  margin-right: 4px;
+}
+
+/* Confirmation dialog text */
+.confirm-dialog-body {
+  font-size: 14px;
+  line-height: 1.5;
+}

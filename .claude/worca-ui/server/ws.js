@@ -3,9 +3,9 @@
  * Handles client connections, message routing, file watching, and log tailing.
  */
 import { WebSocketServer } from 'ws';
-import { watch, existsSync, readFileSync, unlinkSync, readdirSync, statSync } from 'node:fs';
+import { watch, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { spawn, execFileSync } from 'node:child_process';
+import { stopPipeline as pmStopPipeline, startPipeline as pmStartPipeline } from './process-manager.js';
 import { isRequest, makeOk, makeError } from '../app/protocol.js';
 import { discoverRuns } from './watcher.js';
 import { readLastLines, resolveLogPath, resolveIterationLogPath, countLines, readLinesFrom, listLogFiles, listIterationFiles } from './log-tailer.js';
@@ -651,104 +651,37 @@ export function attachWsServer(httpServer, config) {
 
     // stop-run: send SIGTERM to the running pipeline, then confirm death
     if (req.type === 'stop-run') {
-      let pid = null;
-      const pidPath = join(worcaDir, 'pipeline.pid');
-
-      // Try PID file first
-      if (existsSync(pidPath)) {
-        try {
-          pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
-          process.kill(pid, 0); // verify alive
-        } catch {
-          try { unlinkSync(pidPath); } catch {}
-          pid = null;
-        }
-      }
-
-      // Fallback: find pipeline process by command line
-      if (!pid) {
-        try {
-          const out = execFileSync('pgrep', ['-f', 'run_pipeline\\.py'], { encoding: 'utf8', timeout: 3000 });
-          const pids = out.trim().split('\n').map(s => parseInt(s, 10)).filter(n => n > 0);
-          if (pids.length > 0) pid = pids[0];
-        } catch { /* no matching process */ }
-      }
-
-      if (!pid) {
-        // Process already gone — clean up and force refresh so UI updates
-        try { unlinkSync(pidPath); } catch {}
-        scheduleRefresh();
-        ws.send(JSON.stringify(makeError(req, 'not_running', 'No running pipeline found')));
-        return;
-      }
-
       try {
-        process.kill(pid, 'SIGTERM');
-        ws.send(JSON.stringify(makeOk(req, { stopped: true, pid })));
+        const result = pmStopPipeline(worcaDir);
+        ws.send(JSON.stringify(makeOk(req, result)));
+        // Poll until process is confirmed dead, then force a refresh
+        let checks = 0;
+        const maxChecks = 20;
+        const pollInterval = setInterval(() => {
+          checks++;
+          let alive = false;
+          try { process.kill(result.pid, 0); alive = true; } catch { /* dead */ }
+          if (!alive || checks >= maxChecks) {
+            clearInterval(pollInterval);
+            scheduleRefresh();
+          }
+        }, 500);
+        pollInterval.unref?.();
       } catch (e) {
-        try { unlinkSync(pidPath); } catch {}
         scheduleRefresh();
-        ws.send(JSON.stringify(makeError(req, 'not_running', `Failed to stop pipeline: ${e.message}`)));
-        return;
+        ws.send(JSON.stringify(makeError(req, e.code || 'not_running', e.message)));
       }
-
-      // Poll until process is confirmed dead, then force a refresh.
-      // The pipeline may not update status.json on unclean exit, so
-      // fs.watch() alone won't detect the stop — we must check the PID.
-      let checks = 0;
-      const maxChecks = 20; // 20 * 500ms = 10s max wait
-      const pollInterval = setInterval(() => {
-        checks++;
-        let alive = false;
-        try {
-          process.kill(pid, 0);
-          alive = true;
-        } catch { /* dead */ }
-
-        if (!alive || checks >= maxChecks) {
-          clearInterval(pollInterval);
-          // Clean up stale PID file
-          try { unlinkSync(pidPath); } catch {}
-          // Force refresh so UI sees active=false regardless of status.json changes
-          scheduleRefresh();
-        }
-      }, 500);
-      pollInterval.unref?.();
       return;
     }
 
     // resume-run: spawn a new pipeline process with --resume
     if (req.type === 'resume-run') {
-      const pidPath = join(worcaDir, 'pipeline.pid');
-      // Check not already running
-      if (existsSync(pidPath)) {
-        try {
-          const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
-          process.kill(pid, 0); // throws if dead
-          ws.send(JSON.stringify(makeError(req, 'already_running', `Pipeline already running (PID ${pid})`)));
-          return;
-        } catch {
-          // Stale PID, safe to proceed
-          try { unlinkSync(pidPath); } catch {}
-        }
+      try {
+        const result = pmStartPipeline(worcaDir, { resume: true });
+        ws.send(JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })));
+      } catch (e) {
+        ws.send(JSON.stringify(makeError(req, e.code || 'error', e.message)));
       }
-      // Find status via active_run pointer or flat status.json
-      const runDir = resolveActiveRunDir();
-      const statusPath = join(runDir, 'status.json');
-      if (!existsSync(statusPath)) {
-        ws.send(JSON.stringify(makeError(req, 'no_status', 'No status.json found to resume')));
-        return;
-      }
-      const env = { ...process.env };
-      delete env.CLAUDECODE;
-      const child = spawn('python', ['.claude/scripts/run_pipeline.py', '--resume'], {
-        detached: true,
-        stdio: 'ignore',
-        cwd: process.cwd(),
-        env,
-      });
-      child.unref();
-      ws.send(JSON.stringify(makeOk(req, { resumed: true, pid: child.pid })));
       return;
     }
 

@@ -8,6 +8,7 @@ import { runDetailView } from './views/run-detail.js';
 import { runListView } from './views/run-list.js';
 import { dashboardView } from './views/dashboard.js';
 import { settingsView, loadSettings } from './views/settings.js';
+import { newRunView } from './views/new-run.js';
 import { logViewerView, writeLogLine, writeIterationSeparator, clearTerminal, mountTerminal, disposeTerminal, searchTerminal } from './views/log-viewer.js';
 import { liveOutputView, writeLiveLogLine, writeLiveIterationSeparator, clearLiveTerminal, mountLiveTerminal, disposeLiveTerminal, updateActiveStage, getActiveStage } from './views/live-output.js';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
@@ -30,6 +31,7 @@ import '@shoelace-style/shoelace/dist/components/tab/tab.js';
 import '@shoelace-style/shoelace/dist/components/tab-panel/tab-panel.js';
 import '@shoelace-style/shoelace/dist/components/switch/switch.js';
 import '@shoelace-style/shoelace/dist/components/alert/alert.js';
+import '@shoelace-style/shoelace/dist/components/textarea/textarea.js';
 
 const store = createStore();
 const ws = createWsClient();
@@ -43,6 +45,9 @@ let settings = {};
 let logIterationFilter = null; // null = all iterations, number = specific
 let pipelineAction = null; // null | 'stopping' | 'resuming'
 let actionError = null; // null | string (error message, auto-clears)
+let stopConfirmOpen = false;
+let restartStageConfirmOpen = false;
+let restartStageKey = null;
 const promptCache = {}; // { [runId]: { [stage]: { agentInstructions, userPrompt, agent } } }
 let promptCachePending = new Set(); // tracks in-flight fetches
 
@@ -159,6 +164,34 @@ ws.on('preferences', (payload) => {
     store.setState({ preferences: payload });
     applyTheme(payload.theme || 'light');
   }
+});
+
+ws.on('run-started', () => {
+  ws.send('list-runs').then(payload => {
+    const runs = {};
+    for (const run of (payload.runs || [])) runs[run.id] = run;
+    store.setState({ runs });
+    if (payload.settings) settings = payload.settings;
+  }).catch(() => {});
+});
+
+ws.on('run-stopped', () => {
+  pipelineAction = null;
+  ws.send('list-runs').then(payload => {
+    const runs = {};
+    for (const run of (payload.runs || [])) runs[run.id] = run;
+    store.setState({ runs });
+    if (payload.settings) settings = payload.settings;
+  }).catch(() => {});
+});
+
+ws.on('stage-restarted', () => {
+  ws.send('list-runs').then(payload => {
+    const runs = {};
+    for (const run of (payload.runs || [])) runs[run.id] = run;
+    store.setState({ runs });
+    if (payload.settings) settings = payload.settings;
+  }).catch(() => {});
 });
 
 // --- Connection handling ---
@@ -306,15 +339,39 @@ function dismissActionError() {
 }
 
 function handleStopPipeline() {
+  stopConfirmOpen = true;
+  rerender();
+  requestAnimationFrame(() => {
+    const dialog = document.getElementById('stop-confirm-dialog');
+    if (dialog) dialog.show();
+  });
+}
+
+function handleCancelStop() {
+  stopConfirmOpen = false;
+  rerender();
+}
+
+async function handleConfirmStop() {
+  stopConfirmOpen = false;
   pipelineAction = 'stopping';
   actionError = null;
   rerender();
-  ws.send('stop-run').then(() => {
-    // Status update via file watcher will clear pipelineAction
-  }).catch((err) => {
+
+  try {
+    const activeRun = Object.values(store.getState().runs).find(r => r.active);
+    const runId = activeRun?.id || 'current';
+    const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!data.ok) {
+      pipelineAction = null;
+      showActionError(data.error || 'Failed to stop pipeline');
+    }
+    // Status update via file watcher / WS broadcast will clear pipelineAction
+  } catch (err) {
     pipelineAction = null;
     showActionError(err?.message || 'Failed to stop pipeline');
-  });
+  }
 }
 
 function handleResumePipeline() {
@@ -327,6 +384,43 @@ function handleResumePipeline() {
     pipelineAction = null;
     showActionError(err?.message || 'Failed to resume pipeline');
   });
+}
+
+function handleRestartStage(stageKey) {
+  restartStageKey = stageKey;
+  restartStageConfirmOpen = true;
+  rerender();
+  requestAnimationFrame(() => {
+    const dialog = document.getElementById('restart-stage-confirm-dialog');
+    if (dialog) dialog.show();
+  });
+}
+
+function handleCancelRestartStage() {
+  restartStageConfirmOpen = false;
+  restartStageKey = null;
+  rerender();
+}
+
+async function handleConfirmRestartStage() {
+  restartStageConfirmOpen = false;
+  const stage = restartStageKey;
+  restartStageKey = null;
+  rerender();
+
+  try {
+    const activeRun = Object.values(store.getState().runs).find(r => !r.active);
+    const runId = activeRun?.id || 'current';
+    const res = await fetch(`/api/runs/${runId}/stages/${stage}/restart`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      navigate('active', null);
+    } else {
+      showActionError(data.error || 'Failed to restart stage');
+    }
+  } catch (err) {
+    showActionError(err?.message || 'Failed to restart stage');
+  }
 }
 
 function handleBack() {
@@ -403,6 +497,9 @@ function contentHeaderView() {
   } else if (route.section === 'history') {
     title = 'History';
     showBack = true;
+  } else if (route.section === 'new-run') {
+    title = 'New Pipeline';
+    showBack = true;
   } else if (route.section === 'settings') {
     title = 'Settings';
     showBack = true;
@@ -451,7 +548,7 @@ function mainContentView() {
     return html`
       <div class="run-detail-layout">
         <div class="run-detail-layout__stages">
-          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {} })}
+          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage })}
         </div>
         <div class="run-detail-layout__logs">
           ${liveOutputView(getActiveStage(), isRunning)}
@@ -467,6 +564,10 @@ function mainContentView() {
         </div>
       </div>
     `;
+  }
+
+  if (route.section === 'new-run') {
+    return newRunView(state, { rerender, onStarted: () => navigate('active', null) });
   }
 
   if (route.section === 'settings') {
@@ -486,7 +587,7 @@ function mainContentView() {
     return runListView(runs, 'active', { onSelectRun: handleSelectRun });
   }
 
-  return dashboardView(state, { onSelectRun: (runId) => navigate('active', runId) });
+  return dashboardView(state, { onSelectRun: (runId) => navigate('active', runId), onNavigate: handleNavigate });
 }
 
 function filteredLogState(state) {
@@ -526,6 +627,30 @@ function rerender() {
         <sl-button slot="footer" variant="primary" @click=${() => {
           document.getElementById('action-error-dialog')?.hide();
         }}>OK</sl-button>
+      </sl-dialog>
+    ` : ''}
+    ${stopConfirmOpen ? html`
+      <sl-dialog id="stop-confirm-dialog" label="Stop Pipeline?" @sl-after-hide=${handleCancelStop}>
+        <p>Are you sure? The current stage will be interrupted and marked as error.</p>
+        <sl-button slot="footer" @click=${() => {
+          document.getElementById('stop-confirm-dialog')?.hide();
+        }}>Cancel</sl-button>
+        <sl-button slot="footer" variant="danger" @click=${() => {
+          document.getElementById('stop-confirm-dialog')?.hide();
+          handleConfirmStop();
+        }}>Stop Pipeline</sl-button>
+      </sl-dialog>
+    ` : ''}
+    ${restartStageConfirmOpen ? html`
+      <sl-dialog id="restart-stage-confirm-dialog" label="Restart Stage?" @sl-after-hide=${handleCancelRestartStage}>
+        <p>Restart the "${restartStageKey}" stage? The pipeline will resume from this point.</p>
+        <sl-button slot="footer" @click=${() => {
+          document.getElementById('restart-stage-confirm-dialog')?.hide();
+        }}>Cancel</sl-button>
+        <sl-button slot="footer" variant="warning" @click=${() => {
+          document.getElementById('restart-stage-confirm-dialog')?.hide();
+          handleConfirmRestartStage();
+        }}>Restart</sl-button>
       </sl-dialog>
     ` : ''}
   `, appEl);

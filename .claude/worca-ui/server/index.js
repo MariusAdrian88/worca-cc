@@ -27,14 +27,19 @@ function findProjectRoot(startDir) {
 }
 
 const projectRoot = findProjectRoot(process.cwd());
-const app = createApp({ settingsPath: join(projectRoot, '.claude', 'settings.json') });
+const worcaDir = join(projectRoot, '.worca');
+const settingsPath = join(projectRoot, '.claude', 'settings.json');
+const app = createApp({ settingsPath, worcaDir, projectRoot });
 const server = createServer(app);
 
-attachWsServer(server, {
-  worcaDir: join(projectRoot, '.worca'),
-  settingsPath: join(projectRoot, '.claude', 'settings.json'),
+const { broadcast } = attachWsServer(server, {
+  worcaDir,
+  settingsPath,
   prefsPath: join(homedir(), '.worca', 'preferences.json')
 });
+
+// Expose broadcast to REST route handlers
+app.locals.broadcast = broadcast;
 
 server.listen(port, host, () => {
   console.log(`worca-ui running at http://${host}:${port}`);

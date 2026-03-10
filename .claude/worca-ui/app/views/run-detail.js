@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { stageTimelineView } from './stage-timeline.js';
 import { statusClass, statusIcon, resolveStatus } from '../utils/status-badge.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
-import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy, Coins } from '../utils/icons.js';
+import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy, Coins, RotateCcw } from '../utils/icons.js';
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -315,6 +315,14 @@ export function runDetailView(run, settings = {}, options = {}) {
                   </div>
                 `;
               })()}
+              ${stageStatus === 'error' && !run.active && options.onRestartStage ? html`
+                <div class="stage-restart-btn">
+                  <sl-button variant="warning" size="small" @click=${() => options.onRestartStage(key)}>
+                    ${unsafeHTML(iconSvg(RotateCcw, 14))}
+                    Restart Stage
+                  </sl-button>
+                </div>
+              ` : nothing}
             </sl-details>
           `;
         })}

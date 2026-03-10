@@ -2,7 +2,7 @@
  * Protocol definitions for worca-ui WebSocket communication.
  */
 
-/** @typedef {'subscribe-run'|'unsubscribe-run'|'subscribe-log'|'unsubscribe-log'|'list-runs'|'get-agent-prompt'|'get-preferences'|'set-preferences'|'stop-run'|'resume-run'|'run-snapshot'|'run-update'|'runs-list'|'log-line'|'log-bulk'|'preferences'} MessageType */
+/** @typedef {'subscribe-run'|'unsubscribe-run'|'subscribe-log'|'unsubscribe-log'|'list-runs'|'get-agent-prompt'|'get-preferences'|'set-preferences'|'stop-run'|'resume-run'|'run-snapshot'|'run-update'|'runs-list'|'log-line'|'log-bulk'|'preferences'|'run-started'|'run-stopped'|'stage-restarted'} MessageType */
 
 /** @type {MessageType[]} */
 export const MESSAGE_TYPES = [
@@ -15,7 +15,8 @@ export const MESSAGE_TYPES = [
   // Server → Client events
   'run-snapshot', 'run-update', 'runs-list',
   'log-line', 'log-bulk',
-  'preferences'
+  'preferences',
+  'run-started', 'run-stopped', 'stage-restarted'
 ];
 
 export function nextId() {

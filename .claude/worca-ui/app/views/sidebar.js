@@ -1,6 +1,6 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, Archive, Settings } from '../utils/icons.js';
+import { iconSvg, Activity, Archive, Settings, Plus } from '../utils/icons.js';
 
 export function sidebarView(state, route, connectionState, { onNavigate }) {
   const { runs, preferences } = state;
@@ -17,6 +17,13 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
     <aside class="sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}">
       <div class="sidebar-logo" @click=${() => onNavigate('dashboard')} style="cursor:pointer">
         <span class="logo-text">WORCA</span>
+      </div>
+
+      <div class="sidebar-new-run">
+        <button class="sidebar-new-run-btn" @click=${() => onNavigate('new-run')}>
+          ${unsafeHTML(iconSvg(Plus, 16))}
+          <span>New Pipeline</span>
+        </button>
       </div>
 
       <div class="sidebar-section">
