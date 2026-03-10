@@ -325,6 +325,48 @@ def _save_stage_output(stage: Stage, result: dict, logs_dir: str = ".worca/logs"
         json.dump(result, f, indent=2)
 
 
+_STAGE_PROMPT_PREFIX = {
+    Stage.PLAN: (
+        "Create a detailed implementation plan for the following work request. "
+        "Write the plan to the designated plan file.\n\n"
+        "Work request: {prompt}"
+    ),
+    Stage.COORDINATE: (
+        "Decompose the following work request into Beads tasks with dependencies. "
+        "Do NOT implement anything — only create tasks using `bd create`.\n\n"
+        "Work request: {prompt}"
+    ),
+    Stage.IMPLEMENT: (
+        "Implement the code changes described in the work request. "
+        "Follow the plan and complete the tasks assigned to you.\n\n"
+        "Work request: {prompt}"
+    ),
+    Stage.TEST: (
+        "Review and test the implementation for the following work request. "
+        "Run tests and report results. Do NOT modify code.\n\n"
+        "Work request: {prompt}"
+    ),
+    Stage.REVIEW: (
+        "Review the code changes for the following work request. "
+        "Check for correctness, style, and adherence to the plan. Do NOT modify code.\n\n"
+        "Work request: {prompt}"
+    ),
+    Stage.PR: (
+        "Create a pull request for the following work request. "
+        "Summarize the changes and ensure the commit history is clean.\n\n"
+        "Work request: {prompt}"
+    ),
+}
+
+
+def _build_stage_prompt(stage: Stage, raw_prompt: str) -> str:
+    """Build a role-scoped prompt that reinforces the agent's purpose."""
+    template = _STAGE_PROMPT_PREFIX.get(stage)
+    if template:
+        return template.format(prompt=raw_prompt)
+    return raw_prompt
+
+
 def run_stage(
     stage: Stage,
     context: dict,
@@ -347,7 +389,8 @@ def run_stage(
     """
     config = get_stage_config(stage, settings_path=settings_path)
     max_turns = config["max_turns"] * msize
-    prompt = context.get("prompt", "")
+    raw_prompt = context.get("prompt", "")
+    prompt = _build_stage_prompt(stage, raw_prompt)
     logs_dir = context.get("_logs_dir", ".worca/logs")
     run_dir = context.get("_run_dir")
     log_dir = os.path.join(logs_dir, stage.value)

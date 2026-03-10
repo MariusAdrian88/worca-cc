@@ -384,6 +384,20 @@ export function attachWsServer(httpServer, config) {
     } catch { /* ignore */ }
   }
 
+  const STAGE_PROMPT_PREFIX = {
+    plan: 'Create a detailed implementation plan for the following work request. Write the plan to the designated plan file.\n\nWork request: ',
+    coordinate: 'Decompose the following work request into Beads tasks with dependencies. Do NOT implement anything — only create tasks using `bd create`.\n\nWork request: ',
+    implement: 'Implement the code changes described in the work request. Follow the plan and complete the tasks assigned to you.\n\nWork request: ',
+    test: 'Review and test the implementation for the following work request. Run tests and report results. Do NOT modify code.\n\nWork request: ',
+    review: 'Review the code changes for the following work request. Check for correctness, style, and adherence to the plan. Do NOT modify code.\n\nWork request: ',
+    pr: 'Create a pull request for the following work request. Summarize the changes and ensure the commit history is clean.\n\nWork request: ',
+  };
+
+  function _buildStagePrompt(stage, rawPrompt) {
+    const prefix = STAGE_PROMPT_PREFIX[stage];
+    return prefix ? prefix + rawPrompt : rawPrompt;
+  }
+
   async function handleMessage(ws, data) {
     let json;
     try {
@@ -429,7 +443,8 @@ export function attachWsServer(httpServer, config) {
         return;
       }
       const agentName = run.stages?.[stage]?.agent || stage;
-      const userPrompt = run.work_request?.description || run.work_request?.title || '';
+      const rawPrompt = run.work_request?.description || run.work_request?.title || '';
+      const userPrompt = _buildStagePrompt(stage, rawPrompt);
 
       // Try to read rendered agent .md from run dir, then results dir
       let agentInstructions = null;
