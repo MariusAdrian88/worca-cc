@@ -4,9 +4,9 @@
 
 **Goal:** Transform worca-ui from a read-only monitoring dashboard into a full pipeline control plane. Users will be able to start new pipeline runs, stop active runs with confirmation, and restart individual failed stages -- all from the browser.
 
-**Architecture:** New REST API endpoints on the Express server handle pipeline lifecycle operations (start, stop, restart-stage). A `ProcessManager` module on the server spawns `run_pipeline.py` as a detached child process and tracks it via PID file. The frontend adds a "New Run" dialog on the dashboard, a "Stop" button on active run headers (existing), and "Restart Stage" buttons on failed stage panels. All destructive actions require confirmation dialogs. Real-time status updates continue to flow through the existing WebSocket file-watcher channel.
+**Architecture:** New REST API endpoints on the Express server handle pipeline lifecycle operations (start, stop, restart-stage). A `ProcessManager` module on the server spawns `run_pipeline.py` as a detached child process and tracks it via PID file. The frontend adds a **dedicated "New Pipeline" page** at `#/new-run` (not a dialog), with a "New Pipeline" button in both the **sidebar** and the **dashboard**. The new-run page supports all pipeline CLI options including `--plan` for pre-made plan files, with an **autocomplete file chooser** that discovers plan files from configured directories. A "Stop" button on active run headers (existing) and "Restart Stage" buttons on failed stage panels handle the remaining lifecycle actions. All destructive actions require confirmation dialogs. Real-time status updates continue to flow through the existing WebSocket file-watcher channel.
 
-**Tech Stack:** Express REST API, Node.js `child_process.spawn`, lit-html, Shoelace dialog/button/input/select/textarea components, existing WebSocket broadcast infrastructure.
+**Tech Stack:** Express REST API, Node.js `child_process.spawn`, lit-html, Shoelace detail/button/input/select/textarea components, existing WebSocket broadcast infrastructure.
 
 **Depends on:** W-000 Settings REST API (already complete -- `GET/POST /api/settings` exists in `server/app.js`).
 
@@ -15,12 +15,15 @@
 ## 1. Scope and Boundaries
 
 ### In scope
-- `POST /api/runs` -- start a new pipeline run (prompt, source, or spec; multipliers)
+- `POST /api/runs` -- start a new pipeline run (prompt, source, or spec; multipliers; optional plan file)
+- `GET /api/plan-files` -- list available plan files from configured directories for the autocomplete chooser
 - `DELETE /api/runs/:id` -- stop/cancel a running pipeline (SIGTERM with escalation to SIGKILL)
 - `POST /api/runs/:id/stages/:stage/restart` -- restart a specific failed stage
 - `GET /api/runs` -- list all runs (REST complement to existing WS `list-runs`)
 - Process management module to spawn and track pipeline child processes
-- "New Run" button and dialog on the dashboard view
+- Dedicated `#/new-run` page with form, autocomplete plan file chooser, and advanced options (msize, mloops)
+- "New Pipeline" button in both the sidebar and dashboard
+- `worca.planFiles` settings key for configurable plan file directories and extensions
 - Confirmation dialog before stop/restart destructive actions
 - Input validation and sanitization on all endpoints
 - WebSocket broadcast of `run-started` / `run-stopped` events so all connected clients update
@@ -57,7 +60,8 @@ Start a new pipeline run. The server spawns `python .claude/scripts/run_pipeline
   "inputType": "prompt" | "source" | "spec",
   "inputValue": "Add user authentication",
   "msize": 1,           // optional, default 1, range 1-10
-  "mloops": 1           // optional, default 1, range 1-10
+  "mloops": 1,          // optional, default 1, range 1-10
+  "planFile": "docs/plans/W-009-pipeline-control-actions.md"  // optional, skips PLAN stage
 }
 ```
 
@@ -65,8 +69,11 @@ Start a new pipeline run. The server spawns `python .claude/scripts/run_pipeline
 - `inputType` must be one of `"prompt"`, `"source"`, `"spec"`
 - `inputValue` must be a non-empty string, max 10,000 characters
 - `msize` and `mloops` must be integers 1-10 if provided
+- `planFile` must be a non-empty string if provided (path validated by Python runner)
 - Reject if a pipeline is already running (check PID file + `process.kill(pid, 0)`)
 - Reject if the WebSocket server is not connected (edge case guard)
+
+**Note:** `--plan` is additive -- you still need a work request input (`--prompt`/`--source`/`--spec`) even when providing a plan file. The plan skips the PLAN stage; the prompt describes what the pipeline is working on.
 
 **Response on success:**
 ```
@@ -119,6 +126,31 @@ Restart a specific failed stage by spawning the pipeline with `--resume` (the pi
 { ok: true, restarted: true, stage: "test", pid: 12346 }
 ```
 
+### `GET /api/plan-files`
+
+Returns available plan files from configured directories for the autocomplete chooser on the New Pipeline page.
+
+**Configuration:** Reads `worca.planFiles` from settings. Defaults to `{ dirs: ["docs/plans"], extensions: [".md"] }` if not configured.
+
+**Behavior:**
+1. Read `planFiles` config from settings (or use defaults)
+2. For each directory in `dirs`, scan relative to project root
+3. Filter files by configured extensions
+4. Sort alphabetically within each directory
+
+**Response:**
+```
+{
+  "ok": true,
+  "files": [
+    { "path": "docs/plans/W-009-pipeline-control-actions.md", "dir": "docs/plans", "name": "W-009-pipeline-control-actions.md" },
+    { "path": "docs/plans/W-001-pipeline-resume.md", "dir": "docs/plans", "name": "W-001-pipeline-resume.md" }
+  ]
+}
+```
+
+Uses `readdirSync` for simplicity (this is a local tool, directories are small). Gracefully handles missing directories (skip, don't error).
+
 ---
 
 ## 3. Process Management
@@ -131,7 +163,7 @@ A stateless module that encapsulates all pipeline process lifecycle operations. 
 
 - `getRunningPid(worcaDir)` -- returns `{ pid: number } | null`. Reads `.worca/pipeline.pid`, verifies process is alive with `process.kill(pid, 0)`, cleans up stale PID files.
 
-- `startPipeline(worcaDir, { inputType, inputValue, msize, mloops })` -- spawns `python .claude/scripts/run_pipeline.py --prompt "..."` (or `--source` / `--spec`) as a detached child. Returns `{ pid }`. Rejects if a pipeline is already running.
+- `startPipeline(worcaDir, { inputType, inputValue, msize, mloops, planFile })` -- spawns `python .claude/scripts/run_pipeline.py --prompt "..."` (or `--source` / `--spec`) as a detached child. Appends `--plan <path>` if `planFile` is provided. Returns `{ pid }`. Rejects if a pipeline is already running.
 
 - `stopPipeline(worcaDir)` -- sends SIGTERM, sets up SIGKILL watchdog timer. Returns `{ pid, stopped: true }`. Rejects if no pipeline running.
 
@@ -146,23 +178,104 @@ A stateless module that encapsulates all pipeline process lifecycle operations. 
 
 ## 4. Frontend Changes
 
-### 4.1 "New Run" Button and Dialog
+### 4.1 Dedicated "New Pipeline" Page (`#/new-run`)
 
-**Location:** Dashboard view and the content header when on the dashboard section.
+**Location:** A full page accessible at `#/new-run`, not a dialog. Reached via "New Pipeline" buttons in the sidebar and the dashboard.
 
-**Dialog fields:**
-- Input type: `<sl-select>` with options Prompt / GitHub Issue / Spec File
-- Input value: `<sl-textarea>` for prompt, `<sl-input>` for source reference or spec path
-- Size multiplier: `<sl-input type="number">` (1-10, default 1)
-- Loop multiplier: `<sl-input type="number">` (1-10, default 1)
-- Submit button: "Start Pipeline"
-- Cancel button
+**New file:** `.claude/worca-ui/app/views/new-run.js`
 
-**Behavior:**
-- Calls `POST /api/runs` via `fetch()`
-- On success: close dialog, navigate to `#/active` (the file watcher will pick up the new run)
-- On error: show error message in dialog (e.g., "Pipeline already running")
-- Disable submit button while request is in flight
+**Page layout (max-width 640px, centered):**
+
+```
+.new-run-page
+  .new-run-header
+    h2 "Start New Pipeline"
+    p  "Configure and launch a new pipeline run."
+
+  .new-run-form
+    .new-run-section                       ← card with subtle border + bg
+      .settings-field
+        label "Input Type"
+        sl-select#new-run-input-type       [Prompt | GitHub Issue | Spec File]
+        @sl-change → update inputType, rerender()
+
+      .settings-field
+        label "Prompt" / "Source" / "Spec File Path"  (dynamic based on inputType)
+        sl-textarea#new-run-input-value    (if prompt — multiline, 4 rows)
+        sl-input#new-run-input-value       (if source or spec — single line)
+
+    sl-details (summary="Advanced Options")  ← collapsible
+      .new-run-advanced
+        .new-run-grid (2-column)
+          .settings-field
+            label "Size Multiplier (msize)"
+            sl-input#new-run-msize type=number min=1 max=10 value=1
+            .settings-field-hint "Scales max_turns per stage (1-10)"
+
+          .settings-field
+            label "Loop Multiplier (mloops)"
+            sl-input#new-run-mloops type=number min=1 max=10 value=1
+            .settings-field-hint "Scales max loop iterations (1-10)"
+
+        .settings-field
+          label "Plan File (optional)"
+          .plan-autocomplete                ← custom autocomplete widget
+            sl-input#new-run-plan
+              placeholder="Type to search plan files..."
+              @sl-input → filter planFiles, show dropdown
+              @sl-focus → open dropdown
+              @sl-blur → close dropdown (200ms debounce for click events)
+              clearable
+            .plan-dropdown (if open && matches exist)
+              grouped by directory:
+                .plan-group-header "docs/plans/"
+                .plan-item (clickable) → sets selectedPlan, fills input
+          .settings-field-hint "Skips the planning stage. Relative to project root."
+
+    .new-run-actions
+      sl-button variant=primary "▶ Start Pipeline"
+        disabled if: submitting OR pipeline already running
+      .new-run-warning (if pipeline already running)
+        "A pipeline is currently running."
+```
+
+**Autocomplete behavior:**
+1. On page load (or first focus), fetch `GET /api/plan-files` and cache
+2. On input, filter by substring match against filename and path
+3. Group filtered results by directory
+4. On click/enter on an item, set `selectedPlan`, fill input, close dropdown
+5. On clear, reset `selectedPlan`
+6. Raw paths not in the list are accepted as-is (Python validates existence)
+
+**Submit handler:**
+1. Read form values from DOM (`document.getElementById(...)`)
+2. Validate: inputValue non-empty, msize/mloops in range
+3. `POST /api/runs` with `{ inputType, inputValue, msize, mloops, planFile: selectedPlan || undefined }`
+4. On 201: navigate to `#/active`
+5. On 409: show "Pipeline already running" error
+6. On other error: show error in toast
+
+### 4.1a "New Pipeline" Button in Sidebar
+
+**Modify:** `.claude/worca-ui/app/views/sidebar.js`
+
+After the `.sidebar-logo` div, add a "New Pipeline" button with dashed border, accent color. Uses existing `onNavigate('new-run')` callback. Collapses to icon-only when sidebar is collapsed.
+
+### 4.1b "New Pipeline" Button on Dashboard
+
+**Modify:** `.claude/worca-ui/app/views/dashboard.js`
+
+Update signature to `dashboardView(state, { onSelectRun, onNavigate })`. Add a "New Pipeline" action button after the stats grid.
+
+### 4.1c Routing in `main.js`
+
+**Modify:** `.claude/worca-ui/app/main.js`
+
+1. Add import: `newRunView` from `./views/new-run.js`
+2. Add import: `sl-textarea` Shoelace component
+3. `contentHeaderView()`: add `route.section === 'new-run'` → title "New Pipeline", showBack = true
+4. `mainContentView()`: add `route.section === 'new-run'` → return `newRunView(state, { rerender, onStarted })`
+5. Update `dashboardView()` call to pass `onNavigate: handleNavigate`
 
 ### 4.2 "Stop" Button (already partially exists)
 
@@ -188,8 +301,10 @@ The `main.js` already has `handleStopPipeline()` which sends `stop-run` via WebS
 - All string inputs trimmed and length-capped (inputValue max 10,000 chars)
 - `inputType` validated against whitelist `["prompt", "source", "spec"]`
 - `msize` and `mloops` coerced to integers, clamped to 1-10
+- `planFile` validated as non-empty string if provided; path existence validated by Python runner
 - Stage name in restart endpoint validated against actual keys in status.json
 - No shell interpolation: all arguments passed as array elements to `spawn()`, never concatenated into a shell string
+- Plan file paths are never uploaded; they reference files already in the project directory
 
 ### Confirmation dialogs (client-side)
 - Stop pipeline: requires explicit confirmation via Shoelace `<sl-dialog>` with two buttons (Cancel / Stop)
@@ -226,12 +341,13 @@ Extract pipeline process management from `server/ws.js` into a dedicated module.
 - On verification failure: delete stale PID file, return null
 - On success: return `{ pid }`
 
-`startPipeline(worcaDir, { inputType, inputValue, msize, mloops })`:
+`startPipeline(worcaDir, { inputType, inputValue, msize, mloops, planFile })`:
 - Call `getRunningPid()` first; throw if already running
 - Build args array: `['.claude/scripts/run_pipeline.py']`
 - Append `--prompt`/`--source`/`--spec` based on `inputType`, followed by `inputValue`
 - Append `--msize N` if msize > 1
 - Append `--mloops N` if mloops > 1
+- Append `--plan <path>` if `planFile` is provided
 - Clone `process.env`, delete `CLAUDECODE`
 - `spawn('python', args, { detached: true, stdio: 'ignore', cwd: process.cwd(), env })`
 - `child.unref()`
@@ -280,14 +396,22 @@ Add these route handlers before the static file middleware and catch-all:
 - Wrap in try/catch, return 500 on error
 
 **`POST /api/runs`:**
-- Read `req.body.inputType`, `req.body.inputValue`, `req.body.msize`, `req.body.mloops`
+- Read `req.body.inputType`, `req.body.inputValue`, `req.body.msize`, `req.body.mloops`, `req.body.planFile`
 - Validate `inputType` is one of `['prompt', 'source', 'spec']`; return 400 if not
 - Validate `inputValue` is a non-empty string with length <= 10000; return 400 if not
 - Validate `msize` and `mloops` are integers 1-10 if provided; default to 1
-- Call `startPipeline(options.worcaDir, { inputType, inputValue, msize, mloops })`
+- Validate `planFile` is a non-empty string if provided; return 400 if invalid
+- Call `startPipeline(options.worcaDir, { inputType, inputValue, msize, mloops, planFile })`
 - On success: return `{ ok: true, pid, inputType, inputValue }`
 - On error with "already running": return 409
 - On other error: return 500
+
+**`GET /api/plan-files`:**
+- Read `worca.planFiles` from settings via `readFullSettings(settingsPath)`
+- Default to `{ dirs: ["docs/plans"], extensions: [".md"] }` if not configured
+- Scan each directory relative to project root using `readdirSync`
+- Filter by extensions, sort alphabetically, skip missing directories
+- Return `{ ok: true, files: [{ path, dir, name }] }`
 
 **`DELETE /api/runs/:id`:**
 - Call `stopPipeline(options.worcaDir)`
@@ -361,73 +485,60 @@ This eliminates code duplication between the REST and WebSocket paths.
 
 ---
 
-### Task 5: Add "New Run" Dialog Component
+### Task 5: Create "New Pipeline" Page View
 
 **Files:**
-- Create: `.claude/worca-ui/app/views/new-run-dialog.js`
+- Create: `.claude/worca-ui/app/views/new-run.js`
 
-A lit-html view function that renders a Shoelace `<sl-dialog>` with the new run form.
+A lit-html view function that renders the dedicated New Pipeline page. See Section 4.1 for the full page layout specification.
 
-**Exported function:** `newRunDialogView(isOpen, { onSubmit, onClose })`
+**Exported function:** `newRunView(state, { rerender, onStarted })`
 
-**Template structure:**
-- `<sl-dialog label="Start New Pipeline" ?open=${isOpen}>`
-- Input type selector: `<sl-select id="new-run-type" value="prompt">` with options: Prompt, GitHub Issue, Spec File
-- Input value:
-  - For "prompt": `<sl-textarea id="new-run-value" placeholder="Describe the work..." rows="4">`
-  - For "source": `<sl-input id="new-run-value" placeholder="gh:issue:42">`
-  - For "spec": `<sl-input id="new-run-value" placeholder="path/to/spec.md">`
-- Size multiplier: `<sl-input id="new-run-msize" type="number" value="1" min="1" max="10" label="Size multiplier">`
-- Loop multiplier: `<sl-input id="new-run-mloops" type="number" value="1" min="1" max="10" label="Loop multiplier">`
-- Footer slot: Cancel button + "Start Pipeline" primary button
-- `@sl-after-hide` handler calls `onClose`
+**Module-level state:**
+- `inputType` (default `'prompt'`) -- drives textarea vs input toggle
+- `submitStatus` -- null | 'submitting' | 'error'
+- `submitError` -- error message string
+- `planFiles` -- cached response from `GET /api/plan-files`
+- `planFilter` -- autocomplete search text
+- `planDropdownOpen` -- boolean
+- `selectedPlan` -- chosen plan file path
 
-**Input type switching:**
-- Use a module-level variable `currentInputType` (default `'prompt'`)
-- On `<sl-select>` change, update `currentInputType` and call the rerender callback
-- Conditionally render textarea vs input based on `currentInputType`
+**Key implementation details:**
+- Input type `<sl-select>` `@sl-change` updates `inputType` and calls `rerender()`
+- Prompt renders `<sl-textarea>`, source/spec render `<sl-input>`
+- Plan file autocomplete: fetch on first focus, filter on input, group by directory
+- Submit handler reads DOM values, validates, calls `POST /api/runs`, navigates on success
+- Already-running check: scan `state.runs` for any `run.active === true`
 
 ---
 
-### Task 6: Add "New Run" Button to Dashboard and Content Header
+### Task 6: Add "New Pipeline" Buttons to Sidebar and Dashboard
 
 **Files:**
+- Modify: `.claude/worca-ui/app/views/sidebar.js`
 - Modify: `.claude/worca-ui/app/views/dashboard.js`
 - Modify: `.claude/worca-ui/app/main.js`
+- Modify: `.claude/worca-ui/app/utils/icons.js`
+
+**Changes to `icons.js`:**
+- Add `Plus` icon from lucide
+
+**Changes to `sidebar.js`:**
+- After `.sidebar-logo`, add a "New Pipeline" button with dashed border, accent color
+- `@click` calls `onNavigate('new-run')`
+- Collapses to icon-only when sidebar is collapsed
 
 **Changes to `dashboard.js`:**
-
-Add a "New Run" button in the dashboard stats row or as a prominent call-to-action. Import the `Play` and `Plus` icons. Add a button:
-```html
-<button class="action-btn action-btn--primary" @click=${onNewRun}>
-  + New Run
-</button>
-```
-
-Update the function signature to accept a callbacks object: `dashboardView(state, { onSelectRun, onNewRun })`.
+- Update signature: `dashboardView(state, { onSelectRun, onNavigate })`
+- After stats grid, add a "New Pipeline" action button
+- `@click` calls `onNavigate('new-run')`
 
 **Changes to `main.js`:**
-
-Add module-level state:
-- `let newRunDialogOpen = false`
-- `let newRunSubmitting = false`
-- `let newRunError = null`
-
-Add handler functions:
-- `handleOpenNewRunDialog()` -- sets `newRunDialogOpen = true`, calls `rerender()`
-- `handleCloseNewRunDialog()` -- sets `newRunDialogOpen = false`, clears error, calls `rerender()`
-- `handleSubmitNewRun({ inputType, inputValue, msize, mloops })`:
-  - Sets `newRunSubmitting = true`, rerenders
-  - Calls `fetch('/api/runs', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ inputType, inputValue, msize, mloops }) })`
-  - On success: close dialog, navigate to `#/active`
-  - On error: set `newRunError` to error message, rerender
-  - Finally: set `newRunSubmitting = false`
-
-Import and render `newRunDialogView` in the main `rerender()` function, appending it after the app shell (same pattern as the existing `action-error-dialog`).
-
-Add a "New Run" button in `contentHeaderView()` when on the dashboard section (no run selected).
-
-Pass `onNewRun: handleOpenNewRunDialog` to `dashboardView()`.
+- Add import: `newRunView` from `./views/new-run.js`
+- Add import: `sl-textarea` Shoelace component
+- `contentHeaderView()`: add `route.section === 'new-run'` case → title "New Pipeline", showBack = true
+- `mainContentView()`: add `route.section === 'new-run'` case → return `newRunView(state, { rerender, onStarted: () => navigate('active', null) })`
+- Update `dashboardView()` call to pass `onNavigate: handleNavigate`
 
 ---
 
@@ -527,18 +638,27 @@ Update the `@typedef` JSDoc to include these new types.
 
 ---
 
-### Task 10: Add CSS for New Run Dialog and Action Buttons
+### Task 10: Add CSS for New Pipeline Page and Action Buttons
 
 **Files:**
-- Modify: `.claude/worca-ui/app/styles.css` (or wherever the main stylesheet lives)
+- Modify: `.claude/worca-ui/app/styles.css`
 
 Add styles for:
-- `.new-run-dialog` form layout (field spacing, label alignment)
-- `.new-run-field` with margin-bottom for form fields
-- `.new-run-actions` for the dialog footer button alignment
-- `.stage-restart-btn` positioned at the bottom-right of the stage panel
+- `.new-run-page` — max-width 640px, centered
+- `.new-run-header` — title h2 + muted subtitle
+- `.new-run-section` — card container (border, radius, bg-secondary)
+- `.new-run-grid` — 2-column grid for msize/mloops side by side
+- `.new-run-actions` — flex row for submit button + warning
+- `.new-run-warning` — amber warning message when pipeline is running
+- `.plan-autocomplete` — position relative container
+- `.plan-dropdown` — absolute positioned dropdown, scrollable, max-height 300px, z-index above form
+- `.plan-group-header` — directory header in dropdown (dim, uppercase, small)
+- `.plan-item` — clickable file item in dropdown, hover highlight
+- `.sidebar-new-run` — padding container in sidebar
+- `.sidebar-new-run-btn` — dashed border, accent color, full width, hover fill
+- `.dashboard-actions` — flex row, right-aligned after stats
+- `.stage-restart-btn` positioned at the bottom-right of failed stage panels
 - `.confirm-dialog-body` for confirmation dialog text styling
-- Ensure `.action-btn--primary` and `.action-btn--danger` styles exist (they likely already do from the existing stop/resume buttons)
 
 ---
 
@@ -600,6 +720,7 @@ After all frontend changes, rebuild `app/main.bundle.js`. Check `package.json` f
 - Test `startPipeline()` rejects when pipeline already running
 - Test `startPipeline()` builds correct args for prompt/source/spec input types
 - Test `startPipeline()` applies msize/mloops flags correctly
+- Test `startPipeline()` appends `--plan` flag when planFile is provided
 - Test `stopPipeline()` sends SIGTERM and cleans up PID file
 - Test `stopPipeline()` rejects when no pipeline running
 - Test `restartStage()` validates stage exists and is in error state
@@ -622,7 +743,10 @@ After all frontend changes, rebuild `app/main.bundle.js`. Check `package.json` f
 ### Integration Tests
 
 **Manual testing checklist:**
+- Navigate to `#/new-run` from sidebar and from dashboard
 - Start a pipeline from the UI with a prompt, verify the process appears in `ps`
+- Start a pipeline with a plan file selected from autocomplete, verify `--plan` flag in spawned process
+- Verify plan file autocomplete loads, filters, and groups by directory
 - Verify the dashboard updates in real-time as the pipeline progresses
 - Stop the pipeline from the UI, verify SIGTERM is sent
 - Verify the confirmation dialog appears before stopping
@@ -649,19 +773,21 @@ After all frontend changes, rebuild `app/main.bundle.js`. Check `package.json` f
 |------|---------|
 | `.claude/worca-ui/server/process-manager.js` | Pipeline lifecycle: start, stop, restart-stage |
 | `.claude/worca-ui/server/process-manager.test.js` | Unit tests for process manager |
-| `.claude/worca-ui/app/views/new-run-dialog.js` | "New Run" form dialog component |
+| `.claude/worca-ui/app/views/new-run.js` | Dedicated "New Pipeline" page with form + autocomplete plan chooser |
 
 ### Modified files
 | File | Changes |
 |------|---------|
-| `.claude/worca-ui/server/app.js` | Add `GET /api/runs`, `POST /api/runs`, `DELETE /api/runs/:id`, `POST /api/runs/:id/stages/:stage/restart` |
-| `.claude/worca-ui/server/index.js` | Pass `worcaDir` to `createApp`, expose `broadcast` on `app.locals` |
+| `.claude/worca-ui/server/app.js` | Add `GET /api/runs`, `POST /api/runs`, `GET /api/plan-files`, `DELETE /api/runs/:id`, `POST /api/runs/:id/stages/:stage/restart` |
+| `.claude/worca-ui/server/index.js` | Pass `worcaDir` + `projectRoot` to `createApp`, expose `broadcast` on `app.locals` |
 | `.claude/worca-ui/server/ws.js` | Refactor `stop-run` and `resume-run` handlers to use `process-manager.js` |
 | `.claude/worca-ui/app/protocol.js` | Add new message types to `MESSAGE_TYPES` array |
-| `.claude/worca-ui/app/main.js` | Add new-run dialog state, stop confirmation, restart-stage confirmation, new event handlers, new action functions |
-| `.claude/worca-ui/app/views/dashboard.js` | Add "New Run" button, update function signature for callbacks |
+| `.claude/worca-ui/app/utils/icons.js` | Add `Plus` icon |
+| `.claude/worca-ui/app/main.js` | Route `#/new-run`, import `sl-textarea`, stop confirmation, restart-stage confirmation, wire callbacks |
+| `.claude/worca-ui/app/views/sidebar.js` | Add "New Pipeline" button with dashed border |
+| `.claude/worca-ui/app/views/dashboard.js` | Add "New Pipeline" button, update signature for `onNavigate` |
 | `.claude/worca-ui/app/views/run-detail.js` | Add "Restart Stage" button on failed stage panels, update function signature |
-| `.claude/worca-ui/app/styles.css` | Add styles for new-run dialog, restart button, confirmation dialogs |
+| `.claude/worca-ui/app/styles.css` | Add styles for new-run page, plan autocomplete, sidebar button, confirmation dialogs |
 | `.claude/worca-ui/app/main.bundle.js` | Rebuilt from source after all changes |
 
 ---
@@ -672,13 +798,15 @@ Tasks should be implemented in this order due to dependencies:
 
 1. **Task 1** (process-manager.js) -- foundation, no dependencies
 2. **Task 4** (refactor ws.js) -- depends on Task 1
-3. **Task 2** (REST API endpoints) -- depends on Task 1
+3. **Task 2** (REST API endpoints + plan-files) -- depends on Task 1
 4. **Task 3** (wire REST to WebSocket broadcasts) -- depends on Task 2
 5. **Task 9** (protocol types) -- small, independent
-6. **Task 5** (new-run-dialog component) -- independent frontend work
-7. **Task 6** (new-run button on dashboard + main.js wiring) -- depends on Task 5
+6. **Task 6** (Plus icon + sidebar/dashboard buttons) -- no server deps
+7. **Task 5** (new-run page view with autocomplete) -- depends on Task 6 (icon)
 8. **Task 7** (stop confirmation dialog) -- depends on Task 2 (uses REST)
 9. **Task 8** (restart stage button + confirmation) -- depends on Task 2
-10. **Task 10** (CSS) -- after all view changes settled
+10. **Task 10** (CSS for new-run page, autocomplete, sidebar) -- after views settled
 11. **Task 11** (frontend event handlers) -- depends on Task 3, Task 9
 12. **Task 12** (rebuild bundle) -- final step
+
+Tasks 1+6+9 can run in parallel (no dependencies between them).
