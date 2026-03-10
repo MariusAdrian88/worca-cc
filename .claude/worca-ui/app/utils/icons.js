@@ -32,6 +32,7 @@ import Settings from 'lucide/dist/esm/icons/settings';
 import Timer from 'lucide/dist/esm/icons/timer';
 import Cpu from 'lucide/dist/esm/icons/cpu';
 import Star from 'lucide/dist/esm/icons/star';
+import FileText from 'lucide/dist/esm/icons/file-text';
 
 function renderChildren(nodes) {
   return nodes.map(([tag, attrs]) => {
@@ -58,5 +59,5 @@ export {
   Sun, Moon, Flag, RefreshCw, ArrowDown, Pause,
   Zap, Clock, AlertTriangle,
   Activity, Archive, Search, ArrowLeft,
-  Square, Play, Users, Shield, GitBranch, ChevronRight, Save, Settings, Timer, Cpu, Star
+  Square, Play, Users, Shield, GitBranch, ChevronRight, Save, Settings, Timer, Cpu, Star, FileText
 };

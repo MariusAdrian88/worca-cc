@@ -18,7 +18,6 @@ You receive a work request (GitHub issue, Beads task, prompt, or spec file) and 
    - Proposed approach
    - Task breakdown (high-level)
    - Test strategy
-   - Branch naming
 5. Wait for human approval at the PLAN APPROVAL milestone gate
 
 ## Output

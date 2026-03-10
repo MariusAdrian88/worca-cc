@@ -1422,6 +1422,64 @@ sl-details.stage-panel::part(content) {
 .iteration-outcome.success { color: var(--status-completed); }
 .iteration-outcome.failure { color: var(--status-error); }
 
+/* --- Agent Prompt Section --- */
+sl-details.agent-prompt-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border-subtle);
+  padding-top: 4px;
+}
+
+sl-details.agent-prompt-section::part(base) {
+  border: none;
+  background: transparent;
+}
+
+sl-details.agent-prompt-section::part(header) {
+  padding: 6px 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+sl-details.agent-prompt-section::part(content) {
+  padding: 0;
+}
+
+.agent-prompt-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.agent-prompt-block {
+  margin-bottom: 12px;
+}
+
+.agent-prompt-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+
+.agent-prompt-content {
+  margin: 0;
+  padding: 10px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--fg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
 /* Iteration selector in log controls */
 .log-controls sl-select:nth-of-type(2) {
   min-width: 140px;

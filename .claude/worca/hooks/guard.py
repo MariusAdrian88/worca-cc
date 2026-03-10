@@ -122,6 +122,10 @@ def check_guard(tool_name: str, tool_input: dict) -> tuple:
                 if basename != "MASTER_PLAN.md":
                     return (2, "Blocked: planner agent may only write MASTER_PLAN.md, not {}.".format(basename))
 
+        # Coordinator may not write implementation code
+        if tool_name in ("Write", "Edit") and agent == "coordinator":
+            return (2, "Blocked: coordinator agent is read-only — may not write files.")
+
         # Planner and Coordinator may not run tests
         if tool_name == "Bash" and agent in ("planner", "coordinator"):
             if _is_test_command(command):

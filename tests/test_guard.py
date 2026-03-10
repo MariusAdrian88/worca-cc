@@ -213,6 +213,36 @@ class TestBlockPlannerTests:
             del os.environ["WORCA_AGENT"]
 
 
+# --- Block Coordinator writes ---
+
+class TestBlockCoordinatorWrites:
+    def test_blocks_coordinator_write(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Write", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "coordinator" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_blocks_coordinator_edit(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Edit", {"file_path": "/project/app.py"})
+            assert code == 2
+            assert "coordinator" in reason.lower()
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_allows_coordinator_read(self):
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, reason = check_guard("Read", {"file_path": "/project/app.py"})
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+
 # --- Block Tester writes ---
 
 class TestBlockTesterWrites:

@@ -40,6 +40,26 @@ let settings = {};
 let logIterationFilter = null; // null = all iterations, number = specific
 let pipelineAction = null; // null | 'stopping' | 'resuming'
 let actionError = null; // null | string (error message, auto-clears)
+const promptCache = {}; // { [runId]: { [stage]: { agentInstructions, userPrompt, agent } } }
+let promptCachePending = new Set(); // tracks in-flight fetches
+
+function fetchAgentPrompts(runId, stages) {
+  if (!runId || !stages) return;
+  if (!promptCache[runId]) promptCache[runId] = {};
+  for (const [key, stage] of Object.entries(stages)) {
+    if (stage.status === 'pending') continue;
+    const cacheKey = `${runId}:${key}`;
+    if (promptCache[runId][key] || promptCachePending.has(cacheKey)) continue;
+    promptCachePending.add(cacheKey);
+    ws.send('get-agent-prompt', { runId, stage: key }).then(data => {
+      promptCache[runId][key] = data;
+      promptCachePending.delete(cacheKey);
+      rerender();
+    }).catch(() => {
+      promptCachePending.delete(cacheKey);
+    });
+  }
+}
 
 // --- Wire WS events to state ---
 
@@ -352,11 +372,12 @@ function mainContentView() {
         const iters = stage.iterations || [];
         if (iters.length > 0) stageIterations[key] = iters.length;
       }
+      fetchAgentPrompts(route.runId, run.stages);
     }
     const logState = filteredLogState(state);
     logState.currentLogStage = logFilter === '*' ? null : logFilter;
     return html`
-      ${runDetailView(run, settings)}
+      ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {} })}
       ${logViewerView(logState, {
         onStageFilter: handleStageFilter,
         onIterationFilter: handleIterationFilter,

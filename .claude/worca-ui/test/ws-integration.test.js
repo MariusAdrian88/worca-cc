@@ -177,4 +177,53 @@ describe('WebSocket integration', () => {
     ws1.close();
     ws2.close();
   });
+
+  it('get-agent-prompt returns agent instructions for a known run and stage', async () => {
+    // Create a run with a status and rendered agent file
+    const runId = '20260309-120000';
+    mkdirSync(join(dir, 'worca', 'runs', runId, 'agents'), { recursive: true });
+    writeFileSync(join(dir, 'worca', 'runs', runId, 'status.json'), JSON.stringify({
+      started_at: '2026-03-09T12:00:00Z',
+      run_id: runId,
+      stage: 'implement',
+      work_request: { title: 'Test feature', description: 'Implement the test feature' },
+      stages: {
+        plan: { status: 'completed', agent: 'planner' },
+        implement: { status: 'in_progress', agent: 'implementer' },
+      },
+    }));
+    writeFileSync(join(dir, 'worca', 'runs', runId, 'agents', 'implementer.md'),
+      '# Implementer Agent\n\nYou are the Implementer.');
+    writeFileSync(join(dir, 'worca', 'active_run'), runId);
+
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    await waitForOpen(ws);
+
+    // Get the run ID from discovery
+    const listReply = await sendAndReceive(ws, { id: 'p1', type: 'list-runs' });
+    const discoveredRunId = listReply.payload.runs.find(r => r.run_id === runId)?.id;
+    expect(discoveredRunId).toBeTruthy();
+
+    const reply = await sendAndReceive(ws, {
+      id: 'p2', type: 'get-agent-prompt',
+      payload: { runId: discoveredRunId, stage: 'implement' },
+    });
+    expect(reply.ok).toBe(true);
+    expect(reply.payload.agent).toBe('implementer');
+    expect(reply.payload.userPrompt).toBe('Implement the test feature');
+    expect(reply.payload.agentInstructions).toContain('Implementer Agent');
+    ws.close();
+  });
+
+  it('get-agent-prompt returns error for unknown run', async () => {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+    await waitForOpen(ws);
+    const reply = await sendAndReceive(ws, {
+      id: 'p3', type: 'get-agent-prompt',
+      payload: { runId: 'nonexistent', stage: 'plan' },
+    });
+    expect(reply.ok).toBe(false);
+    expect(reply.error.code).toBe('NOT_FOUND');
+    ws.close();
+  });
 });

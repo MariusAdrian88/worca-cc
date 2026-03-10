@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { stageTimelineView } from './stage-timeline.js';
 import { statusClass, statusIcon, resolveStatus } from '../utils/status-badge.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
-import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw } from '../utils/icons.js';
+import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText } from '../utils/icons.js';
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -76,7 +76,33 @@ function _iterationDetailView(iter, stageKey, stageAgent) {
   `;
 }
 
-export function runDetailView(run, settings = {}) {
+function _agentPromptSection(stageKey, promptData) {
+  if (!promptData) return nothing;
+  const { agentInstructions, userPrompt } = promptData;
+  if (!agentInstructions && !userPrompt) return nothing;
+  return html`
+    <sl-details class="agent-prompt-section">
+      <div slot="summary" class="agent-prompt-header">
+        <span class="stage-meta-icon">${unsafeHTML(iconSvg(FileText, 12))}</span>
+        Agent Instructions
+      </div>
+      ${userPrompt ? html`
+        <div class="agent-prompt-block">
+          <div class="agent-prompt-label">User Prompt (-p)</div>
+          <pre class="agent-prompt-content">${userPrompt}</pre>
+        </div>
+      ` : nothing}
+      ${agentInstructions ? html`
+        <div class="agent-prompt-block">
+          <div class="agent-prompt-label">System Prompt (agent .md)</div>
+          <pre class="agent-prompt-content">${agentInstructions}</pre>
+        </div>
+      ` : nothing}
+    </sl-details>
+  `;
+}
+
+export function runDetailView(run, settings = {}, options = {}) {
   if (!run) {
     return html`<div class="empty-state">Select a run to view details</div>`;
   }
@@ -172,6 +198,7 @@ export function runDetailView(run, settings = {}) {
                   ${stage.error ? html`<div class="detail-row detail-error"><span class="detail-label">Error:</span> ${stage.error}</div>` : nothing}
                 </div>
               `}
+              ${stageStatus !== 'pending' ? _agentPromptSection(key, options.promptCache?.[key]) : nothing}
             </sl-details>
           `;
         })}

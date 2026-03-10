@@ -414,6 +414,39 @@ export function attachWsServer(httpServer, config) {
       return;
     }
 
+    // get-agent-prompt
+    if (req.type === 'get-agent-prompt') {
+      const { runId, stage } = req.payload || {};
+      if (!runId || !stage) {
+        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId and payload.stage required')));
+        return;
+      }
+      // Find the run to get agent name and work request prompt
+      const runs = discoverRuns(worcaDir);
+      const run = runs.find(r => r.id === runId);
+      if (!run) {
+        ws.send(JSON.stringify(makeError(req, 'NOT_FOUND', `Run ${runId} not found`)));
+        return;
+      }
+      const agentName = run.stages?.[stage]?.agent || stage;
+      const userPrompt = run.work_request?.description || run.work_request?.title || '';
+
+      // Try to read rendered agent .md from run dir, then results dir
+      let agentInstructions = null;
+      const candidates = [
+        join(worcaDir, 'runs', run.run_id || runId, 'agents', `${agentName}.md`),
+        join(worcaDir, 'results', run.run_id || runId, 'agents', `${agentName}.md`),
+      ];
+      for (const p of candidates) {
+        if (existsSync(p)) {
+          try { agentInstructions = readFileSync(p, 'utf8'); } catch { /* ignore */ }
+          break;
+        }
+      }
+      ws.send(JSON.stringify(makeOk(req, { agentInstructions, userPrompt, agent: agentName })));
+      return;
+    }
+
     // subscribe-run
     if (req.type === 'subscribe-run') {
       const { runId } = req.payload || {};
