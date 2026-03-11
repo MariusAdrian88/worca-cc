@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Coins, Clock, Cpu, Zap } from '../utils/icons.js';
+import { iconSvg, Coins, Clock, Cpu, Zap, Timer, RefreshCw } from '../utils/icons.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 
 function _sumCosts(runs) {
@@ -78,6 +78,17 @@ function _formatTokens(n) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
   return String(n);
+}
+
+function timingStripView(startedAt, completedAt) {
+  const dur = startedAt ? formatDuration(elapsed(startedAt, completedAt || null)) : '';
+  return html`
+    <div class="timing-strip">
+      ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> <span class="meta-value">${formatTimestamp(startedAt)}</span></span>` : nothing}
+      ${completedAt ? html`<span class="timing-strip-item"><span class="meta-label">Finished:</span> <span class="meta-value">${formatTimestamp(completedAt)}</span></span>` : nothing}
+      ${dur ? html`<span class="timing-strip-item"><span class="meta-label">Duration:</span> <span class="meta-value">${dur}</span></span>` : nothing}
+    </div>
+  `;
 }
 
 function _stageOrder(stages) {
@@ -174,6 +185,7 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
   const title = run.work_request?.title || 'Untitled';
   const firstLine = title.split('\n')[0];
   const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 60) + '\u2026' : firstLine;
+  const endTime = run.completed_at || _lastStageEnd(run.stages);
   const isExpanded = expandedRun === run.id;
   const stageNames = _stageOrder(run.stages);
   const runTokens = tokenData[run.id] || {};
@@ -182,14 +194,15 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
     <div class="cost-run-row ${isExpanded ? 'expanded' : ''}">
       <div class="cost-run-summary" @click=${() => onToggleRun(run.id)}>
         <span class="cost-run-title">${displayTitle}</span>
-        <span class="cost-run-date">${run.started_at ? formatTimestamp(run.started_at) : ''}</span>
-        <span class="cost-run-cost">${_formatCost(cost)}</span>
-        <span class="cost-run-turns">${turns} turns</span>
-        <span class="cost-run-duration">${dur > 0 ? formatDuration(dur) : '-'}</span>
+        <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : 'running\u2026'}</span>
+        <span class="cost-run-cost">${unsafeHTML(iconSvg(Coins, 12))} ${_formatCost(cost)}</span>
+        <span class="cost-run-turns">${unsafeHTML(iconSvg(RefreshCw, 12))} ${turns} turns</span>
+        <span class="cost-run-duration">${unsafeHTML(iconSvg(Timer, 12))} ${dur > 0 ? formatDuration(dur) : '-'}</span>
         <span class="cost-run-chevron">${isExpanded ? '\u25BC' : '\u25B6'}</span>
       </div>
       ${isExpanded ? html`
         <div class="cost-run-detail">
+          ${timingStripView(run.started_at, run.completed_at || _lastStageEnd(run.stages))}
           ${costBreakdownBar(run.stages)}
           <table class="cost-table">
             <thead>

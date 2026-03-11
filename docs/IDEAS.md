@@ -258,6 +258,8 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 
 ### W-015: Token & Cost Dashboard
 
+**Status:** In Progress (pipeline run active)
+
 **Problem:** Even if worca-cc tracks token usage (W-006), there's no way to visualize it.
 
 **Proposal:** Add a cost analytics view:
@@ -334,7 +336,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-002 | P2 | Parallel Implementer Execution | cc | [ ] | [W-002-parallel-implementer-execution.md](plans/W-002-parallel-implementer-execution.md) |
 | W-005 | P2 | Agent Memory & Context Sharing | cc | [ ] | [W-005-agent-memory-context-sharing.md](plans/W-005-agent-memory-context-sharing.md) |
 | W-006 | P2 | Cost & Token Tracking | cc | [x] Done | [W-006-cost-token-tracking.md](plans/W-006-cost-token-tracking.md) |
-| W-015 | P2 | Token & Cost Dashboard | ui | [ ] | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) |
+| W-015 | P2 | Token & Cost Dashboard | ui | [x] In Progress | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) |
 | W-014 | P2 | Browser Notifications | ui | [x] Done | [W-014-browser-notifications.md](plans/W-014-browser-notifications.md) |
 | W-003 | P2 | Pipeline Events & Webhooks | cc | [ ] | [W-003-pipeline-events-webhooks.md](plans/W-003-pipeline-events-webhooks.md) |
 | W-004 | P3 | Work Request Queue | cc | [ ] | [W-004-work-request-queue.md](plans/W-004-work-request-queue.md) |

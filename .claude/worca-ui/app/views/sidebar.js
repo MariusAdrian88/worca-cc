@@ -50,17 +50,6 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
         </div>
       </div>
 
-      <div class="sidebar-section">
-        <div class="sidebar-section-header">Analytics</div>
-        <div class="sidebar-item ${route.section === 'costs' ? 'active' : ''}"
-             @click=${() => onNavigate('costs')}>
-          <span class="sidebar-item-left">
-            ${unsafeHTML(iconSvg(Coins, 16))}
-            <span>Costs</span>
-          </span>
-        </div>
-      </div>
-
       ${beadsDbExists ? html`
         <div class="sidebar-section">
           <div class="sidebar-section-header">Work</div>
@@ -74,6 +63,17 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
           </div>
         </div>
       ` : ''}
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Analytics</div>
+        <div class="sidebar-item ${route.section === 'costs' ? 'active' : ''}"
+             @click=${() => onNavigate('costs')}>
+          <span class="sidebar-item-left">
+            ${unsafeHTML(iconSvg(Coins, 16))}
+            <span>Costs</span>
+          </span>
+        </div>
+      </div>
 
       <div class="sidebar-footer">
         <div class="connection-indicator ${connClass}">
