@@ -22,7 +22,7 @@ from worca.state.status import (
     load_status, save_status, update_stage, set_milestone, init_status,
     start_iteration, complete_iteration,
 )
-from worca.utils.beads import bd_ready, bd_show, bd_update
+from worca.utils.beads import bd_ready, bd_show, bd_update, bd_close
 from worca.utils.claude_cli import run_agent, terminate_current
 from worca.utils.git import create_branch
 from worca.utils.token_usage import extract_token_usage, aggregate_token_usage, aggregate_by_model
@@ -941,6 +941,36 @@ def run_pipeline(
                         _log("PR rejected — stopping", "err")
                         raise PipelineError("PR rejected")
                     _log("Review approved", "ok")
+
+                    # Close the claimed bead
+                    claimed_bead = prompt_builder.context.get("assigned_bead_id")
+                    if claimed_bead:
+                        if bd_close(claimed_bead, reason="review approved"):
+                            _log(f"Closed bead {claimed_bead}", "ok")
+                        else:
+                            _log(f"Failed to close bead {claimed_bead}", "warn")
+
+                    # Check for more ready beads
+                    next_bead = _query_ready_bead()
+                    if next_bead and Stage.IMPLEMENT in stage_order:
+                        loop_key = "bead_iteration"
+                        loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                        loop_counters["implement_iteration"] = loop_counters.get("implement_iteration", 0) + 1
+                        _log(f"Next bead available — looping back to IMPLEMENT (bead {loop_counters[loop_key]})", "ok")
+                        if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
+                            _log(f"Bead iteration limit reached after {loop_counters[loop_key]} beads", "warn")
+                        else:
+                            # Clear stale context from previous bead's test/review cycle
+                            prompt_builder.update_context("test_passed", None)
+                            prompt_builder.update_context("test_coverage", None)
+                            prompt_builder.update_context("proof_artifacts", None)
+                            prompt_builder.update_context("test_failures", None)
+                            prompt_builder.update_context("review_issues", None)
+                            prompt_builder.update_context("files_changed", None)
+                            _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
+                            stage_idx = stage_order.index(Stage.IMPLEMENT)
+                            continue
+
                 elif next_stage == Stage.IMPLEMENT:
                     # Thread review feedback for the implement retry; clear stale test context
                     prompt_builder.update_context("review_issues", result.get("issues", []))
