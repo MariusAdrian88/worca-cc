@@ -1,8 +1,10 @@
 # /// script
 # requires-python = ">=3.8"
 # ///
-"""PostToolUse hook: runs test_gate."""
+"""PostToolUse hook: runs test_gate and links bd create to pipeline runs."""
 import json
+import re
+import subprocess
 import sys
 import os
 
@@ -14,12 +16,49 @@ except ImportError:
     sys.exit(0)
 
 
+def _link_bd_create_to_run(tool_name, tool_input, tool_response):
+    """After a successful bd create, set external_ref to link it to the current run.
+
+    When WORCA_RUN_ID is set (pipeline is running), any successful `bd create`
+    output is parsed for the issue ID, then `bd update` sets the external_ref.
+    This is more reliable than PreToolUse updatedInput which only works for the
+    first tool call in a batch.
+    """
+    if tool_name != "Bash":
+        return
+    run_id = os.environ.get("WORCA_RUN_ID")
+    if not run_id:
+        return
+    command = tool_input.get("command", "")
+    if "bd create" not in command:
+        return
+    if "--external-ref" in command:
+        return
+    stdout = tool_response.get("stdout", "")
+    exit_code = tool_response.get("exit_code", 1)
+    if exit_code != 0:
+        return
+    match = re.search(r"Created\s+(\S+):", stdout)
+    if not match:
+        return
+    issue_id = match.group(1)
+    subprocess.run(
+        ["bd", "update", issue_id, f"--external-ref=worca:{run_id}"],
+        capture_output=True, text=True
+    )
+
+
 def main():
     data = json.load(sys.stdin)
     tool_name = data.get("tool_name", "")
     tool_input = data.get("tool_input", {})
-    exit_code = data.get("exit_code", 0)
+    tool_response = data.get("tool_response", {})
 
+    # Link bd create issues to the current pipeline run
+    _link_bd_create_to_run(tool_name, tool_input, tool_response)
+
+    # Test gate check
+    exit_code = tool_response.get("exit_code", data.get("exit_code", 0))
     code, reason = check_test_gate(tool_name, tool_input, exit_code)
     if code != 0:
         print(reason, file=sys.stderr)
