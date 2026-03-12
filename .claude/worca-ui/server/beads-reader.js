@@ -60,6 +60,50 @@ export function listIssuesByExternalRef(beadsDb, externalRef) {
   }
 }
 
+export function listUnlinkedIssues(beadsDb) {
+  let db;
+  try {
+    db = new Database(beadsDb, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(
+      `SELECT id, title, description AS body, status, priority, created_at, external_ref
+       FROM issues
+       WHERE (external_ref IS NULL OR external_ref = '')
+         AND status NOT IN ('closed','tombstone')
+       ORDER BY priority ASC, id ASC`
+    ).all();
+
+    const depStmt = db.prepare(
+      `SELECT depends_on_id FROM dependencies WHERE issue_id = ?`
+    );
+    const statusMap = new Map(rows.map(r => [r.id, r.status]));
+
+    return rows.map(row => {
+      const depends_on = depStmt.all(row.id).map(d => d.depends_on_id);
+      const blocked_by = depends_on.filter(depId => statusMap.has(depId));
+      return { ...row, depends_on, blocked_by };
+    });
+  } catch {
+    return [];
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
+
+export function listDistinctExternalRefs(beadsDb) {
+  let db;
+  try {
+    db = new Database(beadsDb, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(
+      `SELECT DISTINCT external_ref FROM issues WHERE external_ref LIKE 'worca:%'`
+    ).all();
+    return rows.map(r => r.external_ref);
+  } catch {
+    return [];
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
+
 export function getIssue(beadsDb, id) {
   let db;
   try {

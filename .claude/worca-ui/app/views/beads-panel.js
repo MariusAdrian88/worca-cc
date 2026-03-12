@@ -1,6 +1,7 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Lock, Loader } from '../utils/icons.js';
+import { formatTimestamp } from '../utils/duration.js';
 
 export function priorityVariant(priority) {
   if (priority === 0 || priority === 1) return 'danger';
@@ -10,6 +11,7 @@ export function priorityVariant(priority) {
 
 export function statusVariant(status) {
   if (status === 'open') return 'success';
+  if (status === 'in_progress') return 'warning';
   if (status === 'closed') return 'neutral';
   return 'neutral';
 }
@@ -67,7 +69,6 @@ export function beadsDependencyGraph(issues) {
     }
   }
 
-  const issueMap = new Map(issues.map(i => [i.id, i]));
   let edges = '';
   for (const issue of issues) {
     const to = positions.get(issue.id);
@@ -120,12 +121,13 @@ function escapeXml(str) {
 }
 
 function beadsIssueRow(issue, { starting, onStartIssue }) {
+  const isClosed = issue.status === 'closed';
   const isBlocked = issue.blocked_by && issue.blocked_by.length > 0;
   const canStart = issue.status === 'open' && !isBlocked && starting === null;
   const isStarting = starting === issue.id;
 
   return html`
-    <div class="beads-issue-row">
+    <div class="beads-issue-row ${isClosed ? 'beads-issue-row--closed' : ''}">
       <sl-badge variant="${priorityVariant(issue.priority)}" pill>P${issue.priority}</sl-badge>
       <sl-badge variant="${statusVariant(issue.status)}">${issue.status}</sl-badge>
       <div class="beads-issue-body">
@@ -142,21 +144,127 @@ function beadsIssueRow(issue, { starting, onStartIssue }) {
           </div>
         ` : ''}
       </div>
-      <div class="beads-issue-actions">
-        <sl-button variant="primary" size="small"
-          ?disabled=${!canStart}
-          @click=${() => canStart && onStartIssue(issue.id)}>
-          ${isStarting ? unsafeHTML(iconSvg(Loader, 14, 'icon-spin')) : ''}
-          ${isStarting ? 'Starting...' : 'Start Pipeline'}
-        </sl-button>
-      </div>
+      ${!isClosed ? html`
+        <div class="beads-issue-actions">
+          <sl-button variant="primary" size="small"
+            ?disabled=${!canStart}
+            @click=${() => canStart && onStartIssue(issue.id)}>
+            ${isStarting ? unsafeHTML(iconSvg(Loader, 14, 'icon-spin')) : ''}
+            ${isStarting ? 'Starting...' : 'Start Pipeline'}
+          </sl-button>
+        </div>
+      ` : html`<div class="beads-issue-actions"></div>`}
     </div>
   `;
 }
 
+// --- Run selector helpers ---
+
+function buildRunOptions(runs, linkedRefs) {
+  const runOptions = [];
+  const knownRefIds = new Set();
+
+  // Sort runs: active first, then by started_at descending
+  const sorted = [...(runs || [])].sort((a, b) => {
+    if (a.active && !b.active) return -1;
+    if (!a.active && b.active) return 1;
+    const aTime = a.started_at || '';
+    const bTime = b.started_at || '';
+    return bTime.localeCompare(aTime);
+  });
+
+  for (const run of sorted) {
+    const title = run.work_request?.title || run.id;
+    const firstLine = title.split('\n')[0];
+    const label = firstLine.length > 40 ? firstLine.slice(0, 40) + '\u2026' : firstLine;
+    const date = run.started_at ? formatTimestamp(run.started_at) : '';
+    const prefix = run.active ? '\u25CF ' : '';
+    runOptions.push({
+      value: run.id,
+      label: `${prefix}${label}`,
+      detail: date,
+    });
+    knownRefIds.add(run.id);
+  }
+
+  // Add orphan refs (in linkedRefs but not in known runs)
+  for (const ref of (linkedRefs || [])) {
+    const runId = ref.replace('worca:', '');
+    if (!knownRefIds.has(runId)) {
+      const short = runId.length > 12 ? runId.slice(0, 12) + '\u2026' : runId;
+      runOptions.push({
+        value: runId,
+        label: `Run ${short}`,
+        detail: '',
+      });
+    }
+  }
+
+  return runOptions;
+}
+
+// --- Kanban board view ---
+
+function beadsKanbanView(issues, { starting, onStartIssue }) {
+  const columns = [
+    { key: 'open', label: 'Open', items: [] },
+    { key: 'in_progress', label: 'In Progress', items: [] },
+    { key: 'closed', label: 'Closed', items: [] },
+  ];
+  const colMap = new Map(columns.map(c => [c.key, c]));
+
+  for (const issue of issues) {
+    const col = colMap.get(issue.status) || colMap.get('open');
+    col.items.push(issue);
+  }
+
+  // Sort each column by priority (P0 first)
+  for (const col of columns) {
+    col.items.sort((a, b) => a.priority - b.priority);
+  }
+
+  return html`
+    <div class="beads-kanban">
+      ${columns.map(col => html`
+        <div class="beads-kanban-column">
+          <div class="beads-kanban-header beads-kanban-header--${col.key}">
+            ${col.label}
+            <sl-badge variant="neutral" pill>${col.items.length}</sl-badge>
+          </div>
+          ${col.items.length === 0 ? html`
+            <div class="beads-kanban-empty">No issues</div>
+          ` : ''}
+          ${col.items.map(issue => {
+            const isBlocked = issue.blocked_by && issue.blocked_by.length > 0;
+            return html`
+              <div class="beads-kanban-card ${isBlocked ? 'beads-kanban-card--blocked' : ''}">
+                <div class="beads-kanban-card-header">
+                  <sl-badge variant="${priorityVariant(issue.priority)}" pill>P${issue.priority}</sl-badge>
+                  <span class="beads-kanban-card-id">#${issue.id}</span>
+                </div>
+                <div class="beads-kanban-card-title">${issue.title}</div>
+                ${isBlocked ? html`
+                  <div class="beads-kanban-card-blocked">
+                    ${unsafeHTML(iconSvg(Lock, 10))}
+                    blocked by: ${issue.blocked_by.map(id => `#${id}`).join(', ')}
+                  </div>
+                ` : ''}
+              </div>
+            `;
+          })}
+        </div>
+      `)}
+    </div>
+  `;
+}
+
+// --- Main panel view ---
+
 export function beadsPanelView(beads, {
   statusFilter, priorityFilter, starting, startError,
-  onStatusFilter, onPriorityFilter, onStartIssue, onDismissError
+  onStatusFilter, onPriorityFilter, onStartIssue, onDismissError,
+  runFilter = 'all', runIssues = [], runLoading = false,
+  linkedRefs = [], runs = [], onRunFilter,
 }) {
   if (beads.dbExists === false) {
     return html`<div class="empty-state">No Beads database found. Initialize Beads with <code>bd init</code> in your project.</div>`;
@@ -165,67 +273,104 @@ export function beadsPanelView(beads, {
     return html`<div class="empty-state">Loading Beads issues...</div>`;
   }
 
-  let filtered = beads.issues ?? [];
+  const isRunSelected = runFilter !== 'all' && runFilter !== 'unlinked';
+  const showKanban = isRunSelected;
+
+  // Decide which issues to display
+  let displayIssues;
+  if (runFilter === 'all') {
+    displayIssues = beads.issues ?? [];
+  } else {
+    displayIssues = runIssues;
+  }
+
+  // Apply status and priority filters
+  let filtered = displayIssues;
   if (statusFilter !== 'all') filtered = filtered.filter(i => i.status === statusFilter);
   if (priorityFilter !== 'all') filtered = filtered.filter(i => String(i.priority) === priorityFilter);
 
-  if (beads.issues.length === 0) {
+  // Build run selector options
+  const runOptions = buildRunOptions(runs, linkedRefs);
+
+  // Status filter options: include 'closed' when a specific run is selected
+  const statusOptions = isRunSelected
+    ? html`
+        <sl-option value="all">All statuses</sl-option>
+        <sl-option value="open">Open</sl-option>
+        <sl-option value="in_progress">In Progress</sl-option>
+        <sl-option value="closed">Closed</sl-option>
+      `
+    : html`
+        <sl-option value="all">All statuses</sl-option>
+        <sl-option value="open">Open</sl-option>
+        <sl-option value="in_progress">In Progress</sl-option>
+      `;
+
+  const filtersView = html`
+    <div class="beads-filters">
+      <sl-select value=${runFilter} @sl-change=${(e) => onRunFilter?.(e.target.value)}>
+        <sl-option value="all">All Open Issues</sl-option>
+        <sl-option value="unlinked">Unlinked Issues</sl-option>
+        ${runOptions.length > 0 ? html`<sl-divider></sl-divider>` : ''}
+        ${runOptions.map(opt => html`
+          <sl-option value=${opt.value}>${opt.label}${opt.detail ? ` (${opt.detail})` : ''}</sl-option>
+        `)}
+      </sl-select>
+      <sl-select value=${statusFilter} @sl-change=${(e) => onStatusFilter(e.target.value)}>
+        ${statusOptions}
+      </sl-select>
+      <sl-select value=${priorityFilter} @sl-change=${(e) => onPriorityFilter(e.target.value)}>
+        <sl-option value="all">All priorities</sl-option>
+        <sl-option value="0">P0 - Critical</sl-option>
+        <sl-option value="1">P1 - High</sl-option>
+        <sl-option value="2">P2 - Medium</sl-option>
+        <sl-option value="3">P3 - Low</sl-option>
+        <sl-option value="4">P4 - Backlog</sl-option>
+      </sl-select>
+      <span class="beads-filter-count">${filtered.length} issue${filtered.length !== 1 ? 's' : ''}</span>
+    </div>
+  `;
+
+  if (displayIssues.length === 0 && runFilter === 'all' && !runLoading) {
     return html`<div class="empty-state">No open Beads issues found.</div>`;
+  }
+
+  if (runLoading) {
+    return html`
+      <div class="beads-panel">
+        ${filtersView}
+        <div class="empty-state">Loading issues...</div>
+      </div>
+    `;
   }
 
   if (filtered.length === 0) {
     return html`
       <div class="beads-panel">
-        <div class="beads-filters">
-          <sl-select value=${statusFilter} @sl-change=${(e) => onStatusFilter(e.target.value)}>
-            <sl-option value="all">All statuses</sl-option>
-            <sl-option value="open">Open</sl-option>
-          </sl-select>
-          <sl-select value=${priorityFilter} @sl-change=${(e) => onPriorityFilter(e.target.value)}>
-            <sl-option value="all">All priorities</sl-option>
-            <sl-option value="0">P0 - Critical</sl-option>
-            <sl-option value="1">P1 - High</sl-option>
-            <sl-option value="2">P2 - Medium</sl-option>
-            <sl-option value="3">P3 - Low</sl-option>
-            <sl-option value="4">P4 - Backlog</sl-option>
-          </sl-select>
-          <span class="beads-filter-count">0 issues</span>
-        </div>
-        <div class="empty-state">No issues match the current filters.</div>
+        ${filtersView}
+        <div class="empty-state">${displayIssues.length === 0 ? 'No issues found for this selection.' : 'No issues match the current filters.'}</div>
       </div>
     `;
   }
 
   return html`
     <div class="beads-panel">
-      <div class="beads-filters">
-        <sl-select value=${statusFilter} @sl-change=${(e) => onStatusFilter(e.target.value)}>
-          <sl-option value="all">All statuses</sl-option>
-          <sl-option value="ready">Ready</sl-option>
-          <sl-option value="backlog">Backlog</sl-option>
-          <sl-option value="in_progress">In Progress</sl-option>
-        </sl-select>
-        <sl-select value=${priorityFilter} @sl-change=${(e) => onPriorityFilter(e.target.value)}>
-          <sl-option value="all">All priorities</sl-option>
-          <sl-option value="high">High</sl-option>
-          <sl-option value="medium">Medium</sl-option>
-          <sl-option value="low">Low</sl-option>
-        </sl-select>
-        <span class="beads-filter-count">${filtered.length} issue${filtered.length !== 1 ? 's' : ''}</span>
-      </div>
+      ${filtersView}
 
-      <div class="beads-issue-list">
-        ${filtered.map(issue => beadsIssueRow(issue, { starting, onStartIssue }))}
-      </div>
-
-      ${filtered.length > 1 ? html`
-        <div class="beads-graph-section">
-          <div class="beads-graph-section-title">Dependencies</div>
-          <div class="beads-graph-container">
-            ${unsafeHTML(beadsDependencyGraph(filtered))}
-          </div>
+      ${showKanban ? beadsKanbanView(filtered, { starting, onStartIssue }) : html`
+        <div class="beads-issue-list">
+          ${filtered.map(issue => beadsIssueRow(issue, { starting, onStartIssue }))}
         </div>
-      ` : ''}
+
+        ${filtered.length > 1 ? html`
+          <div class="beads-graph-section">
+            <div class="beads-graph-section-title">Dependencies</div>
+            <div class="beads-graph-container">
+              ${unsafeHTML(beadsDependencyGraph(filtered))}
+            </div>
+          </div>
+        ` : ''}
+      `}
 
       ${startError ? html`
         <sl-dialog label="Could Not Start Pipeline" open @sl-after-hide=${onDismissError}>

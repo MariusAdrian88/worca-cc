@@ -26,6 +26,7 @@ import '@shoelace-style/shoelace/dist/components/input/input.js';
 import '@shoelace-style/shoelace/dist/components/button/button.js';
 
 import '@shoelace-style/shoelace/dist/components/badge/badge.js';
+import '@shoelace-style/shoelace/dist/components/divider/divider.js';
 import '@shoelace-style/shoelace/dist/components/tooltip/tooltip.js';
 import '@shoelace-style/shoelace/dist/components/dialog/dialog.js';
 import '@shoelace-style/shoelace/dist/components/tab-group/tab-group.js';
@@ -57,6 +58,10 @@ let beadsPriorityFilter = 'all';
 let beadsStarting = null; // null | issueId
 let beadsStartError = null; // null | string
 const runBeads = new Map(); // runId → issues[]
+let beadsRunFilter = 'all'; // 'all' | 'unlinked' | runId
+let beadsRunIssues = []; // filtered issues for current run/filter
+let beadsRunLoading = false;
+let beadsLinkedRefs = []; // all external_ref values from DB
 const stageIterationTab = new Map(); // stageKey → iterationNumber (user's last manual choice)
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
@@ -194,6 +199,9 @@ ws.on('beads-update', (payload) => {
     store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
     // Re-fetch run-specific beads if viewing a run
     if (route.runId) fetchRunBeads(route.runId);
+    // Re-fetch refs and current run filter
+    fetchBeadsRefs();
+    if (beadsRunFilter !== 'all') handleBeadsRunFilter(beadsRunFilter);
   }
 });
 
@@ -247,6 +255,8 @@ ws.onConnection((state) => {
     ws.send('list-beads-issues').then(payload => {
       store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
     }).catch(() => {});
+
+    fetchBeadsRefs();
 
     // Subscribe to active run if selected
     if (route.runId) {
@@ -514,6 +524,38 @@ function handleDismissBeadsError() {
   rerender();
 }
 
+function handleBeadsRunFilter(value) {
+  beadsRunFilter = value;
+  beadsRunLoading = true;
+  rerender();
+  if (value === 'all') {
+    ws.send('list-beads-issues').then(payload => {
+      beadsRunIssues = payload.issues || [];
+      beadsRunLoading = false;
+      rerender();
+    }).catch(() => { beadsRunLoading = false; rerender(); });
+  } else if (value === 'unlinked') {
+    ws.send('list-beads-unlinked').then(payload => {
+      beadsRunIssues = payload.issues || [];
+      beadsRunLoading = false;
+      rerender();
+    }).catch(() => { beadsRunLoading = false; rerender(); });
+  } else {
+    ws.send('list-beads-by-run', { runId: value }).then(payload => {
+      beadsRunIssues = payload.issues || [];
+      beadsRunLoading = false;
+      rerender();
+    }).catch(() => { beadsRunLoading = false; rerender(); });
+  }
+}
+
+function fetchBeadsRefs() {
+  ws.send('list-beads-refs').then(payload => {
+    beadsLinkedRefs = payload.refs || [];
+    rerender();
+  }).catch(() => {});
+}
+
 // --- Costs actions ---
 
 function fetchCostsData() {
@@ -699,6 +741,12 @@ function mainContentView() {
       onPriorityFilter: handleBeadsPriorityFilter,
       onStartIssue: handleStartBeadsIssue,
       onDismissError: handleDismissBeadsError,
+      runFilter: beadsRunFilter,
+      runIssues: beadsRunIssues,
+      runLoading: beadsRunLoading,
+      linkedRefs: beadsLinkedRefs,
+      runs: Object.values(state.runs),
+      onRunFilter: handleBeadsRunFilter,
     });
   }
 
