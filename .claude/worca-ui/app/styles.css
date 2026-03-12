@@ -254,6 +254,23 @@ h1, h2, h3, h4, h5, h6 {
   padding-bottom: 20px;
   margin-bottom: 4px;
   border-bottom: 1px solid var(--border-subtle);
+
+  /* Sticky behavior */
+  position: sticky;
+  top: -24px;          /* Negative of .main-content padding-top (24px) */
+  z-index: 10;
+  background: var(--bg);
+  padding-top: 24px;   /* Compensate: absorb .main-content's top padding */
+  margin-top: -24px;   /* Pull up into .main-content padding area */
+}
+
+.content-header--scrolled {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border-bottom-color: transparent;
+}
+
+[data-theme="dark"] .content-header--scrolled {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .content-header-back {

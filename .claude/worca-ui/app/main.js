@@ -849,6 +849,22 @@ function rerender() {
   }
 }
 
+// --- Sticky header scroll shadow ---
+let scrollListenerAttached = false;
+
+function attachStickyHeaderListener() {
+  if (scrollListenerAttached) return;
+  const mainEl = document.querySelector('.main-content');
+  if (!mainEl) return;
+  mainEl.addEventListener('scroll', () => {
+    const header = mainEl.querySelector('.content-header');
+    if (header) {
+      header.classList.toggle('content-header--scrolled', mainEl.scrollTop > 10);
+    }
+  }, { passive: true });
+  scrollListenerAttached = true;
+}
+
 // --- Bootstrap ---
 
 notificationManager.setRerender(rerender);
@@ -858,3 +874,4 @@ if (route.section === 'settings') {
   loadSettings().then(() => rerender());
 }
 rerender();
+attachStickyHeaderListener();
