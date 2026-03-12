@@ -1,7 +1,7 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Lock, Loader } from '../utils/icons.js';
-import { formatTimestamp } from '../utils/duration.js';
+import { runCardView } from './run-card.js';
 
 export function priorityVariant(priority) {
   if (priority === 0 || priority === 1) return 'danger';
@@ -158,13 +158,9 @@ function beadsIssueRow(issue, { starting, onStartIssue }) {
   `;
 }
 
-// --- Run selector helpers ---
+// --- Run list landing view ---
 
-function buildRunOptions(runs, linkedRefs) {
-  const runOptions = [];
-  const knownRefIds = new Set();
-
-  // Sort runs: active first, then by started_at descending
+export function beadsRunListView(runs, { onSelectRun, beadsCounts = {} }) {
   const sorted = [...(runs || [])].sort((a, b) => {
     if (a.active && !b.active) return -1;
     if (!a.active && b.active) return 1;
@@ -173,34 +169,18 @@ function buildRunOptions(runs, linkedRefs) {
     return bTime.localeCompare(aTime);
   });
 
-  for (const run of sorted) {
-    const title = run.work_request?.title || run.id;
-    const firstLine = title.split('\n')[0];
-    const label = firstLine.length > 40 ? firstLine.slice(0, 40) + '\u2026' : firstLine;
-    const date = run.started_at ? formatTimestamp(run.started_at) : '';
-    const prefix = run.active ? '\u25CF ' : '';
-    runOptions.push({
-      value: run.id,
-      label: `${prefix}${label}`,
-      detail: date,
-    });
-    knownRefIds.add(run.id);
+  if (sorted.length === 0) {
+    return html`<div class="empty-state">No pipeline runs yet.</div>`;
   }
 
-  // Add orphan refs (in linkedRefs but not in known runs)
-  for (const ref of (linkedRefs || [])) {
-    const runId = ref.replace('worca:', '');
-    if (!knownRefIds.has(runId)) {
-      const short = runId.length > 12 ? runId.slice(0, 12) + '\u2026' : runId;
-      runOptions.push({
-        value: runId,
-        label: `Run ${short}`,
-        detail: '',
-      });
-    }
-  }
-
-  return runOptions;
+  return html`
+    <div class="run-list">
+      ${sorted.map(run => runCardView(run, {
+        onClick: onSelectRun,
+        beadsCount: beadsCounts[run.id] || 0,
+      }))}
+    </div>
+  `;
 }
 
 // --- Kanban board view ---
@@ -258,66 +238,31 @@ function beadsKanbanView(issues, { starting, onStartIssue }) {
   `;
 }
 
-// --- Main panel view ---
+// --- Main panel view (kanban for a single run) ---
 
-export function beadsPanelView(beads, {
+export function beadsPanelView(issues, {
   statusFilter, priorityFilter, starting, startError,
   onStatusFilter, onPriorityFilter, onStartIssue, onDismissError,
-  runFilter = 'all', runIssues = [], runLoading = false,
-  linkedRefs = [], runs = [], onRunFilter,
+  loading = false,
 }) {
-  if (beads.dbExists === false) {
-    return html`<div class="empty-state">No Beads database found. Initialize Beads with <code>bd init</code> in your project.</div>`;
-  }
-  if (beads.loading) {
-    return html`<div class="empty-state">Loading Beads issues...</div>`;
+  if (loading) {
+    return html`<div class="empty-state">Loading issues...</div>`;
   }
 
-  const isRunSelected = runFilter !== 'all' && runFilter !== 'unlinked';
-  const showKanban = isRunSelected;
-
-  // Decide which issues to display
-  let displayIssues;
-  if (runFilter === 'all') {
-    displayIssues = beads.issues ?? [];
-  } else {
-    displayIssues = runIssues;
-  }
+  const displayIssues = issues || [];
 
   // Apply status and priority filters
   let filtered = displayIssues;
   if (statusFilter !== 'all') filtered = filtered.filter(i => i.status === statusFilter);
   if (priorityFilter !== 'all') filtered = filtered.filter(i => String(i.priority) === priorityFilter);
 
-  // Build run selector options
-  const runOptions = buildRunOptions(runs, linkedRefs);
-
-  // Status filter options: include 'closed' when a specific run is selected
-  const statusOptions = isRunSelected
-    ? html`
+  const filtersView = html`
+    <div class="beads-filters">
+      <sl-select value=${statusFilter} @sl-change=${(e) => onStatusFilter(e.target.value)}>
         <sl-option value="all">All statuses</sl-option>
         <sl-option value="open">Open</sl-option>
         <sl-option value="in_progress">In Progress</sl-option>
         <sl-option value="closed">Closed</sl-option>
-      `
-    : html`
-        <sl-option value="all">All statuses</sl-option>
-        <sl-option value="open">Open</sl-option>
-        <sl-option value="in_progress">In Progress</sl-option>
-      `;
-
-  const filtersView = html`
-    <div class="beads-filters">
-      <sl-select value=${runFilter} @sl-change=${(e) => onRunFilter?.(e.target.value)}>
-        <sl-option value="all">All Open Issues</sl-option>
-        <sl-option value="unlinked">Unlinked Issues</sl-option>
-        ${runOptions.length > 0 ? html`<sl-divider></sl-divider>` : ''}
-        ${runOptions.map(opt => html`
-          <sl-option value=${opt.value}>${opt.label}${opt.detail ? ` (${opt.detail})` : ''}</sl-option>
-        `)}
-      </sl-select>
-      <sl-select value=${statusFilter} @sl-change=${(e) => onStatusFilter(e.target.value)}>
-        ${statusOptions}
       </sl-select>
       <sl-select value=${priorityFilter} @sl-change=${(e) => onPriorityFilter(e.target.value)}>
         <sl-option value="all">All priorities</sl-option>
@@ -331,29 +276,11 @@ export function beadsPanelView(beads, {
     </div>
   `;
 
-  if (displayIssues.length === 0 && runFilter === 'all' && !runLoading) {
-    return html`
-      <div class="beads-panel">
-        ${filtersView}
-        <div class="empty-state">No open Beads issues found.</div>
-      </div>
-    `;
-  }
-
-  if (runLoading) {
-    return html`
-      <div class="beads-panel">
-        ${filtersView}
-        <div class="empty-state">Loading issues...</div>
-      </div>
-    `;
-  }
-
   if (filtered.length === 0) {
     return html`
       <div class="beads-panel">
         ${filtersView}
-        <div class="empty-state">${displayIssues.length === 0 ? 'No issues found for this selection.' : 'No issues match the current filters.'}</div>
+        <div class="empty-state">${displayIssues.length === 0 ? 'No issues found for this run.' : 'No issues match the current filters.'}</div>
       </div>
     `;
   }
@@ -361,22 +288,7 @@ export function beadsPanelView(beads, {
   return html`
     <div class="beads-panel">
       ${filtersView}
-
-      ${showKanban ? beadsKanbanView(filtered, { starting, onStartIssue }) : html`
-        <div class="beads-issue-list">
-          ${filtered.map(issue => beadsIssueRow(issue, { starting, onStartIssue }))}
-        </div>
-
-        ${filtered.length > 1 ? html`
-          <div class="beads-graph-section">
-            <div class="beads-graph-section-title">Dependencies</div>
-            <div class="beads-graph-container">
-              ${unsafeHTML(beadsDependencyGraph(filtered))}
-            </div>
-          </div>
-        ` : ''}
-      `}
-
+      ${beadsKanbanView(filtered, { starting, onStartIssue })}
       ${startError ? html`
         <sl-dialog label="Could Not Start Pipeline" open @sl-after-hide=${onDismissError}>
           <p>${startError}</p>

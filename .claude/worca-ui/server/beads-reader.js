@@ -89,6 +89,27 @@ export function listUnlinkedIssues(beadsDb) {
   }
 }
 
+export function countIssuesByExternalRef(beadsDb) {
+  let db;
+  try {
+    db = new Database(beadsDb, { readonly: true, fileMustExist: true });
+    const rows = db.prepare(
+      `SELECT external_ref, COUNT(*) AS count FROM issues
+       WHERE external_ref LIKE 'worca:%' GROUP BY external_ref`
+    ).all();
+    const counts = {};
+    for (const row of rows) {
+      const runId = row.external_ref.replace('worca:', '');
+      counts[runId] = row.count;
+    }
+    return counts;
+  } catch {
+    return {};
+  } finally {
+    try { db?.close(); } catch { /* ignore */ }
+  }
+}
+
 export function listDistinctExternalRefs(beadsDb) {
   let db;
   try {

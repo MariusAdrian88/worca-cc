@@ -15,7 +15,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, ArrowLeft, Square, Play, Loader, AlertTriangle, Database } from './utils/icons.js';
 import { statusIcon } from './utils/status-badge.js';
 import { createNotificationManager } from './notifications.js';
-import { beadsPanelView } from './views/beads-panel.js';
+import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
 import { tokenCostsView } from './views/token-costs.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
@@ -58,10 +58,9 @@ let beadsPriorityFilter = 'all';
 let beadsStarting = null; // null | issueId
 let beadsStartError = null; // null | string
 const runBeads = new Map(); // runId → issues[]
-let beadsRunFilter = 'all'; // 'all' | 'unlinked' | runId
-let beadsRunIssues = []; // filtered issues for current run/filter
+let beadsCounts = {}; // { runId: count }
+let beadsRunIssues = []; // issues for the currently viewed run
 let beadsRunLoading = false;
-let beadsLinkedRefs = []; // all external_ref values from DB
 const stageIterationTab = new Map(); // stageKey → iterationNumber (user's last manual choice)
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
@@ -197,11 +196,12 @@ ws.on('preferences', (payload) => {
 ws.on('beads-update', (payload) => {
   if (payload) {
     store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
-    // Re-fetch run-specific beads if viewing a run
-    if (route.runId) fetchRunBeads(route.runId);
-    // Re-fetch refs and current run filter
-    fetchBeadsRefs();
-    if (beadsRunFilter !== 'all') handleBeadsRunFilter(beadsRunFilter);
+    // Re-fetch run-specific beads if viewing a run detail
+    if (route.runId && route.section !== 'beads') fetchRunBeads(route.runId);
+    // Re-fetch bead counts for run list
+    fetchBeadsCounts();
+    // Re-fetch beads for currently viewed run in beads section
+    if (route.section === 'beads' && route.runId) fetchBeadsRunIssues(route.runId);
   }
 });
 
@@ -256,13 +256,16 @@ ws.onConnection((state) => {
       store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
     }).catch(() => {});
 
-    fetchBeadsRefs();
+    fetchBeadsCounts();
 
     // Subscribe to active run if selected
     if (route.runId) {
-      ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
-      ws.send('subscribe-log', { stage: logFilter === '*' ? null : logFilter, runId: route.runId }).catch(() => {});
+      if (route.section !== 'beads') {
+        ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
+        ws.send('subscribe-log', { stage: logFilter === '*' ? null : logFilter, runId: route.runId }).catch(() => {});
+      }
       fetchRunBeads(route.runId);
+      if (route.section === 'beads') fetchBeadsRunIssues(route.runId);
     }
   }
   rerender();
@@ -284,11 +287,16 @@ onHashChange((newRoute) => {
   }
 
   if (route.runId && route.runId !== prevRunId) {
-    logFilter = '*';
-    logIterationFilter = null;
-    ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
-    ws.send('subscribe-log', { stage: null, runId: route.runId }).catch(() => {});
-    fetchRunBeads(route.runId);
+    if (route.section === 'beads') {
+      // Beads section: fetch run's issues, no log/run subscriptions
+      fetchBeadsRunIssues(route.runId);
+    } else {
+      logFilter = '*';
+      logIterationFilter = null;
+      ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
+      ws.send('subscribe-log', { stage: null, runId: route.runId }).catch(() => {});
+      fetchRunBeads(route.runId);
+    }
   }
 
   if (route.section === 'settings') {
@@ -524,36 +532,21 @@ function handleDismissBeadsError() {
   rerender();
 }
 
-function handleBeadsRunFilter(value) {
-  beadsRunFilter = value;
-  beadsRunLoading = true;
-  rerender();
-  if (value === 'all') {
-    ws.send('list-beads-issues').then(payload => {
-      beadsRunIssues = payload.issues || [];
-      beadsRunLoading = false;
-      rerender();
-    }).catch(() => { beadsRunLoading = false; rerender(); });
-  } else if (value === 'unlinked') {
-    ws.send('list-beads-unlinked').then(payload => {
-      beadsRunIssues = payload.issues || [];
-      beadsRunLoading = false;
-      rerender();
-    }).catch(() => { beadsRunLoading = false; rerender(); });
-  } else {
-    ws.send('list-beads-by-run', { runId: value }).then(payload => {
-      beadsRunIssues = payload.issues || [];
-      beadsRunLoading = false;
-      rerender();
-    }).catch(() => { beadsRunLoading = false; rerender(); });
-  }
-}
-
-function fetchBeadsRefs() {
-  ws.send('list-beads-refs').then(payload => {
-    beadsLinkedRefs = payload.refs || [];
+function fetchBeadsCounts() {
+  ws.send('list-beads-counts').then(payload => {
+    beadsCounts = payload.counts || {};
     rerender();
   }).catch(() => {});
+}
+
+function fetchBeadsRunIssues(runId) {
+  beadsRunLoading = true;
+  rerender();
+  ws.send('list-beads-by-run', { runId }).then(payload => {
+    beadsRunIssues = payload.issues || [];
+    beadsRunLoading = false;
+    rerender();
+  }).catch(() => { beadsRunLoading = false; rerender(); });
 }
 
 // --- Costs actions ---
@@ -586,7 +579,21 @@ function contentHeaderView() {
 
   let actionButton = null;
 
-  if (route.runId) {
+  if (route.section === 'beads' && route.runId) {
+    // Beads kanban for a specific run
+    const run = state.runs[route.runId];
+    const raw = run?.work_request?.title || route.runId;
+    const firstLine = raw.split('\n')[0];
+    title = firstLine.length > 80 ? firstLine.slice(0, 80) + '\u2026' : firstLine;
+    showBack = true;
+  } else if (route.section === 'beads' && !route.runId) {
+    title = 'Beads Issues';
+    showBack = true;
+    const dbPath = state.beads?.dbPath;
+    if (dbPath) {
+      actionButton = html`<span class="beads-db-path">${unsafeHTML(iconSvg(Database, 12))} Beads DB<br><code>${dbPath}</code></span>`;
+    }
+  } else if (route.runId) {
     const run = state.runs[route.runId];
     const raw = run?.work_request?.title || 'Pipeline Details';
     const firstLine = raw.split('\n')[0];
@@ -627,13 +634,6 @@ function contentHeaderView() {
             Resume Pipeline
           </button>`;
       }
-    }
-  } else if (route.section === 'beads') {
-    title = 'Beads Issues';
-    showBack = true;
-    const dbPath = state.beads?.dbPath;
-    if (dbPath) {
-      actionButton = html`<span class="beads-db-path">${unsafeHTML(iconSvg(Database, 12))} Beads DB<br><code>${dbPath}</code></span>`;
     }
   } else if (route.section === 'active') {
     title = 'Running Pipelines';
@@ -680,6 +680,27 @@ function contentHeaderView() {
 function mainContentView() {
   const state = store.getState();
   const runs = Object.values(state.runs);
+
+  // Beads section: two-level routing (must be checked before generic runId)
+  if (route.section === 'beads') {
+    if (route.runId) {
+      return beadsPanelView(beadsRunIssues, {
+        statusFilter: beadsStatusFilter,
+        priorityFilter: beadsPriorityFilter,
+        starting: beadsStarting,
+        startError: beadsStartError,
+        onStatusFilter: handleBeadsStatusFilter,
+        onPriorityFilter: handleBeadsPriorityFilter,
+        onStartIssue: handleStartBeadsIssue,
+        onDismissError: handleDismissBeadsError,
+        loading: beadsRunLoading,
+      });
+    }
+    return beadsRunListView(runs, {
+      onSelectRun: handleSelectRun,
+      beadsCounts,
+    });
+  }
 
   if (route.runId) {
     const run = state.runs[route.runId];
@@ -728,25 +749,6 @@ function mainContentView() {
       expandedRun: costsExpanded,
       tokenData: costsTokenData,
       onToggleRun: handleToggleCostRun,
-    });
-  }
-
-  if (route.section === 'beads') {
-    return beadsPanelView(state.beads, {
-      statusFilter: beadsStatusFilter,
-      priorityFilter: beadsPriorityFilter,
-      starting: beadsStarting,
-      startError: beadsStartError,
-      onStatusFilter: handleBeadsStatusFilter,
-      onPriorityFilter: handleBeadsPriorityFilter,
-      onStartIssue: handleStartBeadsIssue,
-      onDismissError: handleDismissBeadsError,
-      runFilter: beadsRunFilter,
-      runIssues: beadsRunIssues,
-      runLoading: beadsRunLoading,
-      linkedRefs: beadsLinkedRefs,
-      runs: Object.values(state.runs),
-      onRunFilter: handleBeadsRunFilter,
     });
   }
 

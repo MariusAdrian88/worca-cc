@@ -15,7 +15,7 @@ const BADGE_VARIANT = {
  * Shared run card component used in both run-list and dashboard active list.
  * Shows title, overall status icon, duration, and stage badges.
  */
-export function runCardView(run, { onClick } = {}) {
+export function runCardView(run, { onClick, beadsCount } = {}) {
   const title = run.work_request?.title || 'Untitled';
   const isActive = run.active;
   const overallStatus = isActive ? 'in_progress' : (run.stage === 'error' ? 'error' : 'completed');
@@ -47,6 +47,11 @@ export function runCardView(run, { onClick } = {}) {
             const label = key.replace(/_/g, ' ').toUpperCase();
             return html`<sl-badge variant="${variant}" pill class="run-card-stage-badge">${label}</sl-badge>`;
           })}
+          ${beadsCount > 0 ? html`<sl-badge variant="primary" pill class="run-card-stage-badge">${beadsCount} bead${beadsCount !== 1 ? 's' : ''}</sl-badge>` : nothing}
+        </div>
+      ` : beadsCount > 0 ? html`
+        <div class="run-card-stages">
+          <sl-badge variant="primary" pill class="run-card-stage-badge">${beadsCount} bead${beadsCount !== 1 ? 's' : ''}</sl-badge>
         </div>
       ` : nothing}
     </div>

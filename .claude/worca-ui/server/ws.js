@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { stopPipeline as pmStopPipeline, startPipeline as pmStartPipeline } from './process-manager.js';
 import { isRequest, makeOk, makeError } from '../app/protocol.js';
 import { discoverRuns } from './watcher.js';
-import { listIssues, listIssuesByExternalRef, listUnlinkedIssues, listDistinctExternalRefs, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
+import { listIssues, listIssuesByExternalRef, listUnlinkedIssues, listDistinctExternalRefs, countIssuesByExternalRef, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
 import { readLastLines, resolveLogPath, resolveIterationLogPath, countLines, readLinesFrom, listLogFiles, listIterationFiles } from './log-tailer.js';
 import { readSettings } from './settings-reader.js';
 import { readPreferences, writePreferences } from './preferences.js';
@@ -740,6 +740,17 @@ export function attachWsServer(httpServer, config) {
       }
       const refs = listDistinctExternalRefs(beadsDbPath);
       ws.send(JSON.stringify(makeOk(req, { refs })));
+      return;
+    }
+
+    // list-beads-counts
+    if (req.type === 'list-beads-counts') {
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(JSON.stringify(makeOk(req, { counts: {} })));
+        return;
+      }
+      const counts = countIssuesByExternalRef(beadsDbPath);
+      ws.send(JSON.stringify(makeOk(req, { counts })));
       return;
     }
 
