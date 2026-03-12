@@ -194,7 +194,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 - **Beads view:** List all open issues with status, priority, and dependencies
 - **Quick actions:** Start a pipeline run from a beads issue, mark issues as in-progress
 - **Dependency graph:** Visual representation of issue dependencies
-- **Bidirectional linking:** Coordinator tags beads with `--external-ref="worca:{run_id}"`, run detail page shows linked issues
+- **Bidirectional linking:** Coordinator tags beads with `--labels "run:{run_id}"`, run detail page shows linked issues
 
 **Considerations:**
 - Requires `bd` CLI calls from the server (or direct SQLite reads from `.beads/beads.db`)
@@ -258,7 +258,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 
 ### W-015: Token & Cost Dashboard
 
-**Status:** In Progress (pipeline run active)
+**Status:** Done
 
 **Problem:** Even if worca-cc tracks token usage (W-006), there's no way to visualize it.
 
@@ -326,17 +326,43 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 
 ### W-019: Beads-by-Run with Kanban Visualization
 
+**Status:** Done
+
 **Problem:** The beads page shows all open issues globally with no way to filter by pipeline run. Users can't see which beads were created for a specific run or their completion status. Historical context is lost.
 
-**Proposal:** Enhance the beads page with a run selector dropdown. When a run is selected, display its beads (all statuses) as a kanban board with three columns: Open | In Progress | Closed. Dependency arrows connect cards across columns. Unlinked beads (no `external_ref`) shown via a separate "Unlinked Issues" filter option.
+**Proposal:** Enhance the beads page with a run selector dropdown. When a run is selected, display its beads (all statuses) as a kanban board with three columns: Open | In Progress | Closed. Dependency arrows connect cards across columns. Unlinked beads (no `run:` label) shown via a separate "Unlinked Issues" filter option.
 
 **Considerations:**
-- Depends on `external_ref` linking (fixed in `ccb7e11` — hooks now resolve from main repo root)
+- Uses labels table for run linking (`run:{run_id}` label, migrated from `external_ref` in `e4df651`)
 - Kanban shown only for run-filtered view; "All" and "Unlinked" keep existing list + DAG graph
-- Server needs new queries: unlinked issues and distinct external refs for run selector population
+- Server queries labels table: unlinked issues and distinct run labels for run selector population
 - SVG overlay for dependency arrows between kanban cards
 
 **Plan:** [W-019-beads-by-run-kanban.md](plans/W-019-beads-by-run-kanban.md)
+
+---
+
+### W-020: Show Latest Iteration Tab on Stage Expand
+
+**Status:** Done
+
+**Problem:** When a stage section is expanded, the tab group always defaults to showing the first iteration tab (Iter 1) instead of the latest one. User tab selections are lost on re-render.
+
+**Proposal:** Track per-stage tab selections in a module-level Map. On expand, default to the latest iteration tab. If the user manually switches tabs, remember that choice for subsequent expansions.
+
+**Plan:** [W-020-latest-iteration-tab-on-expand.md](plans/W-020-latest-iteration-tab-on-expand.md)
+
+---
+
+### W-021: Sticky Header for Content Pages
+
+**Status:** Done
+
+**Problem:** On Running, History, Beads, and Costs pages, the content header scrolls away with the content, losing access to navigation and action buttons.
+
+**Proposal:** Make `.content-header` sticky (`position: sticky; top: 0`) within `.main-content`. Add a scroll shadow effect to indicate scrolled state.
+
+**Plan:** [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md)
 
 ---
 
@@ -352,7 +378,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-002 | P2 | Parallel Implementer Execution | cc | [ ] | [W-002-parallel-implementer-execution.md](plans/W-002-parallel-implementer-execution.md) |
 | W-005 | P2 | Agent Memory & Context Sharing | cc | [ ] | [W-005-agent-memory-context-sharing.md](plans/W-005-agent-memory-context-sharing.md) |
 | W-006 | P2 | Cost & Token Tracking | cc | [x] Done | [W-006-cost-token-tracking.md](plans/W-006-cost-token-tracking.md) |
-| W-015 | P2 | Token & Cost Dashboard | ui | [x] In Progress | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) |
+| W-015 | P2 | Token & Cost Dashboard | ui | [x] Done | [W-015-token-cost-dashboard.md](plans/W-015-token-cost-dashboard.md) |
 | W-014 | P2 | Browser Notifications | ui | [x] Done | [W-014-browser-notifications.md](plans/W-014-browser-notifications.md) |
 | W-003 | P2 | Pipeline Events & Webhooks | cc | [ ] | [W-003-pipeline-events-webhooks.md](plans/W-003-pipeline-events-webhooks.md) |
 | W-004 | P3 | Work Request Queue | cc | [ ] | [W-004-work-request-queue.md](plans/W-004-work-request-queue.md) |
@@ -363,7 +389,9 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-016 | P4 | Pipeline Templates | ui | [ ] | [W-016-pipeline-templates.md](plans/W-016-pipeline-templates.md) |
 | W-017 | P4 | Multi-Project Support | ui | [ ] | [W-017-multi-project-support.md](plans/W-017-multi-project-support.md) |
 | W-018 | P4 | Run Annotations | ui | [ ] | [W-018-run-annotations.md](plans/W-018-run-annotations.md) |
-| W-019 | P2 | Beads-by-Run Kanban | ui | [ ] | [W-019-beads-by-run-kanban.md](plans/W-019-beads-by-run-kanban.md) |
+| W-019 | P2 | Beads-by-Run Kanban | ui | [x] Done | [W-019-beads-by-run-kanban.md](plans/W-019-beads-by-run-kanban.md) |
+| W-020 | P2 | Latest Iteration Tab on Expand | ui | [x] Done | [W-020-latest-iteration-tab-on-expand.md](plans/W-020-latest-iteration-tab-on-expand.md) |
+| W-021 | P2 | Sticky Header for Content Pages | ui | [x] Done | [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md) |
 
 **Legend:**
 - **ID:** Unique identifier (`W-` prefix). Use to reference ideas in plans, beads, and commits.
@@ -395,6 +423,9 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | [W-017-multi-project-support.md](plans/W-017-multi-project-support.md) | W-017: Multi-Project Support |
 | [W-018-run-annotations.md](plans/W-018-run-annotations.md) | W-018: Run Annotations |
 | [W-019-beads-by-run-kanban.md](plans/W-019-beads-by-run-kanban.md) | W-019: Beads-by-Run Kanban |
+| [W-020-latest-iteration-tab-on-expand.md](plans/W-020-latest-iteration-tab-on-expand.md) | W-020: Show Latest Iteration Tab on Stage Expand |
+| [W-021-sticky-header-v1.md](plans/W-021-sticky-header-v1.md) | W-021: Sticky Header (initial plan) |
+| [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md) | W-021: Sticky Header (revised plan) |
 | [worca-ui-design.md](plans/2026-03-08-worca-ui-design.md) | Original UI architecture and design spec |
 | [worca-ui-plan.md](plans/2026-03-08-worca-ui-plan.md) | UI implementation plan (initial build) |
 | [worca-ui-modernize-design.md](plans/2026-03-08-worca-ui-modernize-design.md) | Shoelace + xterm.js modernization |
