@@ -2,7 +2,7 @@
 
 from unittest.mock import patch, MagicMock
 
-from worca.utils.beads import bd_create, bd_ready, bd_close, bd_update, bd_dep_add
+from worca.utils.beads import bd_create, bd_ready, bd_show, bd_close, bd_update, bd_dep_add
 
 
 # --- bd_create ---
@@ -42,21 +42,26 @@ def test_bd_create_raises_on_failure():
 
 # --- bd_ready ---
 
-def test_bd_ready_parses_output():
+def test_bd_ready_parses_numbered_list():
     mock_result = MagicMock()
     mock_result.returncode = 0
     mock_result.stdout = (
-        "ID            Title                Priority\n"
-        "proj-001      Fix login bug        1\n"
-        "proj-002      Add search           2\n"
+        "\U0001f4cb Ready work (2 issues with no blockers):\n"
+        "\n"
+        "1. [\u25cf P2] [task] worca-cc-744: Server: add listUnlinkedIssues() and listDistinctExternalRefs() queries to beads-reader.js\n"
+        "2. [\u25cf P4] [feature] worca-cc-a27: test parsing output\n"
     )
     with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
         result = bd_ready()
     assert len(result) == 2
-    assert result[0]["id"] == "proj-001"
-    assert result[0]["title"] == "Fix login bug"
-    assert result[0]["priority"] == "1"
-    assert result[1]["id"] == "proj-002"
+    assert result[0]["id"] == "worca-cc-744"
+    assert result[0]["title"] == "Server: add listUnlinkedIssues() and listDistinctExternalRefs() queries to beads-reader.js"
+    assert result[0]["priority"] == "2"
+    assert result[0]["type"] == "task"
+    assert result[1]["id"] == "worca-cc-a27"
+    assert result[1]["title"] == "test parsing output"
+    assert result[1]["priority"] == "4"
+    assert result[1]["type"] == "feature"
 
 
 def test_bd_ready_empty_output():
@@ -66,6 +71,69 @@ def test_bd_ready_empty_output():
     with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
         result = bd_ready()
     assert result == []
+
+
+def test_bd_ready_header_only():
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = "\U0001f4cb Ready work (0 issues with no blockers):\n"
+    with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
+        result = bd_ready()
+    assert result == []
+
+
+# --- bd_show ---
+
+def test_bd_show_parses_full_output():
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = (
+        "\u25cb worca-cc-a27 \u00b7 test parsing output   [\u25cf P4 \u00b7 OPEN]\n"
+        "\n"
+        "DESCRIPTION\n"
+        "Parse the bd ready output correctly to extract bead IDs.\n"
+        "Should handle numbered list format.\n"
+        "\n"
+        "DEPENDENCIES\n"
+        "  (none)\n"
+    )
+    with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
+        result = bd_show("worca-cc-a27")
+    assert result["id"] == "worca-cc-a27"
+    assert result["title"] == "test parsing output"
+    assert result["priority"] == "4"
+    assert result["status"] == "open"
+    assert "Parse the bd ready output correctly" in result["description"]
+    assert "Should handle numbered list format." in result["description"]
+
+
+def test_bd_show_no_description():
+    mock_result = MagicMock()
+    mock_result.returncode = 0
+    mock_result.stdout = (
+        "\u25cb worca-cc-001 \u00b7 Simple task   [\u25cf P2 \u00b7 IN_PROGRESS]\n"
+        "\n"
+        "DESCRIPTION\n"
+        "\n"
+        "DEPENDENCIES\n"
+    )
+    with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
+        result = bd_show("worca-cc-001")
+    assert result["id"] == "worca-cc-001"
+    assert result["title"] == "Simple task"
+    assert result["description"] == ""
+
+
+def test_bd_show_raises_on_failure():
+    mock_result = MagicMock()
+    mock_result.returncode = 1
+    mock_result.stderr = "Error: issue not found"
+    with patch("worca.utils.beads.subprocess.run", return_value=mock_result):
+        try:
+            bd_show("nonexistent-id")
+            assert False, "Should have raised"
+        except RuntimeError as e:
+            assert "issue not found" in str(e)
 
 
 # --- bd_close ---

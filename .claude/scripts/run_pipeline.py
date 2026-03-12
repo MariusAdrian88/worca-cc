@@ -38,6 +38,10 @@ def main():
     # Normalize input to WorkRequest
     if args.prompt:
         work_request = normalize("prompt", args.prompt)
+        # When --plan is also provided, read the plan file as the description
+        if args.plan and os.path.isfile(args.plan):
+            with open(args.plan) as f:
+                work_request.description = f.read()
     elif args.spec:
         work_request = normalize("spec", args.spec)
     elif args.source:

@@ -97,7 +97,7 @@ def test_build_implement_with_test_failures():
         {"test_name": "test_token_refresh", "error": "KeyError: 'refresh_token'"},
     ])
     prompt = pb.build("implement", iteration=1)
-    assert "Iteration 1: Fix Test Failures" in prompt
+    assert "Iteration 2: Fix Test Failures" in prompt  # iteration 1 (0-indexed retry) displays as 2 (1-indexed run)
     assert "test_login_valid" in prompt
     assert "401 != 200" in prompt
     assert "test_token_refresh" in prompt
@@ -109,7 +109,7 @@ def test_build_implement_with_review_issues():
         {"file": "auth.py", "line": 42, "severity": "critical", "description": "SQL injection"},
     ])
     prompt = pb.build("implement", iteration=2)
-    assert "Iteration 2: Address Review Feedback" in prompt
+    assert "Iteration 3: Address Review Feedback" in prompt  # iteration 2 (0-indexed retry) displays as 3 (1-indexed run)
     assert "auth.py:42" in prompt
     assert "SQL injection" in prompt
     assert "[critical]" in prompt

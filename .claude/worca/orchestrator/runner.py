@@ -22,7 +22,7 @@ from worca.state.status import (
     load_status, save_status, update_stage, set_milestone, init_status,
     start_iteration, complete_iteration,
 )
-from worca.utils.beads import bd_ready, bd_update
+from worca.utils.beads import bd_ready, bd_show, bd_update
 from worca.utils.claude_cli import run_agent, terminate_current
 from worca.utils.git import create_branch
 from worca.utils.token_usage import extract_token_usage, aggregate_token_usage, aggregate_by_model
@@ -740,10 +740,16 @@ def run_pipeline(
             if current_stage == Stage.IMPLEMENT:
                 bead = _query_ready_bead()
                 if bead:
-                    _claim_bead(bead["id"])
-                    prompt_builder.update_context("assigned_bead_id", bead["id"])
+                    bead_id = bead["id"]
+                    _claim_bead(bead_id)
+                    prompt_builder.update_context("assigned_bead_id", bead_id)
                     prompt_builder.update_context("assigned_bead_title", bead["title"])
-                    prompt_builder.update_context("assigned_bead_description", bead.get("description", ""))
+                    # Fetch full description via bd show
+                    try:
+                        details = bd_show(bead_id)
+                        prompt_builder.update_context("assigned_bead_description", details.get("description", ""))
+                    except Exception:
+                        prompt_builder.update_context("assigned_bead_description", "")
 
             # Build stage-specific prompt via PromptBuilder
             pb_iteration = loop_counters.get(f"{current_stage.value}_iteration", 0)

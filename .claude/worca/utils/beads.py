@@ -37,24 +37,69 @@ def bd_create(title: str, task_type: str = "task", priority: int = 2) -> str:
 def bd_ready() -> list[dict]:
     """List ready issues via bd ready.
 
-    Parses tabular output into list of dicts with id, title, priority.
+    Parses numbered-list output like:
+        📋 Ready work (1 issues with no blockers):
+        1. [● P4] [task] worca-cc-a27: test parsing output
+
+    Returns list of dicts with id, title, priority, type.
     """
     result = _run_bd("ready")
     if not result.stdout.strip():
         return []
-    lines = result.stdout.strip().split("\n")
-    if len(lines) <= 1:
-        # Only header or empty
-        return []
     items = []
-    for line in lines[1:]:  # skip header
-        parts = line.split()
-        if len(parts) >= 3:
-            issue_id = parts[0]
-            priority = parts[-1]
-            title = " ".join(parts[1:-1])
-            items.append({"id": issue_id, "title": title, "priority": priority})
+    # Match lines like: 1. [● P2] [task] worca-cc-744: Server: add queries
+    pattern = re.compile(
+        r'^\s*\d+\.\s+'           # row number: "1. "
+        r'\[[^\]]*P(\d+)\]\s+'    # priority bracket: "[● P2] "
+        r'\[(\w+)\]\s+'           # type bracket: "[task] "
+        r'(\S+?):\s+'             # bead ID up to colon: "worca-cc-a27: "
+        r'(.+)$'                  # title (rest of line)
+    )
+    for line in result.stdout.strip().split("\n"):
+        m = pattern.match(line)
+        if m:
+            items.append({
+                "id": m.group(3),
+                "title": m.group(4).strip(),
+                "priority": m.group(1),
+                "type": m.group(2),
+            })
     return items
+
+
+def bd_show(issue_id: str) -> dict:
+    """Fetch full details for a bead via bd show.
+
+    Parses bd show output to extract title, description, priority, type, and status.
+    Returns a dict with those fields. Raises RuntimeError on failure.
+    """
+    result = _run_bd("show", issue_id)
+    if result.returncode != 0:
+        raise RuntimeError(f"bd show failed for {issue_id}: {result.stderr}")
+    output = result.stdout
+    info: dict = {"id": issue_id, "title": "", "description": "", "priority": "", "type": "", "status": ""}
+
+    # Parse title from header line like: "○ worca-cc-a27 · test parsing output   [● P4 · OPEN]"
+    header_match = re.search(r'·\s+(.+?)\s+\[', output)
+    if header_match:
+        info["title"] = header_match.group(1).strip()
+
+    # Parse priority from bracket like "[● P2 · OPEN]"
+    prio_match = re.search(r'\[.*?P(\d+).*?\]', output)
+    if prio_match:
+        info["priority"] = prio_match.group(1)
+
+    # Parse status from bracket like "[● P2 · OPEN]" or "[● P2 · IN_PROGRESS]"
+    status_match = re.search(r'·\s+(\w+)\s*\]', output)
+    if status_match:
+        info["status"] = status_match.group(1).lower()
+
+    # Parse DESCRIPTION section: everything between "DESCRIPTION" line and next section header or end
+    desc_match = re.search(r'^DESCRIPTION\s*\n(.*?)(?=^[A-Z]{2,}\s*$|\Z)', output, re.DOTALL | re.MULTILINE)
+    if desc_match:
+        info["description"] = desc_match.group(1).strip()
+
+    return info
 
 
 def bd_close(issue_id: str, reason: str = "") -> bool:

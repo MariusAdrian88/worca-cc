@@ -111,16 +111,17 @@ class PromptBuilder:
         parts.append(self._work_request_section())
 
         if iteration > 0:
+            display_iter = iteration + 1  # iteration is 0-indexed retry count; display as 1-indexed run number
             test_failures = self._context.get("test_failures")
             review_issues = self._context.get("review_issues")
             if test_failures:
-                parts.append(f"## Iteration {iteration}: Fix Test Failures")
+                parts.append(f"## Iteration {display_iter}: Fix Test Failures")
                 for f in test_failures:
                     name = f.get("test_name", "unknown")
                     error = f.get("error", "no details")
                     parts.append(f"- **{name}**: {error}")
             if review_issues:
-                parts.append(f"## Iteration {iteration}: Address Review Feedback")
+                parts.append(f"## Iteration {display_iter}: Address Review Feedback")
                 for issue in review_issues:
                     file = issue.get("file", "?")
                     line = issue.get("line", "?")
