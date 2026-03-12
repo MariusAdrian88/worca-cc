@@ -32,6 +32,7 @@ def main():
     parser.add_argument("--plan", help="Path to pre-made plan file (skips PLAN stage)")
     parser.add_argument("--resume", action="store_true",
                         help="Resume a previous run from status.json instead of starting fresh")
+    parser.add_argument("--branch", help="Use an existing branch instead of creating a new one")
 
     args = parser.parse_args()
 
@@ -54,6 +55,8 @@ def main():
         print(f"  Size multiplier: {args.msize}x turns")
     if args.mloops > 1:
         print(f"  Loop multiplier: {args.mloops}x loops")
+    if args.branch:
+        print(f"  Using existing branch: {args.branch}")
 
     try:
         status = run_pipeline(
@@ -64,6 +67,7 @@ def main():
             status_path=os.path.join(args.status_dir, "status.json"),
             msize=args.msize,
             mloops=args.mloops,
+            branch=args.branch,
         )
         print(json.dumps(status, indent=2))
     except LoopExhaustedError as e:

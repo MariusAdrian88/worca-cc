@@ -3,6 +3,7 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { validateSettingsPayload } from './settings-validator.js';
 import { startPipeline, stopPipeline, restartStage } from './process-manager.js';
 import { discoverRuns } from './watcher.js';
@@ -87,7 +88,7 @@ export function createApp(options = {}) {
   app.post('/api/runs', async (req, res) => {
     if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
 
-    const { inputType, inputValue, msize, mloops, planFile } = req.body || {};
+    const { inputType, inputValue, msize, mloops, planFile, branch } = req.body || {};
 
     // Validation
     if (!['prompt', 'source', 'spec'].includes(inputType)) {
@@ -112,6 +113,7 @@ export function createApp(options = {}) {
         msize: msizeVal,
         mloops: mloopsVal,
         planFile: planFile || undefined,
+        branch: branch || undefined,
         projectRoot,
       });
       // Broadcast run-started if broadcast is available
@@ -123,6 +125,18 @@ export function createApp(options = {}) {
       if (err.code === 'already_running') {
         return res.status(409).json({ ok: false, error: err.message });
       }
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // GET /api/branches — list git branches
+  app.get('/api/branches', (_req, res) => {
+    const cwd = projectRoot || process.cwd();
+    try {
+      const out = execFileSync('git', ['branch', '--format=%(refname:short)'], { cwd, encoding: 'utf8', timeout: 5000 });
+      const branches = out.trim().split('\n').filter(Boolean);
+      res.json({ ok: true, branches });
+    } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
     }
   });

@@ -71,6 +71,9 @@ export async function startPipeline(worcaDir, opts = {}) {
   if (opts.planFile) {
     args.push('--plan', opts.planFile);
   }
+  if (opts.branch) {
+    args.push('--branch', opts.branch);
+  }
 
   const env = { ...process.env };
   delete env.CLAUDECODE;

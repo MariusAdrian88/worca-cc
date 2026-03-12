@@ -10,11 +10,24 @@ let planFiles = null; // cached response
 let planFilter = '';
 let planDropdownOpen = false;
 let selectedPlan = '';
+let branches = null; // cached branch list
+let selectedBranch = ''; // empty = new branch
 
 function inputLabel(type) {
   if (type === 'source') return 'GitHub Issue URL';
   if (type === 'spec') return 'Spec File Path';
   return 'Prompt';
+}
+
+function fetchBranches() {
+  if (branches) return Promise.resolve(branches);
+  return fetch('/api/branches')
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) branches = data.branches;
+      return branches || [];
+    })
+    .catch(() => []);
 }
 
 function fetchPlanFiles() {
@@ -78,6 +91,7 @@ export async function submitNewRun({ rerender, onStarted }) {
       mloops: Math.max(1, Math.min(10, mloops)),
     };
     if (selectedPlan) body.planFile = selectedPlan;
+    if (selectedBranch) body.branch = selectedBranch;
 
     const res = await fetch('/api/runs', {
       method: 'POST',
@@ -105,6 +119,14 @@ export function newRunView(state, { rerender }) {
 
   function handleInputTypeChange(e) {
     inputType = e.target.value;
+    rerender();
+  }
+
+  // Fetch branches on first render
+  fetchBranches().then(() => rerender());
+
+  function handleBranchChange(e) {
+    selectedBranch = e.target.value;
     rerender();
   }
 
@@ -185,6 +207,17 @@ export function newRunView(state, { rerender }) {
                 <sl-input id="new-run-mloops" type="number" min="1" max="10" value="1"></sl-input>
                 <span class="settings-field-hint">Scales max loop iterations (1-10)</span>
               </div>
+            </div>
+
+            <div class="settings-field">
+              <label class="settings-label">Branch</label>
+              <sl-select value=${selectedBranch} @sl-change=${handleBranchChange}>
+                <sl-option value="">&lt;New branch&gt;</sl-option>
+                ${(branches || []).map(b => html`
+                  <sl-option value=${b}>${b}</sl-option>
+                `)}
+              </sl-select>
+              <span class="settings-field-hint">Use an existing branch instead of creating a new one</span>
             </div>
 
             <div class="settings-field">

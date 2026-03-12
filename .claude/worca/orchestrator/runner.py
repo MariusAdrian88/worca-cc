@@ -506,6 +506,7 @@ def run_pipeline(
     status_path: str = ".worca/status.json",
     msize: int = 1,
     mloops: int = 1,
+    branch: Optional[str] = None,
 ) -> dict:
     """Run the full pipeline for a single work request.
 
@@ -578,8 +579,11 @@ def run_pipeline(
             _log(f"Archiving previous run: {old_title}")
             _archive_run(existing, actual_status_path)
 
-        branch_name = _sanitize_branch_name(work_request.title)
-        create_branch(branch_name)
+        if branch:
+            branch_name = branch
+        else:
+            branch_name = _sanitize_branch_name(work_request.title)
+            create_branch(branch_name)
 
         wr_dict = {
             "source_type": work_request.source_type,
