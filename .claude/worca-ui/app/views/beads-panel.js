@@ -332,7 +332,12 @@ export function beadsPanelView(beads, {
   `;
 
   if (displayIssues.length === 0 && runFilter === 'all' && !runLoading) {
-    return html`<div class="empty-state">No open Beads issues found.</div>`;
+    return html`
+      <div class="beads-panel">
+        ${filtersView}
+        <div class="empty-state">No open Beads issues found.</div>
+      </div>
+    `;
   }
 
   if (runLoading) {
