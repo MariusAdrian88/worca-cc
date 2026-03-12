@@ -22,7 +22,7 @@ from worca.state.status import (
     load_status, save_status, update_stage, set_milestone, init_status,
     start_iteration, complete_iteration,
 )
-from worca.utils.beads import bd_ready, bd_show, bd_update, bd_close
+from worca.utils.beads import bd_ready, bd_show, bd_update, bd_close, bd_label_add
 from worca.utils.claude_cli import run_agent, terminate_current
 from worca.utils.git import create_branch
 from worca.utils.token_usage import extract_token_usage, aggregate_token_usage, aggregate_by_model
@@ -877,8 +877,16 @@ def run_pipeline(
                 update_stage(status, current_stage.value, **stage_extras)
                 save_status(status, actual_status_path)
                 # Thread coordinate outputs into PromptBuilder
-                prompt_builder.update_context("beads_ids", result.get("beads_ids", []))
+                beads_ids = result.get("beads_ids", [])
+                prompt_builder.update_context("beads_ids", beads_ids)
                 prompt_builder.update_context("dependency_graph", result.get("dependency_graph", {}))
+                # Link beads to this run via label
+                if beads_ids:
+                    run_label = f"run:{status['run_id']}"
+                    if bd_label_add(beads_ids, run_label):
+                        _log(f"Labeled {len(beads_ids)} beads with {run_label}", "ok")
+                    else:
+                        _log(f"Failed to label beads with {run_label}", "warn")
 
             # Handle implement results
             elif current_stage == Stage.IMPLEMENT:
@@ -943,7 +951,7 @@ def run_pipeline(
                     _log("Review approved", "ok")
 
                     # Close the claimed bead
-                    claimed_bead = prompt_builder.context.get("assigned_bead_id")
+                    claimed_bead = prompt_builder._context.get("assigned_bead_id")
                     if claimed_bead:
                         if bd_close(claimed_bead, reason="review approved"):
                             _log(f"Closed bead {claimed_bead}", "ok")

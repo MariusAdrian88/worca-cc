@@ -126,6 +126,17 @@ def bd_update(issue_id: str, **kwargs) -> bool:
     return result.returncode == 0
 
 
+def bd_label_add(issue_ids: list[str], label: str) -> bool:
+    """Add a label to one or more issues via bd label add.
+
+    Returns True on success, False on failure.
+    """
+    if not issue_ids:
+        return True
+    result = _run_bd("label", "add", *issue_ids, label)
+    return result.returncode == 0
+
+
 def bd_dep_add(issue_id: str, depends_on: str) -> bool:
     """Add a dependency via bd dep add.
 

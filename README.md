@@ -33,7 +33,8 @@ git clone https://github.com/SinishaDjukic/worca-cc.git
 # Install in your project
 cp -R worca-cc/.claude/ your-project/.claude/
 
-# Initialize beads in your project
+# Initialize beads in your project (warnings about missing hooks or
+# outdated CLI are non-blocking — the pipeline works without fixing them)
 cd your-project && bd init
 
 # (Optional) Install dashboard dependencies
