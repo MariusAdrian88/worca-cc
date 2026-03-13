@@ -266,9 +266,9 @@ export function runDetailView(run, settings = {}, options = {}) {
           const apiPct = pipelineWallMs > 0 && pipelineApiMs > 0 ? Math.round(pipelineApiMs / pipelineWallMs * 100) : 0;
           return (pipelineCost > 0 || pipelineApiMs > 0 || pipelineTurns > 0) ? html`
             <div class="pipeline-cost-strip">
-              ${pipelineCost > 0 ? html`<span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span>` : nothing}
-              ${pipelineApiMs > 0 ? html`<span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(pipelineApiMs)}${apiPct > 0 ? ` (${apiPct}%)` : ''}</span>` : nothing}
-              ${pipelineTurns > 0 ? html`<span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span>` : nothing}
+              ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
+              ${pipelineApiMs > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(pipelineApiMs)}${apiPct > 0 ? ` (${apiPct}%)` : ''}</span></span>` : nothing}
+              ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
             </div>
           ` : nothing;
         })()}

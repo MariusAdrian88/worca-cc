@@ -349,9 +349,9 @@ ${d.join(`
         ${ha(e.started_at,o)}
         ${(()=>{let l=Object.values(n).flatMap(g=>g.iterations||[]),d=l.reduce((g,S)=>g+(S.cost_usd||0),0),h=l.reduce((g,S)=>g+(S.duration_api_ms||0),0),p=l.reduce((g,S)=>g+(S.turns||0),0),f=l.reduce((g,S)=>S.started_at&&S.completed_at?g+ht(S.started_at,S.completed_at):g,0),m=f>0&&h>0?Math.round(h/f*100):0;return d>0||h>0||p>0?_`
             <div class="pipeline-cost-strip">
-              ${d>0?_`<span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${d.toFixed(2)}</span>`:M}
-              ${h>0?_`<span class="meta-label">API Duration:</span> <span class="meta-value">${Te(h)}${m>0?` (${m}%)`:""}</span>`:M}
-              ${p>0?_`<span class="meta-label">Total Turns:</span> <span class="meta-value">${p}</span>`:M}
+              ${d>0?_`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${d.toFixed(2)}</span></span>`:M}
+              ${h>0?_`<span class="pipeline-cost-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${Te(h)}${m>0?` (${m}%)`:""}</span></span>`:M}
+              ${p>0?_`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${p}</span></span>`:M}
             </div>
           `:M})()}
       </div>
