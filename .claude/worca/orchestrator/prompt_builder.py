@@ -92,44 +92,111 @@ class PromptBuilder:
         return "\n\n".join(parts)
 
     def _build_implement(self, iteration: int) -> str:
+        if iteration > 0:
+            return self._build_implement_retry(iteration)
+        return self._build_implement_initial()
+
+    def _build_implement_initial(self) -> str:
+        """Build prompt for the first implementation attempt."""
         parts = [
             "Implement the code changes for the assigned task. Follow TDD: write a failing test first, then implement.",
         ]
+        parts.append(self._assigned_task_section())
+        parts.append("")
+        parts.append(self._work_request_section())
+        return "\n\n".join(parts)
+
+    def _build_implement_retry(self, iteration: int) -> str:
+        """Build prompt for retry iterations — feedback first, plan as reference."""
+        parts = []
+        test_failures = self._context.get("test_failures")
+        review_issues = self._context.get("review_issues")
+        test_failure_history = self._context.get("test_failure_history") or []
+        review_history = self._context.get("review_history") or []
+        attempt_count = len(review_history) or len(test_failure_history) or iteration
+
+        # -- Priority header --
+        if test_failures:
+            parts.append(
+                f"## PRIORITY: Fix Test Failures (attempt {attempt_count})\n\n"
+                "The implementation is already in place. Your ONLY task is to fix the "
+                "failing tests listed below. Do NOT re-implement the plan from scratch. "
+                "Do NOT just rebuild and exit."
+            )
+        elif review_issues:
+            parts.append(
+                f"## PRIORITY: Fix Review Issues (attempt {attempt_count})\n\n"
+                "The implementation is already in place. Your ONLY task is to fix the "
+                "specific issues listed below. Do NOT re-implement the plan from scratch. "
+                "Do NOT just rebuild and exit."
+            )
+
+        # -- Current issues to fix --
+        if test_failures:
+            parts.append("### Failures to Fix")
+            for i, f in enumerate(test_failures, 1):
+                name = f.get("test_name", "unknown")
+                error = f.get("error", "no details")
+                parts.append(f"{i}. **{name}**\n   {error}")
+
+        if review_issues:
+            parts.append("### Issues to Fix")
+            for i, issue in enumerate(review_issues, 1):
+                file = issue.get("file", "?")
+                line = issue.get("line", "?")
+                sev = issue.get("severity", "?")
+                desc = issue.get("description", "")
+                parts.append(f"{i}. [{sev}] `{file}:{line}`\n   {desc}")
+
+        # -- Previous failed attempts (if any) --
+        if len(review_history) > 1:
+            parts.append("### Previous Attempts (all failed to resolve)")
+            for entry in review_history[:-1]:
+                attempt = entry.get("attempt", "?")
+                issues = entry.get("issues", [])
+                issue_summary = "; ".join(
+                    f"[{i.get('severity','?')}] {i.get('file','?')}:{i.get('line','?')}"
+                    for i in issues
+                )
+                parts.append(f"- Attempt {attempt}: {issue_summary}")
+
+        if len(test_failure_history) > 1:
+            parts.append("### Previous Attempts (all failed to resolve)")
+            for entry in test_failure_history[:-1]:
+                attempt = entry.get("attempt", "?")
+                failures = entry.get("failures", [])
+                fail_summary = "; ".join(f.get("test_name", "unknown") for f in failures)
+                parts.append(f"- Attempt {attempt}: {fail_summary}")
+
+        # -- Verification instruction --
+        parts.append(
+            "### Verification\n\n"
+            "After making each fix, read back the changed lines to confirm the fix is correct. "
+            "Do not assume the fix landed — verify it."
+        )
+
+        # -- Reference section: task + plan (demoted) --
+        parts.append("---")
+        parts.append("## Reference: Task & Plan (already implemented)")
+        parts.append(self._assigned_task_section())
+        parts.append("")
+        parts.append(self._work_request_section())
+
+        return "\n\n".join(parts)
+
+    def _assigned_task_section(self) -> str:
+        """Render the assigned bead task section."""
         bead_id = self._context.get("assigned_bead_id")
         bead_title = self._context.get("assigned_bead_title")
         bead_description = self._context.get("assigned_bead_description")
         if bead_id:
-            parts.append(f"## Assigned Task\n\n**Bead ID:** {bead_id}")
+            lines = [f"## Assigned Task\n\n**Bead ID:** {bead_id}"]
             if bead_title:
-                parts.append(f"**Title:** {bead_title}")
+                lines.append(f"**Title:** {bead_title}")
             if bead_description:
-                parts.append(f"**Description:** {bead_description}")
-        else:
-            parts.append("Run `bd ready` to find available work, then claim and implement a task.")
-
-        parts.append("")
-        parts.append(self._work_request_section())
-
-        if iteration > 0:
-            display_iter = iteration + 1  # iteration is 0-indexed retry count; display as 1-indexed run number
-            test_failures = self._context.get("test_failures")
-            review_issues = self._context.get("review_issues")
-            if test_failures:
-                parts.append(f"## Iteration {display_iter}: Fix Test Failures")
-                for f in test_failures:
-                    name = f.get("test_name", "unknown")
-                    error = f.get("error", "no details")
-                    parts.append(f"- **{name}**: {error}")
-            if review_issues:
-                parts.append(f"## Iteration {display_iter}: Address Review Feedback")
-                for issue in review_issues:
-                    file = issue.get("file", "?")
-                    line = issue.get("line", "?")
-                    sev = issue.get("severity", "?")
-                    desc = issue.get("description", "")
-                    parts.append(f"- [{sev}] {file}:{line} — {desc}")
-
-        return "\n\n".join(parts)
+                lines.append(f"**Description:** {bead_description}")
+            return "\n\n".join(lines)
+        return "Run `bd ready` to find available work, then claim and implement a task."
 
     def _build_test(self, iteration: int) -> str:
         parts = [

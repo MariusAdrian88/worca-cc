@@ -97,10 +97,12 @@ def test_build_implement_with_test_failures():
         {"test_name": "test_token_refresh", "error": "KeyError: 'refresh_token'"},
     ])
     prompt = pb.build("implement", iteration=1)
-    assert "Iteration 2: Fix Test Failures" in prompt  # iteration 1 (0-indexed retry) displays as 2 (1-indexed run)
+    assert "PRIORITY: Fix Test Failures" in prompt
+    assert "Failures to Fix" in prompt
     assert "test_login_valid" in prompt
     assert "401 != 200" in prompt
     assert "test_token_refresh" in prompt
+    assert "Reference: Task & Plan (already implemented)" in prompt
 
 
 def test_build_implement_with_review_issues():
@@ -109,17 +111,19 @@ def test_build_implement_with_review_issues():
         {"file": "auth.py", "line": 42, "severity": "critical", "description": "SQL injection"},
     ])
     prompt = pb.build("implement", iteration=2)
-    assert "Iteration 3: Address Review Feedback" in prompt  # iteration 2 (0-indexed retry) displays as 3 (1-indexed run)
+    assert "PRIORITY: Fix Review Issues" in prompt
+    assert "Issues to Fix" in prompt
     assert "auth.py:42" in prompt
     assert "SQL injection" in prompt
     assert "[critical]" in prompt
+    assert "Reference: Task & Plan (already implemented)" in prompt
 
 
 def test_build_implement_no_loop_context_at_iteration_0():
     pb = PromptBuilder("Add auth", "Desc")
     pb.update_context("test_failures", [{"test_name": "t", "error": "e"}])
     prompt = pb.build("implement", iteration=0)
-    assert "Iteration" not in prompt
+    assert "PRIORITY" not in prompt
 
 
 def test_build_implement_cleared_context_not_shown():
@@ -131,7 +135,33 @@ def test_build_implement_cleared_context_not_shown():
     ])
     prompt = pb.build("implement", iteration=1)
     assert "Fix Test Failures" not in prompt
-    assert "Address Review Feedback" in prompt
+    assert "Fix Review Issues" in prompt
+
+
+def test_build_implement_retry_shows_history():
+    """Review history from multiple attempts is shown in retry prompt."""
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("review_history", [
+        {"attempt": 1, "issues": [{"file": "a.py", "line": 10, "severity": "major", "description": "bug1"}]},
+        {"attempt": 2, "issues": [{"file": "a.py", "line": 10, "severity": "major", "description": "bug1 still"}]},
+    ])
+    pb.update_context("review_issues", [
+        {"file": "a.py", "line": 10, "severity": "major", "description": "bug1 still"},
+    ])
+    prompt = pb.build("implement", iteration=2)
+    assert "Previous Attempts (all failed to resolve)" in prompt
+    assert "Attempt 1" in prompt
+    assert "PRIORITY: Fix Review Issues (attempt 2)" in prompt
+
+
+def test_build_implement_retry_verification_instruction():
+    """Retry prompt includes verification instruction."""
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("review_issues", [
+        {"file": "a.py", "line": 1, "severity": "critical", "description": "x"},
+    ])
+    prompt = pb.build("implement", iteration=1)
+    assert "read back the changed lines" in prompt
 
 
 def test_build_test_includes_implementation_summary():
