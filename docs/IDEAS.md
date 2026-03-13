@@ -381,6 +381,16 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 - Turn counts per stage help gauge agent efficiency (fewer turns = better prompting)
 - Requires changes to both worca-cc (capture & store) and worca-ui (display)
 
+### W-023: Batch Implement Then Test
+
+**Status:** Open
+
+**Problem:** The pipeline currently runs a full IMPLEMENT→TEST→REVIEW cycle per bead. A 5-bead pipeline runs TEST at least 5 times and REVIEW at least 5 times, each running the full test suite. This is expensive, slow, and test failures are retried per-bead with complex deferred-bead logic (~150 lines of interleaved retry code).
+
+**Proposal:** Implement all beads sequentially first (Phase 1), then run TEST once and REVIEW once (Phase 2). On failure, a single "fix" implementer receives the full error list and fixes everything in one pass (Phase 3), then TEST→REVIEW repeats. Also fixes the existing gap where PromptBuilder output is never actually sent to agents (it's UI-only metadata).
+
+**Plan:** [W-023-batch-implement-then-test.md](plans/W-023-batch-implement-then-test.md)
+
 ---
 
 ## Appendix A: Prioritized Feature Table
@@ -410,6 +420,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-020 | P2 | Latest Iteration Tab on Expand | ui | [x] Done | [W-020-latest-iteration-tab-on-expand.md](plans/W-020-latest-iteration-tab-on-expand.md) |
 | W-021 | P2 | Sticky Header for Content Pages | ui | [x] Done | [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md) |
 | W-022 | P2 | API Duration & Turn Metrics | cc+ui | [x] Done | [W-022-api-duration-turn-metrics.md](plans/W-022-api-duration-turn-metrics.md) |
+| W-023 | P1 | Batch Implement Then Test | cc | [ ] | [W-023-batch-implement-then-test.md](plans/W-023-batch-implement-then-test.md) |
 
 **Legend:**
 - **ID:** Unique identifier (`W-` prefix). Use to reference ideas in plans, beads, and commits.
@@ -445,6 +456,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | [W-021-sticky-header-v1.md](plans/W-021-sticky-header-v1.md) | W-021: Sticky Header (initial plan) |
 | [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md) | W-021: Sticky Header (revised plan) |
 | [W-022-api-duration-turn-metrics.md](plans/W-022-api-duration-turn-metrics.md) | W-022: API Duration & Turn Metrics |
+| [W-023-batch-implement-then-test.md](plans/W-023-batch-implement-then-test.md) | W-023: Batch Implement Then Test |
 | [worca-ui-design.md](plans/2026-03-08-worca-ui-design.md) | Original UI architecture and design spec |
 | [worca-ui-plan.md](plans/2026-03-08-worca-ui-plan.md) | UI implementation plan (initial build) |
 | [worca-ui-modernize-design.md](plans/2026-03-08-worca-ui-modernize-design.md) | Shoelace + xterm.js modernization |
