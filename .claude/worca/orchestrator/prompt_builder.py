@@ -233,6 +233,12 @@ class PromptBuilder:
         files_changed = self._context.get("files_changed")
         if files_changed:
             parts.append("## Files Changed\n" + "\n".join(f"- {f}" for f in files_changed))
+        parts.append(
+            "## Implementer Capabilities\n\n"
+            "The implementer agent can edit files and run tests but CANNOT make git commits "
+            "(commits are handled by the guardian stage). Do NOT flag uncommitted files as issues "
+            "requiring changes — focus only on code correctness, style, and adherence to the plan."
+        )
         return "\n\n".join(parts)
 
     def _build_pr(self, iteration: int) -> str:

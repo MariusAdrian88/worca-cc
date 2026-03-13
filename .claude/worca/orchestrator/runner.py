@@ -756,7 +756,10 @@ def run_pipeline(
                         prompt_builder.update_context("assigned_bead_description", "")
 
             # Build stage-specific prompt via PromptBuilder
-            pb_iteration = loop_counters.get(f"{current_stage.value}_iteration", 0)
+            if current_stage.value == "implement":
+                pb_iteration = prompt_builder.get_context("bead_prompt_iteration") or 0
+            else:
+                pb_iteration = loop_counters.get(f"{current_stage.value}_iteration", 0)
             rendered_prompt = prompt_builder.build(current_stage.value, pb_iteration)
 
             # Store rendered prompt in status for UI visibility
@@ -928,6 +931,8 @@ def run_pipeline(
                         bead_loop_key = f"implement_test:{claimed_bead}" if claimed_bead else "implement_test"
                         loop_counters[bead_loop_key] = loop_counters.get(bead_loop_key, 0) + 1
                         loop_counters["implement_iteration"] = loop_counters.get("implement_iteration", 0) + 1
+                        bead_prompt_iter = prompt_builder.get_context("bead_prompt_iteration") or 0
+                        prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                         _log(f"Tests failed — looping back to IMPLEMENT (attempt {loop_counters[bead_loop_key]} for {claimed_bead or 'unknown'})", "warn")
                         if not check_loop_limit("implement_test", loop_counters[bead_loop_key], settings_path, mloops=mloops):
                             # Defer this bead instead of crashing
@@ -949,6 +954,7 @@ def run_pipeline(
                                     prompt_builder.update_context("review_history", None)
                                     prompt_builder.update_context("test_failure_history", None)
                                     prompt_builder.update_context("files_changed", None)
+                                    prompt_builder.update_context("bead_prompt_iteration", 0)
                                     _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
                                     stage_idx = stage_order.index(Stage.IMPLEMENT)
                                     continue
@@ -1006,6 +1012,7 @@ def run_pipeline(
                             prompt_builder.update_context("review_history", None)
                             prompt_builder.update_context("test_failure_history", None)
                             prompt_builder.update_context("files_changed", None)
+                            prompt_builder.update_context("bead_prompt_iteration", 0)
                             _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
                             stage_idx = stage_order.index(Stage.IMPLEMENT)
                             continue
@@ -1041,6 +1048,7 @@ def run_pipeline(
                                 prompt_builder.update_context("review_history", None)
                                 prompt_builder.update_context("test_failure_history", None)
                                 prompt_builder.update_context("files_changed", None)
+                                prompt_builder.update_context("bead_prompt_iteration", 0)
                                 _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
                                 stage_idx = stage_order.index(Stage.IMPLEMENT)
                                 continue
@@ -1060,6 +1068,8 @@ def run_pipeline(
                             bead_loop_key = f"pr_changes:{claimed_bead}" if claimed_bead else "pr_changes"
                             loop_counters[bead_loop_key] = loop_counters.get(bead_loop_key, 0) + 1
                             loop_counters["implement_iteration"] = loop_counters.get("implement_iteration", 0) + 1
+                            bead_prompt_iter = prompt_builder.get_context("bead_prompt_iteration") or 0
+                            prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                             _log(f"Changes requested — looping back to IMPLEMENT (attempt {loop_counters[bead_loop_key]} for {claimed_bead or 'unknown'})", "warn")
                             if not check_loop_limit("pr_changes", loop_counters[bead_loop_key], settings_path, mloops=mloops):
                                 # Defer this bead instead of crashing
@@ -1083,6 +1093,7 @@ def run_pipeline(
                                         prompt_builder.update_context("review_history", None)
                                         prompt_builder.update_context("test_failure_history", None)
                                         prompt_builder.update_context("files_changed", None)
+                                        prompt_builder.update_context("bead_prompt_iteration", 0)
                                         _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
                                         stage_idx = stage_order.index(Stage.IMPLEMENT)
                                         continue

@@ -229,3 +229,57 @@ def test_description_defaults_to_title():
     prompt = pb.build("plan")
     # Description should fall back to title
     assert "Add auth" in prompt
+
+
+# --- Fix 1: per-bead prompt iteration counter ---
+
+def test_implement_iteration_0_produces_initial_prompt():
+    """build("implement", 0) should produce the initial prompt."""
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("assigned_bead_id", "bd-abc")
+    pb.update_context("assigned_bead_title", "Task 1")
+    prompt = pb.build("implement", iteration=0)
+    assert prompt.startswith("Implement the code")
+    assert "PRIORITY" not in prompt
+
+
+def test_implement_iteration_1_with_review_issues_produces_retry():
+    """build("implement", 1) with review_issues should produce a retry prompt."""
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("review_issues", [
+        {"file": "x.py", "line": 1, "severity": "major", "description": "bug"},
+    ])
+    prompt = pb.build("implement", iteration=1)
+    assert prompt.startswith("## PRIORITY")
+
+
+def test_implement_iteration_0_after_context_clear_produces_initial():
+    """After clearing feedback context, build("implement", 0) should produce
+    the initial prompt again — not a broken retry prompt."""
+    pb = PromptBuilder("Add auth", "Desc")
+    # Simulate a retry cycle
+    pb.update_context("review_issues", [
+        {"file": "x.py", "line": 1, "severity": "major", "description": "bug"},
+    ])
+    prompt_retry = pb.build("implement", iteration=1)
+    assert "PRIORITY" in prompt_retry
+
+    # Simulate next_bead transition: clear feedback, reset iteration
+    pb.update_context("review_issues", None)
+    pb.update_context("review_history", None)
+    pb.update_context("test_failures", None)
+    pb.update_context("test_failure_history", None)
+    prompt_fresh = pb.build("implement", iteration=0)
+    assert prompt_fresh.startswith("Implement the code")
+    assert "PRIORITY" not in prompt_fresh
+    assert "Verification" not in prompt_fresh.split("\n")[0]
+
+
+# --- Fix 2: reviewer knows implementer capabilities ---
+
+def test_review_prompt_contains_implementer_capabilities():
+    """Review prompt should tell the reviewer that the implementer cannot commit."""
+    pb = PromptBuilder("Add auth", "Desc")
+    prompt = pb.build("review")
+    assert "CANNOT make git commits" in prompt
+    assert "Do NOT flag uncommitted files" in prompt
