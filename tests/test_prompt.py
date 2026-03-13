@@ -114,6 +114,7 @@ class TestNoGate:
 
 class TestMainStatusFile:
     def test_reads_from_status_file(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # isolate from real .worca/active_run
         status_file = tmp_path / "status.json"
         status_file.write_text(json.dumps({
             "stage": "plan",
@@ -127,6 +128,7 @@ class TestMainStatusFile:
         assert status["stage"] == "plan"
 
     def test_returns_none_when_file_missing(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)  # isolate from real .worca/active_run
         monkeypatch.setenv("WORCA_STATUS_FILE", str(tmp_path / "nonexistent.json"))
 
         from worca.hooks.prompt import load_status
