@@ -366,7 +366,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 
 ### W-022: API Duration & Turn Metrics in Pipeline UI
 
-**Status:** Open
+**Status:** Done
 
 **Problem:** The pipeline detail page shows cost per stage and iteration but lacks API duration and turn count metrics. `duration_api_ms` (time spent in LLM API calls vs tool execution) is available from the SDK but not stored. Turn counts are stored per iteration but not surfaced as stage/pipeline totals.
 
@@ -409,7 +409,7 @@ run_pipeline.py --from-beads  # pull all bd ready issues
 | W-019 | P2 | Beads-by-Run Kanban | ui | [x] Done | [W-019-beads-by-run-kanban.md](plans/W-019-beads-by-run-kanban.md) |
 | W-020 | P2 | Latest Iteration Tab on Expand | ui | [x] Done | [W-020-latest-iteration-tab-on-expand.md](plans/W-020-latest-iteration-tab-on-expand.md) |
 | W-021 | P2 | Sticky Header for Content Pages | ui | [x] Done | [W-021-sticky-header-v2.md](plans/W-021-sticky-header-v2.md) |
-| W-022 | P2 | API Duration & Turn Metrics | cc+ui | [ ] | [W-022-api-duration-turn-metrics.md](plans/W-022-api-duration-turn-metrics.md) |
+| W-022 | P2 | API Duration & Turn Metrics | cc+ui | [x] Done | [W-022-api-duration-turn-metrics.md](plans/W-022-api-duration-turn-metrics.md) |
 
 **Legend:**
 - **ID:** Unique identifier (`W-` prefix). Use to reference ideas in plans, beads, and commits.

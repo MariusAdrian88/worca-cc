@@ -37,6 +37,89 @@
 
 ---
 
+## 1b. Codebase Findings & Required Fixes
+
+> The following issues were identified via codebase analysis and must be addressed alongside the implementation tasks above.
+
+### Logging thread safety
+
+- **`_log()`** (runner.py ~line 251) writes to both `sys.stderr` and a shared log file handle. Not thread-safe — concurrent calls from `ThreadPoolExecutor` workers produce garbled lines. **Fix:** wrap with `threading.Lock`.
+- **`_tee_stderr()`** in `claude_cli.py` spawns a daemon thread per `run_agent()` call that tees subprocess stderr to `sys.stderr`. With 3 concurrent implementers, their streams interleave. **Fix:** suppress live stderr tee for parallel workers (`suppress_stderr` param on `run_agent_in_worktree()`); the `.log` file captures everything. Only wave-level `_log()` progress goes to console.
+
+### Log file path changes
+
+- **`_save_stage_output()`** (runner.py ~line 323) hardcodes `iter-{N}` filenames. Both `.json` envelope and `.log` event stream use iteration-number-based names. **Fix:** refactor to accept custom path for parallel mode: `logs/implement/wave-{w}/bead-{bead_id}.json` + `.log`.
+- **`run_agent()`** derives log path from iteration number. **Fix:** accept an explicit `log_path` parameter (already in W-002 Task 5 — ensure both `.json` and `.log` use it).
+
+### `bd ready` bypass
+
+- The runner currently polls `bd ready` one bead at a time (~line 745) and relies on the beads CLI for dependency ordering. `parallel_groups` is stored but never consumed. **Fix:** parallel path must bypass `bd ready` and dispatch from `parallel_groups` directly, with upfront validation:
+
+```python
+def _validate_wave_dependencies(parallel_groups, dependency_graph):
+    """Verify no bead runs before its dependencies complete in an earlier wave."""
+    completed = set()
+    for wave_idx, wave in enumerate(parallel_groups):
+        for bead_id in wave:
+            deps = dependency_graph.get(bead_id, [])
+            unmet = [d for d in deps if d not in completed]
+            if unmet:
+                raise PipelineError(
+                    f"Wave {wave_idx}: {bead_id} depends on {unmet}, not in prior waves"
+                )
+        completed.update(wave)
+```
+
+### PromptBuilder merge-back
+
+- The serial path calls `prompt_builder.update_context("files_changed", ...)` once per bead, overwriting the previous value. After a parallel wave, the **main** PromptBuilder must be updated with the **merged** results of all beads — accumulated `files_changed` and `tests_added`. Without this, the TEST stage only sees the last bead's files (or nothing).
+
+```python
+# After wave completes:
+all_files = []
+all_tests = []
+for worker_result in wave_result.completed:
+    all_files.extend(worker_result.get("files_changed", []))
+    all_tests.extend(worker_result.get("tests_added", []))
+prompt_builder.update_context("files_changed", list(set(all_files)))
+prompt_builder.update_context("tests_added", list(set(all_tests)))
+```
+
+### Per-bead failure history
+
+- `test_failure_history` is a single accumulated list in PromptBuilder context. In parallel mode, failures from different beads would contaminate each other's retry prompts. **Fix:** key failure histories by bead ID:
+
+```python
+per_bead_history = prompt_builder.get_context("per_bead_failure_history", {})
+per_bead_history.setdefault(bead_id, []).append({
+    "attempt": len(per_bead_history.get(bead_id, [])) + 1,
+    "failures": failures_for_this_bead
+})
+prompt_builder.update_context("per_bead_failure_history", per_bead_history)
+```
+
+### Test failure attribution limitation
+
+- The tester runs the full project test suite and doesn't know which bead it's testing. A test failure in a file unrelated to any bead's `files_changed` can't be attributed. **Fallback:** when `_match_failures_to_beads()` can't attribute a failure, retry all beads from the last wave.
+- The guardian reviews `git diff <base>..HEAD` (all commits), so review issues have the same attribution limitation.
+
+### Resume context reconstruction
+
+- `reconstruct_context()` exists in `resume.py` but is **never called** from `runner.py`. Even in serial mode, resumed runs lose accumulated context (`test_failures`, `review_history`, `files_changed`). Parallel mode amplifies this — wave progress, per-bead failure histories, and merged file lists must survive a crash. **Phase 1 workaround:** on `--resume` with parallel mode, restart incomplete waves from scratch.
+
+### UI sequential assumptions (4 breaking issues)
+
+These are tracked separately but documented here for awareness:
+
+| UI Location | Assumption | Breaks How |
+|---|---|---|
+| `_stageWallMs()` in run-detail.js | Sums iteration durations, assumes non-overlapping | Parallel iterations overlap → grossly overstated wall time |
+| `stageTokens[idx]` in token-costs.js | Positional index maps `iter-N.json` files to `iterations[]` array | Wave-based filenames won't match `iter-\d+` glob → empty token data |
+| `iterations[last]` in stage-tab-memory.js | Last array element = most recent | Parallel iterations appended in completion order, not wave order |
+| `_sendArchivedLogs` in ws.js | `parseInt(a.match(/\d+/)[0])` sort | Extracts wave number instead of iteration number from wave-based filenames |
+
+---
+
 ## 2. Data Flow
 
 ```
@@ -504,6 +587,15 @@ After creating all tasks with `bd create` and setting dependencies with `bd dep 
 
 If you are unsure, emit a single group with all task IDs: `[[id1, id2, id3, ...]]`.
 This triggers sequential execution (safe fallback).
+
+### File Disjointness Rules
+
+When decomposing tasks into parallel groups:
+- Tasks within the same group MUST NOT modify overlapping files
+- Each task description MUST list the expected files to be modified
+- If two tasks need to touch the same file, they MUST be in different groups
+  (i.e., one must depend on the other)
+- Prefer more, smaller tasks over fewer, larger ones for better parallelism
 ```
 
 ---
@@ -531,6 +623,38 @@ def record_parallel_implement(status: dict, worker_results: list, worker_count: 
     impl["worker_count"] = worker_count
     impl["worker_results"] = worker_results
 ```
+
+Also add wave-level summary for UI consumption and resume support:
+
+```python
+def record_wave_summary(status: dict, wave_idx: int, bead_ids: list,
+                        started_at: str, completed_at: str,
+                        duration_ms: int, cost_usd: float) -> None:
+    """Record wave-level summary in status for UI rendering and resume."""
+    impl = status.get("stages", {}).get("implement")
+    if impl is None:
+        return
+    waves = impl.setdefault("waves", [])
+    waves.append({
+        "index": wave_idx,
+        "bead_ids": bead_ids,
+        "status": "completed",
+        "started_at": started_at,
+        "completed_at": completed_at,
+        "duration_ms": duration_ms,
+        "cost_usd": cost_usd,
+    })
+```
+
+Each iteration record in parallel mode gets additional fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `bead_id` | `string` | Which bead this iteration implemented |
+| `wave` | `int` | Wave index (0-based) |
+| `parallel` | `bool` | Whether this ran in parallel with other iterations |
+| `worktree_branch` | `string` | Git branch used for this worktree |
+| `merge_status` | `string` | `"merged"` / `"conflict"` / `"pending"` |
 
 ---
 
@@ -739,6 +863,26 @@ Tasks must be implemented in this order due to dependencies:
 - Worktree creation fails (disk full, branch name collision): RuntimeError is raised before any agents start
 - All workers fail: `PipelineError` is raised; status is updated to `error`
 - Conflict resolver fails to fix conflicts: merge is aborted, the pipeline fails with a clear error message naming the conflicting files
+
+### Test/Review Retry in Parallel Mode
+
+After all workers complete and merge:
+
+1. TEST stage runs normally on the merged branch — tester receives the **merged** `files_changed` list from all workers
+2. On test failure: `_match_failures_to_beads()` maps failing test files to workers' `files_changed` lists
+3. Matched beads retry **serially** (parallel mode is for the happy path; retries revert to serial for safety)
+4. Each retried bead gets only its own failure history (from `per_bead_failure_history`), not other beads' failures
+5. If no bead can be attributed: fall back to retrying all beads from the last wave
+
+Same approach for REVIEW/GUARDIAN issues: the guardian reviews `git diff <base>..HEAD` (all workers' changes in one diff). Issues attributed via `issues[].file` → `files_changed` per worker. Unattributable issues trigger retry-all.
+
+Loop counters are already keyed by bead ID (`implement_test:{bead_id}`) — they work identically in parallel mode.
+
+### Resume After Crash
+
+`reconstruct_context()` in `resume.py` is never called from `runner.py` — this is an existing gap. For parallel mode:
+- **Phase 1 workaround:** On `--resume`, restart incomplete waves from scratch (all beads in the wave)
+- **Phase 2:** Implement proper context reconstruction from `status.json` — rebuild `files_changed`, `tests_added`, and `per_bead_failure_history` from completed iteration records
 
 ---
 
