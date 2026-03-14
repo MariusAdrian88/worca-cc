@@ -1,12 +1,22 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
+import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 
-const PID_DIR = join(homedir(), '.worca');
+function findProjectRoot(startDir) {
+  let dir = startDir;
+  while (dir !== dirname(dir)) {
+    if (existsSync(join(dir, '.claude', 'settings.json'))) return dir;
+    dir = dirname(dir);
+  }
+  return startDir;
+}
+
+const PROJECT_ROOT = findProjectRoot(process.cwd());
+const PID_DIR = join(PROJECT_ROOT, '.worca');
 const PID_FILE = join(PID_DIR, 'worca-ui.pid');
 const SERVER_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'index.js');
 
@@ -52,23 +62,48 @@ function isRunning(pid) {
   }
 }
 
-function start({ port, host, open }) {
+function isPortAvailable(port, host) {
+  return new Promise((resolve) => {
+    const srv = createServer();
+    srv.once('error', () => resolve(false));
+    srv.listen(port, host, () => { srv.close(() => resolve(true)); });
+  });
+}
+
+async function findAvailablePort(startPort, host, maxAttempts = 10) {
+  for (let i = 0; i < maxAttempts; i++) {
+    const p = startPort + i;
+    if (await isPortAvailable(p, host)) return p;
+  }
+  return null;
+}
+
+async function start({ port, host, open }) {
   const existing = readPid();
   if (existing && isRunning(existing.pid)) {
     console.log(`worca-ui already running (PID ${existing.pid}) at http://${existing.host}:${existing.port}`);
     return;
   }
 
-  const child = spawn(process.execPath, [SERVER_SCRIPT, '--port', String(port), '--host', host], {
+  const availablePort = await findAvailablePort(port, host);
+  if (availablePort === null) {
+    console.error(`No available port found (tried ${port}-${port + 9})`);
+    process.exit(1);
+  }
+  if (availablePort !== port) {
+    console.log(`Port ${port} in use, using ${availablePort}`);
+  }
+
+  const child = spawn(process.execPath, [SERVER_SCRIPT, '--port', String(availablePort), '--host', host], {
     detached: true,
     stdio: 'ignore',
     cwd: process.cwd()
   });
   child.unref();
 
-  const info = { pid: child.pid, port, host, started_at: new Date().toISOString() };
+  const info = { pid: child.pid, port: availablePort, host, started_at: new Date().toISOString() };
   writePid(info);
-  const url = `http://${host}:${port}`;
+  const url = `http://${host}:${availablePort}`;
   console.log(`worca-ui started (PID ${child.pid}) at ${url}`);
 
   if (open) {
@@ -95,9 +130,10 @@ function stop() {
   removePid();
 }
 
-function restart(opts) {
+async function restart(opts) {
   stop();
-  setTimeout(() => start(opts), 500);
+  await new Promise(r => setTimeout(r, 500));
+  await start(opts);
 }
 
 function status() {
