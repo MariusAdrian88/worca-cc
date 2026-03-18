@@ -23,6 +23,7 @@ from worca.state.status import (
     start_iteration, complete_iteration,
 )
 from worca.utils.beads import bd_ready, bd_show, bd_update, bd_close, bd_label_add
+from worca.utils.gh_issues import gh_issue_start, gh_issue_complete
 from worca.utils.claude_cli import run_agent, terminate_current
 from worca.utils.git import create_branch
 from worca.utils.token_usage import extract_token_usage, aggregate_token_usage, aggregate_by_model
@@ -612,6 +613,9 @@ def run_pipeline(
 
         save_status(status, actual_status_path)
 
+        # Notify GitHub issue that pipeline has started (no-op for non-GH sources)
+        gh_issue_start(status)
+
     logs_dir = os.path.join(run_dir, "logs") if run_dir else os.path.join(worca_dir, "logs")
     _init_orchestrator_log(logs_dir)
 
@@ -1100,6 +1104,9 @@ def run_pipeline(
         # Mark pipeline as completed with timestamp
         status["completed_at"] = datetime.now(timezone.utc).isoformat()
         save_status(status, actual_status_path)
+
+        # Update GitHub issue (post summary, remove label, close)
+        gh_issue_complete(status)
 
         # Update cumulative stats
         stats_dir = os.path.join(os.path.dirname(actual_status_path), "..", "..", "stats")
