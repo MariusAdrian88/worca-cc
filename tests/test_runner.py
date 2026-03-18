@@ -1,7 +1,9 @@
 """Tests for worca.orchestrator.runner — pipeline runner."""
 
+import importlib.util
 import json
 import os
+import sys
 from unittest.mock import patch, MagicMock
 
 from worca.orchestrator.runner import (
@@ -20,6 +22,17 @@ from worca.orchestrator.runner import (
     PipelineError,
 )
 from worca.orchestrator.stages import Stage
+
+
+def _import_run_pipeline():
+    """Import .claude/scripts/run_pipeline.py as a module."""
+    script_path = os.path.join(
+        os.path.dirname(__file__), "..", ".claude", "scripts", "run_pipeline.py",
+    )
+    spec = importlib.util.spec_from_file_location("run_pipeline_script", script_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
 
 
 def test_run_stage_calls_agent():
@@ -597,6 +610,282 @@ def test_bead_limit_derived_from_coordinator(tmp_path):
     assert implement_count[0] == 3
 
 
+# --- gh_issue_start integration ---
+
+def test_run_pipeline_calls_gh_issue_start_for_github_source(tmp_path):
+    """gh_issue_start() is called after init when source is a GitHub issue."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n")
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": False},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_path = str(worca_dir / "status.json")
+    wr = WorkRequest(
+        source_type="github_issue",
+        source_ref="gh:42",
+        title="Fix the bug",
+    )
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1, prompt_override=None):
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    with patch("worca.orchestrator.runner.gh_issue_start") as mock_start:
+                        run_pipeline(
+                            wr,
+                            plan_file=str(plan),
+                            settings_path=str(settings),
+                            status_path=status_path,
+                        )
+
+    # gh_issue_start must have been called exactly once with the status dict
+    mock_start.assert_called_once()
+    call_status = mock_start.call_args[0][0]
+    assert call_status["work_request"]["source_type"] == "github_issue"
+    assert call_status["work_request"]["source_ref"] == "gh:42"
+    assert call_status["run_id"] is not None
+
+
+def test_run_pipeline_calls_gh_issue_start_for_non_github_source(tmp_path):
+    """gh_issue_start() is still called for non-GitHub sources (it's a no-op internally)."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n")
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": False},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_path = str(worca_dir / "status.json")
+    wr = WorkRequest(source_type="prompt", title="Test prompt run")
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1, prompt_override=None):
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    with patch("worca.orchestrator.runner.gh_issue_start") as mock_start:
+                        run_pipeline(
+                            wr,
+                            plan_file=str(plan),
+                            settings_path=str(settings),
+                            status_path=status_path,
+                        )
+
+    # gh_issue_start is called (it handles the no-op internally)
+    mock_start.assert_called_once()
+
+
+# --- gh_issue_complete integration ---
+
+def test_run_pipeline_calls_gh_issue_complete_for_github_source(tmp_path):
+    """gh_issue_complete() is called after pipeline completion for GitHub issues."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n")
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": False},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_path = str(worca_dir / "status.json")
+    wr = WorkRequest(
+        source_type="github_issue",
+        source_ref="gh:42",
+        title="Fix the bug",
+    )
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1, prompt_override=None):
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    with patch("worca.orchestrator.runner.gh_issue_start"):
+                        with patch("worca.orchestrator.runner.gh_issue_complete") as mock_complete:
+                            run_pipeline(
+                                wr,
+                                plan_file=str(plan),
+                                settings_path=str(settings),
+                                status_path=status_path,
+                            )
+
+    # gh_issue_complete must have been called exactly once
+    mock_complete.assert_called_once()
+    call_status = mock_complete.call_args[0][0]
+    assert call_status["work_request"]["source_type"] == "github_issue"
+    assert call_status["work_request"]["source_ref"] == "gh:42"
+    assert call_status["completed_at"] is not None
+    assert call_status["run_id"] is not None
+
+
+def test_run_pipeline_calls_gh_issue_complete_for_non_github_source(tmp_path):
+    """gh_issue_complete() is still called for non-GitHub sources (no-op internally)."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n")
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": False},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_path = str(worca_dir / "status.json")
+    wr = WorkRequest(source_type="prompt", title="Test prompt run")
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1, prompt_override=None):
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    with patch("worca.orchestrator.runner.gh_issue_start"):
+                        with patch("worca.orchestrator.runner.gh_issue_complete") as mock_complete:
+                            run_pipeline(
+                                wr,
+                                plan_file=str(plan),
+                                settings_path=str(settings),
+                                status_path=status_path,
+                            )
+
+    # gh_issue_complete is called (it handles the no-op internally)
+    mock_complete.assert_called_once()
+
+
+def test_run_pipeline_gh_issue_complete_called_after_completed_at_set(tmp_path):
+    """gh_issue_complete() receives status with completed_at already set."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    plan = tmp_path / "plan.md"
+    plan.write_text("# Plan\n")
+
+    settings = tmp_path / "settings.json"
+    settings.write_text(json.dumps({
+        "worca": {
+            "stages": {
+                "plan": {"agent": "planner", "enabled": False},
+                "coordinate": {"agent": "coordinator", "enabled": True},
+                "implement": {"agent": "implementer", "enabled": False},
+                "test": {"agent": "tester", "enabled": False},
+                "review": {"agent": "guardian", "enabled": False},
+                "pr": {"agent": "guardian", "enabled": False},
+            },
+            "agents": {
+                "coordinator": {"model": "opus", "max_turns": 10},
+            },
+            "loops": {},
+        }
+    }))
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_path = str(worca_dir / "status.json")
+    wr = WorkRequest(
+        source_type="github_issue",
+        source_ref="gh:55",
+        title="Test completion timing",
+    )
+
+    def mock_run_stage(stage, context, settings_path, msize=1, iteration=1, prompt_override=None):
+        return {"beads_ids": [], "dependency_graph": {}}, {"type": "result"}
+
+    with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
+        with patch("worca.orchestrator.runner.create_branch"):
+            with patch("worca.orchestrator.runner._write_pid"):
+                with patch("worca.orchestrator.runner._remove_pid"):
+                    with patch("worca.orchestrator.runner.gh_issue_start"):
+                        with patch("worca.orchestrator.runner.gh_issue_complete") as mock_complete:
+                            run_pipeline(
+                                wr,
+                                plan_file=str(plan),
+                                settings_path=str(settings),
+                                status_path=status_path,
+                            )
+
+    # Verify the status passed to gh_issue_complete has completion metrics
+    call_status = mock_complete.call_args[0][0]
+    assert "completed_at" in call_status
+    assert "started_at" in call_status
+    assert "token_usage" in call_status
+
+
 def test_bead_limit_warns_on_stale_beads(tmp_path, capsys):
     """Warning is logged when bd ready returns beads beyond expected count."""
     from worca.orchestrator.work_request import WorkRequest
@@ -661,3 +950,176 @@ def test_bead_limit_warns_on_stale_beads(tmp_path, capsys):
     # Check that the stale bead warning was printed to stderr
     captured = capsys.readouterr()
     assert "stale beads" in captured.err.lower()
+
+
+# --- gh_issue_fail integration (run_pipeline.py exception handlers) ---
+
+def test_run_pipeline_main_calls_gh_issue_fail_on_loop_exhausted(tmp_path, monkeypatch):
+    """run_pipeline.py main() calls gh_issue_fail when LoopExhaustedError is raised."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    mod = _import_run_pipeline()
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_data = {
+        "work_request": {
+            "source_type": "github_issue",
+            "source_ref": "gh:42",
+            "title": "Fix bug",
+        },
+        "run_id": "20260318-120000",
+        "branch": "worca/fix-bug-abc",
+        "started_at": "2026-03-18T12:00:00+00:00",
+        "token_usage": {"total_cost_usd": 5.0, "num_turns": 100},
+    }
+    status_path = str(worca_dir / "status.json")
+    with open(status_path, "w") as f:
+        json.dump(status_data, f)
+
+    error_msg = "Loop implement_test exhausted after 5 iterations"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_pipeline.py", "--source", "gh:issue:42",
+         "--status-dir", str(worca_dir)],
+    )
+    with patch.object(mod, "run_pipeline", side_effect=LoopExhaustedError(error_msg)):
+        with patch.object(mod, "normalize") as mock_normalize:
+            mock_wr = WorkRequest(
+                source_type="github_issue", source_ref="gh:42", title="Fix bug",
+            )
+            mock_normalize.return_value = mock_wr
+            with patch.object(mod, "gh_issue_fail") as mock_fail:
+                try:
+                    mod.main()
+                except SystemExit:
+                    pass
+
+    mock_fail.assert_called_once()
+    call_status = mock_fail.call_args[0][0]
+    assert call_status["work_request"]["source_type"] == "github_issue"
+    assert error_msg in mock_fail.call_args[1]["error"]
+
+
+def test_run_pipeline_main_calls_gh_issue_fail_on_pipeline_error(tmp_path, monkeypatch):
+    """run_pipeline.py main() calls gh_issue_fail when PipelineError is raised."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    mod = _import_run_pipeline()
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_data = {
+        "work_request": {
+            "source_type": "github_issue",
+            "source_ref": "gh:99",
+            "title": "Add feature",
+        },
+        "run_id": "20260318-130000",
+        "branch": "worca/add-feature-xyz",
+        "started_at": "2026-03-18T13:00:00+00:00",
+        "token_usage": {"total_cost_usd": 12.0, "num_turns": 250},
+    }
+    status_path = str(worca_dir / "status.json")
+    with open(status_path, "w") as f:
+        json.dump(status_data, f)
+
+    error_msg = "Guardian rejected changes after 3 review cycles"
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_pipeline.py", "--source", "gh:issue:99",
+         "--status-dir", str(worca_dir)],
+    )
+    with patch.object(mod, "run_pipeline", side_effect=PipelineError(error_msg)):
+        with patch.object(mod, "normalize") as mock_normalize:
+            mock_wr = WorkRequest(
+                source_type="github_issue", source_ref="gh:99", title="Add feature",
+            )
+            mock_normalize.return_value = mock_wr
+            with patch.object(mod, "gh_issue_fail") as mock_fail:
+                try:
+                    mod.main()
+                except SystemExit:
+                    pass
+
+    mock_fail.assert_called_once()
+    call_status = mock_fail.call_args[0][0]
+    assert call_status["work_request"]["source_ref"] == "gh:99"
+    assert error_msg in mock_fail.call_args[1]["error"]
+
+
+def test_run_pipeline_main_gh_issue_fail_noop_for_non_github(tmp_path, monkeypatch):
+    """gh_issue_fail is still called for non-GitHub sources (no-op internally)."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    mod = _import_run_pipeline()
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_data = {
+        "work_request": {"source_type": "prompt", "source_ref": ""},
+        "run_id": "20260318-140000",
+        "branch": "worca/test-xyz",
+    }
+    status_path = str(worca_dir / "status.json")
+    with open(status_path, "w") as f:
+        json.dump(status_data, f)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_pipeline.py", "--prompt", "do something",
+         "--status-dir", str(worca_dir)],
+    )
+    with patch.object(mod, "run_pipeline", side_effect=PipelineError("fail")):
+        with patch.object(mod, "normalize") as mock_normalize:
+            mock_wr = WorkRequest(source_type="prompt", title="do something")
+            mock_normalize.return_value = mock_wr
+            with patch.object(mod, "gh_issue_fail") as mock_fail:
+                try:
+                    mod.main()
+                except SystemExit:
+                    pass
+
+    mock_fail.assert_called_once()
+
+
+def test_run_pipeline_main_gh_issue_fail_never_crashes_pipeline(tmp_path, monkeypatch):
+    """Even if gh_issue_fail raises, the original exit code is preserved."""
+    from worca.orchestrator.work_request import WorkRequest
+
+    mod = _import_run_pipeline()
+
+    worca_dir = tmp_path / ".worca"
+    worca_dir.mkdir()
+    status_data = {
+        "work_request": {
+            "source_type": "github_issue",
+            "source_ref": "gh:42",
+        },
+        "run_id": "20260318-150000",
+        "branch": "worca/test",
+    }
+    with open(str(worca_dir / "status.json"), "w") as f:
+        json.dump(status_data, f)
+
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_pipeline.py", "--source", "gh:issue:42",
+         "--status-dir", str(worca_dir)],
+    )
+    with patch.object(mod, "run_pipeline", side_effect=LoopExhaustedError("exhausted")):
+        with patch.object(mod, "normalize") as mock_normalize:
+            mock_wr = WorkRequest(
+                source_type="github_issue", source_ref="gh:42", title="Test",
+            )
+            mock_normalize.return_value = mock_wr
+            with patch.object(mod, "gh_issue_fail", side_effect=RuntimeError("gh broken")):
+                exit_code = None
+                try:
+                    mod.main()
+                except SystemExit as e:
+                    exit_code = e.code
+
+    assert exit_code == 1

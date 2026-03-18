@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from worca.orchestrator.work_request import normalize
 from worca.orchestrator.runner import run_pipeline, LoopExhaustedError, PipelineError
+from worca.state.status import load_status
+from worca.utils.gh_issues import gh_issue_fail
 
 
 def main():
@@ -77,9 +79,19 @@ def main():
         print(json.dumps(status, indent=2))
     except LoopExhaustedError as e:
         print(f"Loop exhausted: {e}", file=sys.stderr)
+        try:
+            status = load_status(os.path.join(args.status_dir, "status.json"))
+            gh_issue_fail(status, error=str(e))
+        except Exception:
+            pass
         sys.exit(1)
     except PipelineError as e:
         print(f"Pipeline error: {e}", file=sys.stderr)
+        try:
+            status = load_status(os.path.join(args.status_dir, "status.json"))
+            gh_issue_fail(status, error=str(e))
+        except Exception:
+            pass
         sys.exit(2)
 
 
