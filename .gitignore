@@ -10,3 +10,7 @@ build/
 .worktrees/
 .worca/
 node_modules/
+
+# Build artifacts
+.claude/worca-ui/app/main.bundle.js
+.claude/worca-ui/app/main.bundle.js.map

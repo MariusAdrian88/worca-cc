@@ -69,16 +69,74 @@ rsync -av --delete --exclude='__pycache__' "$SRC/scripts/" "$DEST/scripts/"
 rsync -av --exclude='node_modules' --exclude='__pycache__' --exclude='install-worca/' "$SRC/skills/" "$DEST/skills/"
 ```
 
-### Step 4: Merge settings.json (do NOT overwrite)
+### Step 4: Deep-merge settings.json (never overwrite existing values)
 
-The target project's `settings.json` contains project-specific permissions, MCP server config, and model preferences that must be preserved.
+The target project's `settings.json` contains project-specific customizations (permissions, models, max_turns, plan paths, pricing, governance thresholds, etc.) that **must never be overwritten**.
+
+Use a **deep merge** strategy: recursively walk the source JSON and only insert keys that do **not** already exist in the target. Existing values at any depth are always preserved.
+
+#### Merge rules
 
 1. Read both `$WORCA_ROOT/.claude/settings.json` (source) and `$DEST/settings.json` (target)
-2. Compare the `hooks` and `worca` sections — update target if source has changes
-3. **Never overwrite** the `permissions`, `enableAllProjectMcpServers`, `enabledMcpjsonServers`, `model`, or `deny` fields — these are project-specific
-4. **Preserve** the target's `worca.source_repo` value — do not overwrite it with the source's value
-5. If hooks and worca config are identical, report "settings.json already up to date"
-6. If there are differences, merge only the `hooks` and `worca` keys into the target
+2. **Skip entirely** — never touch these top-level keys even if missing: `permissions`, `enableAllProjectMcpServers`, `enabledMcpjsonServers`, `model`, `deny`
+3. **Preserve** the target's `worca.source_repo` value — do not overwrite it with the source's value
+4. For `hooks` and `worca` sections, apply the deep-merge function below
+5. If nothing was added, report "settings.json already up to date"
+6. If new keys were added, report exactly which keys were inserted
+
+#### Deep-merge algorithm
+
+```python
+import json, copy
+
+def deep_merge_new_only(source, target):
+    """Recursively add keys from source that are missing in target.
+    Never overwrite existing target values at any depth."""
+    added = []
+    for key, value in source.items():
+        if key not in target:
+            target[key] = copy.deepcopy(value)
+            added.append(key)
+        elif isinstance(value, dict) and isinstance(target[key], dict):
+            sub_added = deep_merge_new_only(value, target[key])
+            added.extend(f"{key}.{k}" for k in sub_added)
+        # else: key exists in target — leave it untouched
+    return added
+
+# Usage
+src = json.load(open(f"{WORCA_ROOT}/.claude/settings.json"))
+tgt = json.load(open(f"{DEST}/settings.json"))
+
+SKIP_KEYS = {"permissions", "enableAllProjectMcpServers", "enabledMcpjsonServers", "model", "deny"}
+
+added_keys = []
+for section in ("hooks", "worca"):
+    if section in src:
+        tgt.setdefault(section, {})
+        added = deep_merge_new_only(src[section], tgt[section])
+        added_keys.extend(f"{section}.{k}" for k in added)
+
+# Remove worca.source_repo if it was just added from source (preserve target's value)
+if "worca.source_repo" in added_keys:
+    # Will be set correctly in Step 5
+    pass
+
+if added_keys:
+    json.dump(tgt, open(f"{DEST}/settings.json", "w"), indent=2)
+    print(f"Added {len(added_keys)} new keys: {added_keys}")
+else:
+    print("settings.json already up to date")
+```
+
+#### Examples of what this preserves
+
+| Target has | Source has | Result |
+|-----------|-----------|--------|
+| `worca.agents.planner.model: "sonnet"` | `worca.agents.planner.model: "opus"` | Keeps `"sonnet"` (user's choice) |
+| `worca.agents.coordinator.max_turns: 500` | `worca.agents.coordinator.max_turns: 300` | Keeps `500` (user's choice) |
+| `worca.plan_path_template: "plans/{title}.md"` | `worca.plan_path_template: "docs/plans/..."` | Keeps user's template |
+| *(missing)* `worca.pricing` | `worca.pricing: {...}` | Adds pricing section |
+| `hooks.PreToolUse: [custom]` | `hooks.PreToolUse: [default]` | Keeps user's custom hooks |
 
 ### Step 5: Update stored source path
 
