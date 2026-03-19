@@ -1101,6 +1101,9 @@ def run_pipeline(
             if current_stage == Stage.PREFLIGHT:
                 preflight_skipped = result.get("status") == "skipped"
                 iter_extras["outcome"] = "skipped" if preflight_skipped else "success"
+                # No AI call — zero out session/api so timing bar shows this as pipeline overhead
+                iter_extras.setdefault("duration_session_ms", 0)
+                iter_extras.setdefault("duration_api_ms", 0)
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value,
                              **{**stage_extras, "skipped": preflight_skipped})

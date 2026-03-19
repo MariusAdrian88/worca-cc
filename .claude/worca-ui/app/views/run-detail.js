@@ -17,8 +17,12 @@ function _pipelineTimingBar(allIters, pipelineWallMs) {
   if (!pipelineWallMs || pipelineWallMs <= 0) return nothing;
 
   const thinkingMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
-  // duration_session_ms = CLI session time; fall back to duration_ms (wall) if not available
-  const sessionMs = allIters.reduce((sum, it) => sum + (it.duration_session_ms || it.duration_ms || 0), 0);
+  // duration_session_ms = CLI session time. Only fall back to duration_ms for legacy runs
+  // where duration_session_ms is undefined. When explicitly 0 (e.g. preflight), don't fall back.
+  const sessionMs = allIters.reduce((sum, it) => {
+    if (it.duration_session_ms != null) return sum + it.duration_session_ms;
+    return sum + (it.duration_ms || 0); // legacy fallback
+  }, 0);
   const toolsMs = Math.max(0, sessionMs - thinkingMs);
   const restMs = Math.max(0, pipelineWallMs - sessionMs);
 
