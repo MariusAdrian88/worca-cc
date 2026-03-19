@@ -2649,7 +2649,7 @@ sl-details.learnings-panel::part(content) {
 
 .learnings-table-header {
   display: grid;
-  grid-template-columns: 80px 100px 1fr 1fr 50px;
+  grid-template-columns: 80px 100px 1fr 1fr 50px 36px;
   gap: 12px;
   padding: 8px 12px;
   background: var(--bg-tertiary);
@@ -2662,7 +2662,7 @@ sl-details.learnings-panel::part(content) {
 
 .learnings-table-row {
   display: grid;
-  grid-template-columns: 80px 100px 1fr 1fr 50px;
+  grid-template-columns: 80px 100px 1fr 1fr 50px 36px;
   gap: 12px;
   padding: 8px 12px;
   background: var(--bg-secondary);
@@ -2710,7 +2710,7 @@ sl-details.learnings-panel::part(content) {
 
 .learnings-table-header--suggestions,
 .learnings-table-row--suggestions {
-  grid-template-columns: 120px 1fr 1fr;
+  grid-template-columns: 120px 1fr 1fr 36px;
 }
 
 .learnings-table-header--patterns,
@@ -2735,6 +2735,30 @@ sl-details.learnings-panel::part(content) {
   font-size: 0.78rem;
   color: var(--muted);
   font-style: italic;
+}
+
+.learnings-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-secondary);
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.learnings-copy-btn:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.learnings-copy-btn .copy-icon.copy-success {
+  color: var(--success, #22c55e);
 }
 
 /* --- 31. Token & Cost Dashboard --- */

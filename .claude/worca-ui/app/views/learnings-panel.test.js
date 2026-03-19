@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { learningsSectionView, importanceBadge } from './learnings-panel.js';
+import { learningsSectionView, importanceBadge, observationPrompt, suggestionPrompt } from './learnings-panel.js';
 
 function renderToString(template) {
   if (!template) return '';
@@ -287,5 +287,48 @@ describe('importanceBadge', () => {
 
   it('returns neutral for unknown', () => {
     expect(importanceBadge('unknown')).toBe('neutral');
+  });
+});
+
+describe('observationPrompt', () => {
+  it('includes observation details in the prompt', () => {
+    const obs = { category: 'test_loop', importance: 'high', description: 'Repeated failures', evidence: 'Failed 3 times', occurrences: 3 };
+    const prompt = observationPrompt(obs);
+    expect(prompt).toContain('test_loop');
+    expect(prompt).toContain('high');
+    expect(prompt).toContain('Repeated failures');
+    expect(prompt).toContain('Failed 3 times');
+    expect(prompt).toContain('3');
+    expect(prompt).toContain('root cause');
+  });
+
+  it('defaults occurrences to 1', () => {
+    const obs = { category: 'planning', importance: 'low', description: 'x', evidence: 'y' };
+    const prompt = observationPrompt(obs);
+    expect(prompt).toContain('1');
+  });
+});
+
+describe('suggestionPrompt', () => {
+  it('includes suggestion details in the prompt', () => {
+    const s = { target: 'prompt:tester', description: 'Add edge case guidance', rationale: 'Prevents loops' };
+    const prompt = suggestionPrompt(s);
+    expect(prompt).toContain('prompt:tester');
+    expect(prompt).toContain('Add edge case guidance');
+    expect(prompt).toContain('Prevents loops');
+    expect(prompt).toContain('Locate the target');
+  });
+});
+
+describe('copy buttons in rendered output', () => {
+  it('renders copy button in observations table', () => {
+    const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
+    expect(html).toContain('learnings-copy-btn');
+    expect(html).toContain('Copy investigation prompt');
+  });
+
+  it('renders copy button in suggestions table', () => {
+    const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
+    expect(html).toContain('Copy implementation prompt');
   });
 });

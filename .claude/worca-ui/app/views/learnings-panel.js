@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw } from '../utils/icons.js';
+import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw, ClipboardCopy } from '../utils/icons.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 
 /**
@@ -27,6 +27,50 @@ function timingStripView(startedAt, completedAt) {
   `;
 }
 
+export function observationPrompt(obs) {
+  return `Investigate the following observation from a pipeline learning analysis and suggest concrete fixes.
+
+## Observation
+- **Category**: ${obs.category}
+- **Importance**: ${obs.importance}
+- **Description**: ${obs.description}
+- **Evidence**: ${obs.evidence}
+- **Occurrences**: ${obs.occurrences || 1}
+
+## Tasks
+1. Identify the root cause of this observation in the codebase.
+2. Find the specific files and code sections involved.
+3. Propose concrete changes to prevent this from recurring.
+4. If this relates to test failures or loops, identify what test coverage or prompt changes would help.
+`;
+}
+
+export function suggestionPrompt(s) {
+  return `Implement the following suggestion from a pipeline learning analysis.
+
+## Suggestion
+- **Target**: ${s.target}
+- **Description**: ${s.description}
+- **Rationale**: ${s.rationale}
+
+## Tasks
+1. Locate the target (${s.target}) in the codebase — this may be a prompt file, config, agent definition, or code module.
+2. Understand the current behavior and why the suggestion was made.
+3. Implement the suggested change with minimal disruption.
+4. Verify the change doesn't break existing functionality.
+`;
+}
+
+function copyToClipboard(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const icon = btn.querySelector('.copy-icon');
+    if (icon) {
+      icon.classList.add('copy-success');
+      setTimeout(() => icon.classList.remove('copy-success'), 1500);
+    }
+  });
+}
+
 function summaryStripView(summary) {
   if (!summary) return nothing;
   return html`
@@ -49,6 +93,7 @@ function observationsTableView(observations) {
         <span>Description</span>
         <span>Evidence</span>
         <span>Count</span>
+        <span></span>
       </div>
       ${observations.map(obs => html`
         <div class="learnings-table-row">
@@ -59,6 +104,11 @@ function observationsTableView(observations) {
           <span>${obs.description}</span>
           <span class="learnings-evidence">${obs.evidence}</span>
           <span>${obs.occurrences || 1}</span>
+          <sl-tooltip content="Copy investigation prompt">
+            <button class="learnings-copy-btn" @click=${(e) => copyToClipboard(observationPrompt(obs), e.currentTarget)}>
+              <span class="copy-icon">${unsafeHTML(iconSvg(ClipboardCopy, 14))}</span>
+            </button>
+          </sl-tooltip>
         </div>
       `)}
     </div>
@@ -73,12 +123,18 @@ function suggestionsTableView(suggestions) {
         <span>Target</span>
         <span>Suggestion</span>
         <span>Rationale</span>
+        <span></span>
       </div>
       ${suggestions.map(s => html`
         <div class="learnings-table-row learnings-table-row--suggestions">
           <span class="learnings-target">${s.target}</span>
           <span>${s.description}</span>
           <span class="learnings-rationale">${s.rationale}</span>
+          <sl-tooltip content="Copy implementation prompt">
+            <button class="learnings-copy-btn" @click=${(e) => copyToClipboard(suggestionPrompt(s), e.currentTarget)}>
+              <span class="copy-icon">${unsafeHTML(iconSvg(ClipboardCopy, 14))}</span>
+            </button>
+          </sl-tooltip>
         </div>
       `)}
     </div>
