@@ -254,7 +254,11 @@ export function createApp(options = {}) {
     if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
 
     const runId = req.params.id;
-    const statusPath = join(worcaDir, 'runs', runId, 'status.json');
+    // Check both runs/ and results/ directories
+    let statusPath = join(worcaDir, 'runs', runId, 'status.json');
+    if (!existsSync(statusPath)) {
+      statusPath = join(worcaDir, 'results', runId, 'status.json');
+    }
 
     if (!existsSync(statusPath)) {
       return res.status(404).json({ ok: false, error: `Run "${runId}" not found` });
