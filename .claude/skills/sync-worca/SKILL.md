@@ -156,12 +156,12 @@ json.dump(settings, open(settings_path, "w"), indent=2)
 - `.worca/` — runtime state directory, project-specific
 - `worktrees/` — git worktree state, project-specific
 
-### Step 7: Install worca-ui dependencies (if needed)
+### Step 7: Install worca-ui dependencies (if needed) and rebuild
 
-If `$DEST/worca-ui/node_modules/` does not exist, run:
+If `$DEST/worca-ui/node_modules/` does not exist, run `npm install` first. Then always rebuild the UI bundle:
 
 ```bash
-cd "$DEST/worca-ui" && npm install
+cd "$DEST/worca-ui" && npm install && npm run build
 ```
 
 ### Step 8: Report results

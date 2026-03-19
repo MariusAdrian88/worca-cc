@@ -79,10 +79,10 @@ This stores the source path so that `/sync-worca` can find it automatically in t
 
 **Do NOT copy** `settings.local.json` — it is machine-specific.
 
-### Step 4: Install worca-ui dependencies
+### Step 4: Install worca-ui dependencies and build
 
 ```bash
-cd "$DEST/.claude/worca-ui" && npm install
+cd "$DEST/.claude/worca-ui" && npm install && npm run build
 ```
 
 ### Step 5: Initialize beads (if bd CLI is available)
