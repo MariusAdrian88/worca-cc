@@ -36,7 +36,7 @@ def _import_run_pipeline():
 
 
 def test_run_stage_calls_agent():
-    mock_config = {"agent": "planner", "model": "opus", "max_turns": 40, "schema": "plan.json"}
+    mock_config = {"agent": "planner", "model": "claude-opus-4-6", "max_turns": 40, "schema": "plan.json"}
     with patch("worca.orchestrator.runner.get_stage_config", return_value=mock_config):
         with patch("worca.orchestrator.runner.run_agent", return_value={"approach": "test"}) as mock_run:
             result, raw = run_stage(Stage.PLAN, {"prompt": "build auth"})
@@ -45,7 +45,7 @@ def test_run_stage_calls_agent():
 
 
 def test_run_stage_extracts_structured_output():
-    mock_config = {"agent": "planner", "model": "opus", "max_turns": 40, "schema": "plan.json"}
+    mock_config = {"agent": "planner", "model": "claude-opus-4-6", "max_turns": 40, "schema": "plan.json"}
     envelope = {"type": "result", "structured_output": {"approach": "test"}, "total_cost_usd": 1.0}
     with patch("worca.orchestrator.runner.get_stage_config", return_value=mock_config):
         with patch("worca.orchestrator.runner.run_agent", return_value=envelope):
@@ -55,7 +55,7 @@ def test_run_stage_extracts_structured_output():
 
 
 def test_run_stage_passes_correct_args():
-    mock_config = {"agent": "tester", "model": "sonnet", "max_turns": 20, "schema": "test.json"}
+    mock_config = {"agent": "tester", "model": "claude-sonnet-4-6", "max_turns": 20, "schema": "test.json"}
     with patch("worca.orchestrator.runner.get_stage_config", return_value=mock_config):
         with patch("worca.orchestrator.runner.run_agent", return_value={"passed": True}) as mock_run:
             result, raw = run_stage(Stage.TEST, {"prompt": "run tests"})
@@ -64,6 +64,22 @@ def test_run_stage_passes_correct_args():
     assert ".claude/agents/core/tester.md" in str(call_kwargs)
     # Schema path should be resolved
     assert ".claude/worca/schemas/test.json" in str(call_kwargs)
+
+
+def test_run_stage_passes_model_to_run_agent():
+    mock_config = {"agent": "implementer", "model": "claude-sonnet-4-6", "max_turns": 30, "schema": "implement.json"}
+    with patch("worca.orchestrator.runner.get_stage_config", return_value=mock_config):
+        with patch("worca.orchestrator.runner.run_agent", return_value={"ok": True}) as mock_run:
+            run_stage(Stage.IMPLEMENT, {"prompt": "build it"})
+    assert mock_run.call_args.kwargs.get("model") == "claude-sonnet-4-6"
+
+
+def test_run_stage_passes_none_model_when_missing():
+    mock_config = {"agent": "planner", "max_turns": 40, "schema": "plan.json"}
+    with patch("worca.orchestrator.runner.get_stage_config", return_value=mock_config):
+        with patch("worca.orchestrator.runner.run_agent", return_value={"ok": True}) as mock_run:
+            run_stage(Stage.PLAN, {"prompt": "plan it"})
+    assert mock_run.call_args.kwargs.get("model") is None
 
 
 def test_check_loop_limit_within_limit(tmp_path):

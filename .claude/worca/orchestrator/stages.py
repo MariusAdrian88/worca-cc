@@ -63,12 +63,33 @@ def _read_settings(settings_path: str) -> dict:
         return {}
 
 
+_DEFAULT_MODEL_MAP = {
+    "opus": "claude-opus-4-6",
+    "sonnet": "claude-sonnet-4-6",
+    "haiku": "claude-haiku-4-5-20251001",
+}
+
+
+def _resolve_model(shorthand: str, model_map: dict) -> str:
+    """Resolve a model shorthand to a full model ID.
+
+    Looks up shorthand in the provided model_map (from settings), then falls
+    back to _DEFAULT_MODEL_MAP.  If neither has an entry, returns the input
+    as-is (assumed to already be a full model ID).
+    """
+    return model_map.get(shorthand, _DEFAULT_MODEL_MAP.get(shorthand, shorthand))
+
+
 def get_stage_config(stage: Stage, settings_path: str = ".claude/settings.json") -> dict:
     """Read settings.json and return agent config for the given stage.
 
     Agent mapping priority:
     1. worca.stages.<stage>.agent (if present)
     2. STAGE_AGENT_MAP[stage] (hardcoded default)
+
+    Model resolution:
+    1. worca.agents.<agent>.model (shorthand like "sonnet")
+    2. Resolved via worca.models mapping in settings, then _DEFAULT_MODEL_MAP
     """
     settings = _read_settings(settings_path)
     worca = settings.get("worca", {})
@@ -79,9 +100,11 @@ def get_stage_config(stage: Stage, settings_path: str = ".claude/settings.json")
     agent_name = stage_entry.get("agent") or STAGE_AGENT_MAP[stage]
 
     agent_config = worca.get("agents", {}).get(agent_name, {})
+    model_map = worca.get("models", {})
+    raw_model = agent_config.get("model", "sonnet")
     return {
         "agent": agent_name,
-        "model": agent_config.get("model", "sonnet"),
+        "model": _resolve_model(raw_model, model_map),
         "max_turns": agent_config.get("max_turns", 30),
         "schema": STAGE_SCHEMA_MAP.get(stage, f"{stage.value}.json"),
     }

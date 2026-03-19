@@ -7,6 +7,8 @@ from worca.orchestrator.stages import (
     STAGE_AGENT_MAP,
     STAGE_SCHEMA_MAP,
     STAGE_ORDER,
+    _DEFAULT_MODEL_MAP,
+    _resolve_model,
     can_transition,
     get_stage_config,
     get_enabled_stages,
@@ -136,7 +138,7 @@ class TestGetStageConfig:
         missing = str(tmp_path / "nonexistent.json")
         config = get_stage_config(Stage.PLAN, settings_path=missing)
         assert config["agent"] == "planner"
-        assert config["model"] == "sonnet"
+        assert config["model"] == "claude-sonnet-4-6"  # default "sonnet" resolved
         assert config["max_turns"] == 30
         assert config["schema"] == "plan.json"
 
@@ -156,7 +158,7 @@ class TestGetStageConfig:
 
         config = get_stage_config(Stage.PLAN, settings_path=str(settings_file))
         assert config["agent"] == "planner"
-        assert config["model"] == "opus"
+        assert config["model"] == "claude-opus-4-6"  # "opus" resolved via default map
         assert config["max_turns"] == 10
         assert config["schema"] == "plan.json"
 
@@ -167,7 +169,7 @@ class TestGetStageConfig:
 
         config = get_stage_config(Stage.IMPLEMENT, settings_path=str(settings_file))
         assert config["agent"] == "implementer"
-        assert config["model"] == "sonnet"
+        assert config["model"] == "claude-sonnet-4-6"  # default "sonnet" resolved
         assert config["max_turns"] == 30
         assert config["schema"] == "implement.json"
 
@@ -188,14 +190,14 @@ class TestGetStageConfig:
         bad_file.write_text("not valid json")
         config = get_stage_config(Stage.TEST, settings_path=str(bad_file))
         assert config["agent"] == "tester"
-        assert config["model"] == "sonnet"
+        assert config["model"] == "claude-sonnet-4-6"
 
     def test_handles_empty_settings(self, tmp_path):
         empty_file = tmp_path / "empty.json"
         empty_file.write_text("{}")
         config = get_stage_config(Stage.REVIEW, settings_path=str(empty_file))
         assert config["agent"] == "guardian"
-        assert config["model"] == "sonnet"
+        assert config["model"] == "claude-sonnet-4-6"
         assert config["max_turns"] == 30
 
 
@@ -217,7 +219,7 @@ class TestGetStageConfigWithStages:
         settings_file.write_text(json.dumps(settings))
         config = get_stage_config(Stage.PLAN, settings_path=str(settings_file))
         assert config["agent"] == "guardian"
-        assert config["model"] == "opus"
+        assert config["model"] == "claude-opus-4-6"
         assert config["max_turns"] == 30
 
     def test_falls_back_to_hardcoded_when_no_stages_config(self, tmp_path):
@@ -232,7 +234,7 @@ class TestGetStageConfigWithStages:
         settings_file.write_text(json.dumps(settings))
         config = get_stage_config(Stage.PLAN, settings_path=str(settings_file))
         assert config["agent"] == "planner"
-        assert config["model"] == "opus"
+        assert config["model"] == "claude-opus-4-6"
 
     def test_falls_back_to_hardcoded_when_stage_missing_from_stages(self, tmp_path):
         settings = {
@@ -420,3 +422,55 @@ class TestIsLearnEnabled:
         config = get_stage_config(Stage.LEARN, settings_path=missing)
         assert config["agent"] == "learner"
         assert config["schema"] == "learn.json"
+
+
+class TestModelResolution:
+    """Tests for _resolve_model and model mapping in get_stage_config."""
+
+    def test_resolve_model_from_settings_map(self):
+        model_map = {"sonnet": "my-custom-sonnet-id"}
+        assert _resolve_model("sonnet", model_map) == "my-custom-sonnet-id"
+
+    def test_resolve_model_falls_back_to_default_map(self):
+        assert _resolve_model("opus", {}) == "claude-opus-4-6"
+        assert _resolve_model("sonnet", {}) == "claude-sonnet-4-6"
+        assert _resolve_model("haiku", {}) == "claude-haiku-4-5-20251001"
+
+    def test_resolve_model_settings_overrides_default(self):
+        model_map = {"opus": "claude-opus-4-99-custom"}
+        assert _resolve_model("opus", model_map) == "claude-opus-4-99-custom"
+
+    def test_resolve_model_passthrough_full_id(self):
+        assert _resolve_model("claude-sonnet-4-6", {}) == "claude-sonnet-4-6"
+
+    def test_resolve_model_unknown_shorthand_passthrough(self):
+        assert _resolve_model("gpt-4o", {}) == "gpt-4o"
+
+    def test_get_stage_config_uses_settings_model_map(self, tmp_path):
+        settings = {
+            "worca": {
+                "models": {
+                    "sonnet": "claude-sonnet-custom-123"
+                },
+                "agents": {
+                    "implementer": {"model": "sonnet", "max_turns": 30}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        config = get_stage_config(Stage.IMPLEMENT, settings_path=str(settings_file))
+        assert config["model"] == "claude-sonnet-custom-123"
+
+    def test_get_stage_config_resolves_without_models_section(self, tmp_path):
+        settings = {
+            "worca": {
+                "agents": {
+                    "implementer": {"model": "sonnet", "max_turns": 30}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        config = get_stage_config(Stage.IMPLEMENT, settings_path=str(settings_file))
+        assert config["model"] == "claude-sonnet-4-6"

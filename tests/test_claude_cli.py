@@ -46,6 +46,18 @@ def test_build_command_includes_no_session_persistence():
     assert "--no-session-persistence" in cmd
 
 
+def test_build_command_with_model():
+    cmd = build_command("prompt", agent="coder", model="claude-sonnet-4-6")
+    assert "--model" in cmd
+    idx = cmd.index("--model")
+    assert cmd[idx + 1] == "claude-sonnet-4-6"
+
+
+def test_build_command_without_model():
+    cmd = build_command("prompt", agent="coder")
+    assert "--model" not in cmd
+
+
 def test_build_command_no_max_turns():
     """max-turns is not a valid claude CLI flag."""
     cmd = build_command("prompt", agent="planner")
@@ -136,3 +148,23 @@ def test_run_agent_max_turns_accepted_but_ignored():
         run_agent("prompt", agent="planner", max_turns=999)
     args = mock_popen.call_args[0][0]
     assert "--max-turns" not in args
+
+
+def test_run_agent_passes_model_to_cli():
+    result_event = {"ok": True}
+    mock_proc = _make_mock_popen(result_event)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        run_agent("prompt", agent="implementer", model="claude-sonnet-4-6")
+    args = mock_popen.call_args[0][0]
+    assert "--model" in args
+    idx = args.index("--model")
+    assert args[idx + 1] == "claude-sonnet-4-6"
+
+
+def test_run_agent_omits_model_when_none():
+    result_event = {"ok": True}
+    mock_proc = _make_mock_popen(result_event)
+    with patch("worca.utils.claude_cli.subprocess.Popen", return_value=mock_proc) as mock_popen:
+        run_agent("prompt", agent="planner")
+    args = mock_popen.call_args[0][0]
+    assert "--model" not in args

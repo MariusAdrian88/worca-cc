@@ -476,6 +476,7 @@ def run_stage(
         max_turns=max_turns,
         output_format="stream-json",
         json_schema=_schema_path(config["schema"]),
+        model=config.get("model"),
         log_path=log_path,
     )
     # claude CLI returns a JSON envelope; extract structured_output if present

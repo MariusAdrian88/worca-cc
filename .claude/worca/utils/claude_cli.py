@@ -40,6 +40,7 @@ def build_command(
     agent: str,
     output_format: str = "stream-json",
     json_schema: Optional[str] = None,
+    model: Optional[str] = None,
     **kwargs,
 ) -> list[str]:
     """Build the claude CLI command list without executing.
@@ -50,6 +51,7 @@ def build_command(
         output_format: Output format ("text", "json", "stream-json").
         json_schema: Inline JSON schema string for structured output, or path
                      to a .json file (will be read and inlined).
+        model: Model shorthand or full ID (e.g. "sonnet", "opus", "claude-sonnet-4-6").
     """
     cmd = [
         "claude",
@@ -63,6 +65,8 @@ def build_command(
         "--dangerously-skip-permissions",
         "--disallowedTools", "Skill,EnterPlanMode,EnterWorktree,TodoWrite",
     ]
+    if model:
+        cmd.extend(["--model", model])
     if output_format == "stream-json":
         cmd.append("--verbose")
     if json_schema is not None:
@@ -216,6 +220,7 @@ def run_agent(
     max_turns: int = 0,
     output_format: str = "stream-json",
     json_schema: Optional[str] = None,
+    model: Optional[str] = None,
     log_path: Optional[str] = None,
     on_event: Optional[Callable[[dict], None]] = None,
 ) -> dict:
@@ -228,6 +233,7 @@ def run_agent(
     (claude -p does not support --max-turns). Use --max-budget-usd for cost control.
 
     Args:
+        model: Model shorthand or full ID to pass via --model flag.
         log_path: If provided, write human-readable event summaries to this file.
         on_event: Optional callback invoked for each stream-json event.
 
@@ -238,6 +244,7 @@ def run_agent(
         agent=agent,
         output_format=output_format,
         json_schema=json_schema,
+        model=model,
     )
 
     global _current_proc
