@@ -20,20 +20,68 @@ python .claude/scripts/run_pipeline.py --prompt "Add user auth"
 
 ## Architecture
 
-5 agents: Planner (Opus) → Coordinator (Opus) → Implementer(s) (Sonnet) → Tester (Sonnet) → Guardian (Opus)
+6 stages: Preflight → Planner (Opus) → Coordinator (Opus) → Implementer(s) (Sonnet) → Tester (Sonnet) → Guardian (Opus)
 
 All governance enforced via Python hooks in `.claude/hooks/`.
 
+## Project Structure
+
+```
+.claude/
+  agents/core/           # Agent .md templates (planner, coordinator, implementer, tester, guardian)
+  hooks/                 # Python hook scripts (pre_tool_use, post_tool_use, etc.)
+  scripts/               # Pipeline entry points (run_pipeline.py, preflight_checks.py)
+  settings.json          # All pipeline config under the "worca" key
+  worca/
+    orchestrator/
+      runner.py          # Main pipeline state machine and stage loop
+      stages.py          # Stage enum, STAGE_ORDER, transitions, config readers
+      prompt_builder.py  # Per-stage prompt construction
+      error_classifier.py # LLM error classification + circuit breaker
+      resume.py          # Resume point detection
+      work_request.py    # Input normalization (gh issues, beads, prompts)
+    state/
+      status.py          # Status JSON read/write, iteration tracking
+    utils/
+      claude_cli.py      # Claude subprocess management
+      beads.py           # Beads CLI wrapper
+      gh_issues.py       # GitHub issue lifecycle
+      git.py             # Git operations
+      env.py             # PATH enrichment
+    schemas/             # JSON schemas for structured agent output
+  worca-ui/              # Web UI (lit-html + Shoelace + esbuild)
+    app/                 # Source files (views/, utils/, styles.css, main.js)
+    server/              # Express API server
+tests/                   # Python tests (pytest)
+docs/plans/              # Feature plans (W-NNN-slug.md)
+```
+
 ## Configuration
 
-Agent config in `.claude/settings.json` under the `worca` namespace.
+Agent config in `.claude/settings.json` under the `worca` namespace. Key sections:
+- `worca.stages` — enable/disable stages, override agents
+- `worca.agents` — model and max_turns per agent
+- `worca.models` — shorthand→full model ID mapping
+- `worca.loops` — max iterations for test/review/planning retry loops
+- `worca.circuit_breaker` — error classification and halt thresholds
+- `worca.governance` — hook guards and dispatch rules
 
 ## Testing
 
 ```bash
-pytest tests/ -v
-npx vitest run .claude/worca-ui/server/  # UI server tests
+pytest tests/ -v                           # All Python tests
+pytest tests/test_<module>.py -v           # Single module
+npx vitest run .claude/worca-ui/server/    # UI server tests
 ```
+
+Test naming: `tests/test_<module>.py` mirrors source module names. Pre-existing failures in unrelated tests should be ignored — only verify tests relevant to your changes.
+
+## Governance
+
+- Only the **guardian** agent may run `git commit` (enforced by pre_tool_use hook checking `WORCA_AGENT` env var)
+- Source file writes are blocked until `MASTER_PLAN.md` exists (plan_check hook)
+- The post_tool_use hook has a test gate: 2 consecutive pytest failures block further tool calls
+- Subagent dispatch is restricted per agent role (tracking hook)
 
 ## worca-ui Development
 
