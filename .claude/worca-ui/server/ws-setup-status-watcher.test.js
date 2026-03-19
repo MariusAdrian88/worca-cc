@@ -112,6 +112,13 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
     const runId = `run-null-${Date.now()}`;
     const runDir = join(worcaDir, 'runs', runId);
 
+    // Connect WS client BEFORE triggering any watchers to avoid missing broadcasts
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    await new Promise((resolve, reject) => {
+      ws.on('open', resolve);
+      ws.on('error', reject);
+    });
+
     // Set up a fully-formed run so the watcher fires on the correct directory
     mkdirSync(runDir, { recursive: true });
     writeFileSync(join(worcaDir, 'active_run'), runId);
@@ -124,13 +131,7 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
     );
 
     // Give activeRunWatcher and setupStatusWatcher time to establish
-    await waitMs(200);
-
-    const ws = new WebSocket(`ws://localhost:${port}/ws`);
-    await new Promise((resolve, reject) => {
-      ws.on('open', resolve);
-      ws.on('error', reject);
-    });
+    await waitMs(300);
 
     // Overwrite status.json to trigger a watcher event with potential null filename
     writeFileSync(
@@ -147,7 +148,7 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
       ws,
       'runs-list',
       null,
-      1500
+      3000
     );
     expect(msg.payload.runs).toBeDefined();
 
