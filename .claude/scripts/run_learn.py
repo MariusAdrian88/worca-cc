@@ -65,11 +65,16 @@ def run_learn(run_id, status_dir, settings_path, msize):
     Raises:
         FileNotFoundError: If status.json doesn't exist for the run.
     """
+    # Check both runs/ and results/ directories
     run_dir = os.path.join(status_dir, "runs", run_id)
     status_path = os.path.join(run_dir, "status.json")
 
     if not os.path.exists(status_path):
-        raise FileNotFoundError(f"No status.json found for run {run_id} at {status_path}")
+        run_dir = os.path.join(status_dir, "results", run_id)
+        status_path = os.path.join(run_dir, "status.json")
+
+    if not os.path.exists(status_path):
+        raise FileNotFoundError(f"No status.json found for run {run_id}")
 
     status = load_status(status_path)
 
