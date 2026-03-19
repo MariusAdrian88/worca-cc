@@ -6,6 +6,67 @@ import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy, Coins, RotateCcw, List } from '../utils/icons.js';
 import { beadsDependencyGraph, priorityVariant, statusVariant } from './beads-panel.js';
 import { resolveIterationTab } from './stage-tab-memory.js';
+import { scrollOnExpand } from '../utils/scroll.js';
+
+/**
+ * Render a stacked horizontal timing bar at the pipeline level.
+ * Segments: Thinking (Agent) | Tools (Agent) | Rest of Pipeline
+ * 100% = pipeline wall time (started_at → last stage end).
+ */
+function _pipelineTimingBar(allIters, pipelineWallMs) {
+  if (!pipelineWallMs || pipelineWallMs <= 0) return nothing;
+
+  const thinkingMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
+  // duration_session_ms = CLI session time. Only fall back to duration_ms for legacy runs
+  // where duration_session_ms is undefined. When explicitly 0 (e.g. preflight), don't fall back.
+  const sessionMs = allIters.reduce((sum, it) => {
+    if (it.duration_session_ms != null) return sum + it.duration_session_ms;
+    return sum + (it.duration_ms || 0); // legacy fallback
+  }, 0);
+  const toolsMs = Math.max(0, sessionMs - thinkingMs);
+  const restMs = Math.max(0, pipelineWallMs - sessionMs);
+
+  if (thinkingMs <= 0 && toolsMs <= 0) return nothing;
+
+  const thinkingPct = Math.round(thinkingMs / pipelineWallMs * 100);
+  const toolsPct = Math.round(toolsMs / pipelineWallMs * 100);
+  const restPct = Math.max(0, 100 - thinkingPct - toolsPct);
+
+  const segments = [
+    { key: 'thinking', pct: thinkingPct, ms: thinkingMs, label: 'Thinking (Agent)', desc: 'Time spent on model inference (API round-trips)', cls: 'timing-bar-thinking' },
+    { key: 'tools', pct: toolsPct, ms: toolsMs, label: 'Tools (Agent)', desc: 'Time spent executing tools (bash, file I/O, subprocesses)', cls: 'timing-bar-tools' },
+    { key: 'rest', pct: restPct, ms: restMs, label: 'Rest of Pipeline', desc: 'Orchestration, status writes, stage transitions, retry delays', cls: 'timing-bar-rest' },
+  ].filter(s => s.pct > 0);
+
+  return html`
+    <div class="pipeline-timing-bar-container">
+      <div class="pipeline-timing-bar">
+        ${segments.map(s => html`
+          <sl-tooltip>
+            <div slot="content">
+              <strong>${s.label}</strong><br>
+              ${formatDuration(s.ms)} of ${formatDuration(pipelineWallMs)}<br>
+              <span style="opacity:0.7">${s.desc}</span>
+            </div>
+            <div class="timing-bar-segment ${s.cls}" style="width:${s.pct}%">
+              ${s.pct >= 15 ? html`<span class="timing-bar-segment-text">${s.label} ${s.pct}%</span>` :
+                s.pct >= 8 ? html`<span class="timing-bar-segment-text">${s.pct}%</span>` : nothing}
+            </div>
+          </sl-tooltip>
+        `)}
+      </div>
+      <div class="pipeline-timing-bar-legend">
+        ${segments.map(s => html`
+          <span class="timing-bar-legend-item">
+            <span class="timing-bar-legend-swatch ${s.cls}"></span>
+            <span class="timing-bar-legend-label">${s.label}</span>
+            <span class="timing-bar-legend-value">${formatDuration(s.ms)} (${s.pct}%)</span>
+          </span>
+        `)}
+      </div>
+    </div>
+  `;
+}
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -49,6 +110,105 @@ function _outcomeLabel(outcome) {
   return html`<span class="iteration-outcome ${cls}">${outcome.replace(/_/g, ' ')}</span>`;
 }
 
+function _classificationVariant(category) {
+  if (category === 'infra_transient') return 'warning';
+  if (category === 'infra_permanent' || category === 'logic_stuck' || category === 'env_missing') return 'danger';
+  return 'neutral';
+}
+
+function _classificationStripView(iter) {
+  const c = iter.classification;
+  if (!c) return nothing;
+  const variant = _classificationVariant(c.category);
+  return html`
+    <div class="classification-strip">
+      <span class="classification-strip-item">
+        <span class="classification-strip-label">Category:</span>
+        <sl-badge variant="${variant}" pill>${c.category}</sl-badge>
+      </span>
+      <span class="classification-strip-item">
+        <span class="classification-strip-label">Retriable:</span>
+        <span class="classification-strip-value">${c.retriable ? 'yes' : 'no'}</span>
+      </span>
+      <span class="classification-strip-item">
+        <span class="classification-strip-label">Similar:</span>
+        <span class="classification-strip-value">${c.similar_to_previous ? 'yes' : 'no'}</span>
+      </span>
+      ${c.remediation ? html`
+        <span class="classification-strip-item classification-remediation">
+          <span class="classification-strip-label">Remediation:</span>
+          <span class="classification-strip-value">${c.remediation}</span>
+        </span>
+      ` : nothing}
+    </div>
+  `;
+}
+
+function _circuitBreakerBannerView(run, settings) {
+  const cb = run.circuit_breaker;
+  if (!cb) return nothing;
+  if (cb.tripped) {
+    return html`
+      <sl-alert class="circuit-breaker-banner" variant="danger" open>
+        <strong>Circuit breaker tripped:</strong> ${cb.tripped_reason || 'Pipeline halted due to repeated errors.'}
+      </sl-alert>
+    `;
+  }
+  const failures = cb.consecutive_failures || 0;
+  if (failures > 0) {
+    const threshold = (settings.circuit_breaker || {}).max_consecutive_failures ?? 3;
+    return html`
+      <sl-alert class="circuit-breaker-banner" variant="warning" open>
+        <strong>Circuit breaker warning:</strong> ${String(failures)}/${String(threshold)} consecutive failures.
+      </sl-alert>
+    `;
+  }
+  return nothing;
+}
+
+function _preflightCheckBadgeVariant(status) {
+  if (status === 'pass') return 'success';
+  if (status === 'warn') return 'warning';
+  if (status === 'fail') return 'danger';
+  return 'neutral';
+}
+
+function _preflightChecksView(stage, iter) {
+  const isSkipped = stage.skipped || iter.outcome === 'skipped';
+  if (isSkipped) {
+    return html`<div class="preflight-checks-view"><sl-badge variant="neutral" pill>Skipped</sl-badge></div>`;
+  }
+  const output = iter.output || {};
+  const checks = output.checks || [];
+  const summary = output.summary || '';
+  if (!checks.length && !summary) return nothing;
+  return html`
+    <div class="preflight-checks-view">
+      ${summary ? html`<div class="preflight-summary">${summary}</div>` : nothing}
+      ${checks.length > 0 ? html`
+        <table class="preflight-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Check</th>
+              <th>Message</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${checks.map(check => html`
+              <tr>
+                <td><sl-badge variant="${_preflightCheckBadgeVariant(check.status)}" pill>${check.status}</sl-badge></td>
+                <td class="preflight-check-name">${check.name}</td>
+                <td class="preflight-check-message">${check.message || ''}</td>
+              </tr>
+            `)}
+          </tbody>
+        </table>
+      ` : nothing}
+    </div>
+  `;
+}
+
 function _stageCost(iterations) {
   return iterations.reduce((sum, it) => sum + (it.cost_usd || 0), 0);
 }
@@ -77,6 +237,7 @@ function _stageToJson(key, stage, stageAgent, stageModel, promptData) {
       turns: it.turns || undefined,
       cost_usd: it.cost_usd || undefined,
       duration_ms: it.duration_ms || undefined,
+      duration_session_ms: it.duration_session_ms || undefined,
       duration_api_ms: it.duration_api_ms || undefined,
       started_at: it.started_at || undefined,
       completed_at: it.completed_at || undefined,
@@ -138,6 +299,7 @@ function _iterationDetailView(iter, stageKey, stageAgent, promptData) {
       </div>
       ${iter.trigger ? html`<div class="detail-row">${_triggerLabel(iter.trigger)}</div>` : nothing}
       ${iter.outcome ? html`<div class="detail-row">${_outcomeLabel(iter.outcome)}</div>` : nothing}
+      ${_classificationStripView(iter)}
       ${_agentPromptSection(stageKey, iterPromptData)}
     </div>
   `;
@@ -155,7 +317,7 @@ function _agentPromptSection(_stageKey, promptData) {
   const { agentInstructions, userPrompt } = promptData;
   if (!agentInstructions && !userPrompt) return nothing;
   return html`
-    <sl-details class="agent-prompt-section">
+    <sl-details class="agent-prompt-section" @sl-after-show=${scrollOnExpand}>
       <div slot="summary" class="agent-prompt-header">
         <span class="stage-meta-icon">${unsafeHTML(iconSvg(FileText, 12))}</span>
         Agent Instructions
@@ -191,7 +353,7 @@ export function runBeadsSectionView(beads) {
   if (beads.length === 0) {
     return html`
       <div class="run-beads-section">
-        <sl-details class="run-beads-panel">
+        <sl-details class="run-beads-panel" @sl-after-show=${scrollOnExpand}>
           <div slot="summary" class="run-beads-header">
             <span class="run-beads-icon">${unsafeHTML(iconSvg(List, 16))}</span>
             <span class="run-beads-title">Beads</span>
@@ -203,7 +365,7 @@ export function runBeadsSectionView(beads) {
   }
   return html`
     <div class="run-beads-section">
-      <sl-details class="run-beads-panel">
+      <sl-details class="run-beads-panel" @sl-after-show=${scrollOnExpand}>
         <div slot="summary" class="run-beads-header">
           <span class="run-beads-icon">${unsafeHTML(iconSvg(List, 16))}</span>
           <span class="run-beads-title">Beads</span>
@@ -245,6 +407,7 @@ export function runDetailView(run, settings = {}, options = {}) {
   return html`
     <div class="run-detail">
       ${stageTimelineView(stages, stageUi, run.active)}
+      ${_circuitBreakerBannerView(run, settings)}
 
       <div class="run-info-section">
         ${branch ? html`
@@ -258,20 +421,17 @@ export function runDetailView(run, settings = {}, options = {}) {
         ${(() => {
           const allIters = Object.values(stages).flatMap(s => s.iterations || []);
           const pipelineCost = allIters.reduce((sum, it) => sum + (it.cost_usd || 0), 0);
-          const pipelineApiMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
           const pipelineTurns = allIters.reduce((sum, it) => sum + (it.turns || 0), 0);
-          const pipelineWallMs = allIters.reduce((sum, it) => {
-            if (it.started_at && it.completed_at) return sum + elapsed(it.started_at, it.completed_at);
-            return sum;
-          }, 0);
-          const apiPct = pipelineWallMs > 0 && pipelineApiMs > 0 ? Math.round(pipelineApiMs / pipelineWallMs * 100) : 0;
-          return (pipelineCost > 0 || pipelineApiMs > 0 || pipelineTurns > 0) ? html`
-            <div class="pipeline-cost-strip">
-              ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
-              ${pipelineApiMs > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(pipelineApiMs)}${apiPct > 0 ? ` (${apiPct}%)` : ''}</span></span>` : nothing}
-              ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
-            </div>
-          ` : nothing;
+          const pipelineWallMs = run.started_at && endTime ? elapsed(run.started_at, endTime) : 0;
+          return html`
+            ${(pipelineCost > 0 || pipelineTurns > 0) ? html`
+              <div class="pipeline-cost-strip">
+                ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
+                ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
+              </div>
+            ` : nothing}
+            ${_pipelineTimingBar(allIters, pipelineWallMs)}
+          `;
         })()}
       </div>
 
@@ -290,6 +450,7 @@ export function runDetailView(run, settings = {}, options = {}) {
           return html`
             <sl-details ?open=${stageStatus === 'in_progress'} class="stage-panel"
               @sl-after-show=${(e) => {
+                scrollOnExpand(e);
                 if (!hasMultipleIterations) return;
                 const tabGroup = e.target.querySelector('sl-tab-group');
                 if (!tabGroup) return;
@@ -397,6 +558,8 @@ export function runDetailView(run, settings = {}, options = {}) {
                       ${iterations.length === 1 && iterations[0].outcome ? html`<div class="detail-row">${_outcomeLabel(iterations[0].outcome)}</div>` : nothing}
                       ${stage.task_progress ? html`<div class="detail-row"><span class="detail-label">Progress:</span> ${stage.task_progress}</div>` : nothing}
                       ${stage.error ? html`<div class="detail-row detail-error"><span class="detail-label">Error:</span> ${stage.error}</div>` : nothing}
+                      ${iterations.length === 1 ? _classificationStripView(iterations[0]) : nothing}
+                      ${key === 'preflight' && iterations.length === 1 ? _preflightChecksView(stage, iterations[0]) : nothing}
                       ${promptData ? _agentPromptSection(key, promptData) : nothing}
                     </div>
                   </div>

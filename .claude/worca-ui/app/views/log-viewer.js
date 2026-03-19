@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, ArrowDown, Pause, Search, Star, Clock } from '../utils/icons.js';
+import { scrollOnExpand } from '../utils/scroll.js';
 
 // ANSI color palette for stage tags
 const STAGE_COLORS = [
@@ -163,7 +164,7 @@ export function logViewerView(state, { onStageFilter, onIterationFilter, onSearc
 
   return html`
     <div class="log-history-container">
-      <sl-details class="log-history-panel">
+      <sl-details class="log-history-panel" @sl-after-show=${scrollOnExpand}>
         <div slot="summary" class="log-history-header">
           <span class="log-history-icon">${unsafeHTML(iconSvg(Clock, 16))}</span>
           <span class="log-history-title">Log History</span>

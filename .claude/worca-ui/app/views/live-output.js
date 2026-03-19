@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Activity } from '../utils/icons.js';
+import { scrollOnExpand } from '../utils/scroll.js';
 
 // ANSI color palette (matches log-viewer.js)
 const STAGE_COLORS = [
@@ -205,7 +206,7 @@ export function liveOutputView(stageName, isRunning) {
 
   return html`
     <div class="live-output-container">
-      <sl-details open class="live-output-panel">
+      <sl-details open class="live-output-panel" @sl-after-show=${scrollOnExpand}>
         <div slot="summary" class="live-output-header">
           <span class="live-output-icon">${unsafeHTML(iconSvg(Activity, 16))}</span>
           <span class="live-output-title">Live Output</span>

@@ -15,9 +15,10 @@ You work on a single Beads task at a time in an isolated worktree.
 3. Read the task description: `bd show <id>`
 4. Implement using TDD:
    - Write failing test
-   - Run test → verify FAIL
+   - Run only the test(s) relevant to your task → verify FAIL
    - Write minimal code to pass
-   - Run test → verify PASS
+   - Run only the relevant test(s) → verify PASS
+   - Do NOT run the full test suite — that is the Tester's job
 5. Commit changes
 6. Close the task: `bd close <id>`
 7. If you discover new work needed, create a Beads task: `bd create --title="..."`
@@ -29,7 +30,7 @@ When your prompt says "Fix All Issues" or "Fix Test Failures" or "Fix Review Iss
 1. Read the error list in the prompt carefully
 2. For each error, identify the root cause in the codebase
 3. Fix the code — you are NOT limited to a single bead's scope
-4. Run the full test suite to verify your fixes
+4. Run only the tests related to the files you changed to verify your fixes. Do NOT run the full test suite — the Tester stage handles that
 5. Do NOT use `bd ready` or `bd close` — you are fixing, not implementing new tasks
 6. Produce a structured result with all files you changed
 
