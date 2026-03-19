@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Lightbulb } from '../utils/icons.js';
+import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw } from '../utils/icons.js';
 
 /**
  * Map importance level to sl-badge variant.
@@ -13,6 +13,14 @@ export function importanceBadge(importance) {
     case 'low': return 'neutral';
     default: return 'neutral';
   }
+}
+
+function formatElapsed(ms) {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  if (min === 0) return `${sec}s`;
+  return `${min}m ${sec}s`;
 }
 
 function summaryStripView(summary) {
@@ -136,40 +144,117 @@ function recurringPatternsView(patterns) {
   `;
 }
 
+const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
+
 /**
  * Render the learnings section panel.
- * @param {object|null|undefined} learnings - The learnings data from status.stages.learn output
- * @param {object} options - { onRunLearn: Function, learnRunning: boolean }
+ * @param {object|null|undefined} learnStage - The full learn stage object from status.stages.learn
+ * @param {object} options - { onRunLearn: Function }
  */
-export function learningsSectionView(learnings, options = {}) {
-  const hasData = learnings && learnings.observations;
-  const observations = hasData ? learnings.observations : [];
-  const suggestions = hasData ? (learnings.suggestions || []) : [];
+export function learningsSectionView(learnStage, options = {}) {
+  const status = learnStage?.status;
+  const output = learnStage?.iterations?.[0]?.output;
+  const hasData = output && output.observations;
+  const error = learnStage?.error || learnStage?.iterations?.[0]?.error;
+  const startedAt = learnStage?.started_at || learnStage?.iterations?.[0]?.started_at;
+
+  let innerContent;
+
+  if (status === 'in_progress' || status === 'pending') {
+    const startTime = startedAt ? new Date(startedAt) : null;
+    const elapsedMs = startTime ? Date.now() - startTime.getTime() : 0;
+    const isStale = elapsedMs > STALE_THRESHOLD_MS;
+
+    if (isStale) {
+      innerContent = html`
+        <div class="learnings-error">
+          <div class="learnings-error-icon">
+            ${unsafeHTML(iconSvg(AlertTriangle, 20))}
+          </div>
+          <div class="learnings-error-text">
+            <p class="learnings-error-title">Learning analysis appears to have stalled</p>
+            <p class="learnings-error-detail">Started ${startTime.toLocaleTimeString()} (${formatElapsed(elapsedMs)} ago)</p>
+          </div>
+          <sl-button variant="warning" size="small" @click=${options.onRunLearn}>
+            ${unsafeHTML(iconSvg(RefreshCw, 14))} Retry
+          </sl-button>
+        </div>
+      `;
+    } else {
+      const elapsed = startTime ? formatElapsed(elapsedMs) : '';
+      innerContent = html`
+        <div class="learnings-in-progress">
+          <div class="learnings-in-progress-spinner">
+            ${unsafeHTML(iconSvg(Loader, 20, 'icon-spin'))}
+          </div>
+          <div class="learnings-in-progress-text">
+            <p class="learnings-in-progress-title">Learning analysis in progress...</p>
+            ${startTime ? html`
+              <p class="learnings-in-progress-meta">
+                Started ${startTime.toLocaleTimeString()}${elapsed ? html` &mdash; ${elapsed}` : nothing}
+              </p>
+            ` : nothing}
+          </div>
+        </div>
+      `;
+    }
+  } else if (status === 'error') {
+    innerContent = html`
+      <div class="learnings-error">
+        <div class="learnings-error-icon">
+          ${unsafeHTML(iconSvg(AlertTriangle, 20))}
+        </div>
+        <div class="learnings-error-text">
+          <p class="learnings-error-title">Learning analysis failed</p>
+          ${error ? html`<p class="learnings-error-detail">${error}</p>` : nothing}
+        </div>
+        <sl-button variant="warning" size="small" @click=${options.onRunLearn}>
+          ${unsafeHTML(iconSvg(RefreshCw, 14))} Retry Learning Analysis
+        </sl-button>
+      </div>
+    `;
+  } else if (hasData) {
+    innerContent = html`
+      ${summaryStripView(output.run_summary)}
+      ${observationsTableView(output.observations)}
+      ${suggestionsTableView(output.suggestions || [])}
+      ${recurringPatternsView(output.recurring_patterns)}
+      <div class="learnings-rerun">
+        <sl-button variant="text" size="small" @click=${options.onRunLearn}>
+          ${unsafeHTML(iconSvg(RefreshCw, 12))} Re-run Analysis
+        </sl-button>
+      </div>
+    `;
+  } else {
+    innerContent = html`
+      <div class="learnings-empty">
+        <p>Learning analysis has not been run for this pipeline execution.</p>
+        <sl-button variant="primary" size="small" @click=${options.onRunLearn}>
+          Run Learning Analysis
+        </sl-button>
+      </div>
+    `;
+  }
+
+  const observations = hasData ? output.observations : [];
   const countLabel = `${observations.length} observation${observations.length !== 1 ? 's' : ''}`;
+  const isInProgress = status === 'in_progress' || status === 'pending';
 
   return html`
     <div class="learnings-section">
-      <sl-details class="learnings-panel">
+      <sl-details class="learnings-panel" ?open=${isInProgress}>
         <div slot="summary" class="learnings-header">
           <span class="learnings-icon">${unsafeHTML(iconSvg(Lightbulb, 16))}</span>
           <span class="learnings-title">Learnings</span>
+          ${isInProgress ? html`
+            <sl-badge variant="warning" pill>
+              ${unsafeHTML(iconSvg(Loader, 10, 'icon-spin'))} Analyzing
+            </sl-badge>
+          ` : nothing}
           ${hasData ? html`<span class="learnings-count">${countLabel}</span>` : nothing}
+          ${status === 'error' ? html`<sl-badge variant="danger" pill>Error</sl-badge>` : nothing}
         </div>
-
-        ${!hasData ? html`
-          <div class="learnings-empty">
-            <p>Learning analysis has not been run for this pipeline execution.</p>
-            <sl-button variant="primary" size="small" @click=${options.onRunLearn}
-              ?disabled=${options.learnRunning}>
-              ${options.learnRunning ? 'Analyzing...' : 'Run Learning Analysis'}
-            </sl-button>
-          </div>
-        ` : html`
-          ${summaryStripView(learnings.run_summary)}
-          ${observationsTableView(observations)}
-          ${suggestionsTableView(suggestions)}
-          ${recurringPatternsView(learnings.recurring_patterns)}
-        `}
+        ${innerContent}
       </sl-details>
     </div>
   `;

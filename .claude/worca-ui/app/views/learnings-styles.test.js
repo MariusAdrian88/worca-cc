@@ -163,4 +163,30 @@ describe('learnings + skipped CSS styles', () => {
       expect(match[1]).toContain('font-weight:');
     });
   });
+
+  describe('.learnings-in-progress', () => {
+    it('has flex layout with gap', () => {
+      const match = css.match(/\.learnings-in-progress\s*\{([^}]+)\}/);
+      expect(match).not.toBeNull();
+      const block = match[1];
+      expect(block).toContain('display: flex');
+      expect(block).toContain('gap:');
+    });
+  });
+
+  describe('.learnings-error', () => {
+    it('has flex layout', () => {
+      const match = css.match(/\.learnings-error\s*\{([^}]+)\}/);
+      expect(match).not.toBeNull();
+      expect(match[1]).toContain('display: flex');
+    });
+  });
+
+  describe('.learnings-rerun', () => {
+    it('has right-aligned text', () => {
+      const match = css.match(/\.learnings-rerun\s*\{([^}]+)\}/);
+      expect(match).not.toBeNull();
+      expect(match[1]).toContain('text-align: right');
+    });
+  });
 });

@@ -2553,6 +2553,66 @@ sl-details.learnings-panel::part(content) {
   padding: 4px 0;
 }
 
+/* Learnings in-progress state */
+.learnings-in-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.learnings-in-progress-spinner {
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+}
+.learnings-in-progress-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0;
+}
+.learnings-in-progress-meta {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 2px 0 0;
+}
+
+/* Learnings error state */
+.learnings-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+.learnings-error-icon {
+  color: var(--danger, #ef4444);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.learnings-error-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--fg);
+  margin: 0;
+}
+.learnings-error-detail {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 4px 0 0;
+  font-family: var(--sl-font-mono);
+}
+.learnings-error-text {
+  flex: 1;
+}
+
+/* Re-run button after completed results */
+.learnings-rerun {
+  margin-top: 8px;
+  text-align: right;
+}
+
 /* Skipped status for timeline */
 .status-skipped {
   color: var(--muted);

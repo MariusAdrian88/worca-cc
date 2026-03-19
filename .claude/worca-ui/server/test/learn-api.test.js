@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -70,12 +70,12 @@ describe('POST /api/runs/:id/learn', () => {
   });
 
   it('returns 409 when pipeline is currently running', async () => {
-    // Create run directory with status.json
     const runDir = join(tmpDir, 'runs', 'run-123');
     mkdirSync(runDir, { recursive: true });
     writeFileSync(join(runDir, 'status.json'), JSON.stringify({
       run_id: 'run-123',
       result: 'success',
+      stages: {},
     }));
 
     mockGetRunningPid.mockReturnValue({ pid: 99999 });
@@ -94,6 +94,7 @@ describe('POST /api/runs/:id/learn', () => {
     writeFileSync(join(runDir, 'status.json'), JSON.stringify({
       run_id: 'my-run',
       result: 'success',
+      stages: {},
     }));
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
@@ -101,6 +102,7 @@ describe('POST /api/runs/:id/learn', () => {
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
+    expect(data.pid).toBeDefined();
   });
 
   it('returns 200 for a failed run too', async () => {
@@ -110,10 +112,82 @@ describe('POST /api/runs/:id/learn', () => {
       run_id: 'failed-run',
       result: 'failure',
       error: 'Tests failed',
+      stages: {},
     }));
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'failed-run');
+    expect(res.status).toBe(200);
+    const data = await res.json();
+    expect(data.ok).toBe(true);
+  });
+
+  it('writes in_progress status to status.json before responding', async () => {
+    const runDir = join(tmpDir, 'runs', 'status-write-run');
+    mkdirSync(runDir, { recursive: true });
+    const statusPath = join(runDir, 'status.json');
+    writeFileSync(statusPath, JSON.stringify({
+      run_id: 'status-write-run',
+      result: 'success',
+      stages: {},
+    }));
+
+    ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
+    const res = await postLearn(base, 'status-write-run');
+    expect(res.status).toBe(200);
+
+    // Read back status.json to verify in_progress was written
+    const updated = JSON.parse(readFileSync(statusPath, 'utf8'));
+    expect(updated.stages.learn).toBeDefined();
+    expect(updated.stages.learn.status).toBe('in_progress');
+    expect(updated.stages.learn.pid).toBeDefined();
+    expect(updated.stages.learn.started_at).toBeDefined();
+    expect(updated.stages.learn.iterations).toHaveLength(1);
+    expect(updated.stages.learn.iterations[0].status).toBe('in_progress');
+    expect(updated.stages.learn.iterations[0].trigger).toBe('manual');
+  });
+
+  it('returns 409 when learn stage has a live in_progress PID', async () => {
+    const runDir = join(tmpDir, 'runs', 'concurrent-run');
+    mkdirSync(runDir, { recursive: true });
+    // Use current process PID (which is alive) to simulate a running learn stage
+    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
+      run_id: 'concurrent-run',
+      result: 'success',
+      stages: {
+        learn: {
+          status: 'in_progress',
+          pid: process.pid, // current process — guaranteed alive
+          started_at: new Date().toISOString(),
+        },
+      },
+    }));
+
+    ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
+    const res = await postLearn(base, 'concurrent-run');
+    expect(res.status).toBe(409);
+    const data = await res.json();
+    expect(data.ok).toBe(false);
+    expect(data.error).toMatch(/already running/i);
+  });
+
+  it('allows re-run when learn stage has stale (dead) PID', async () => {
+    const runDir = join(tmpDir, 'runs', 'stale-run');
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
+      run_id: 'stale-run',
+      result: 'success',
+      stages: {
+        learn: {
+          status: 'in_progress',
+          pid: 999999999, // very unlikely to be a real PID
+          started_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+        },
+      },
+    }));
+
+    ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
+    const res = await postLearn(base, 'stale-run');
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);

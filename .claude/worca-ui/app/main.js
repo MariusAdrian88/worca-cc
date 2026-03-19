@@ -66,7 +66,7 @@ const stageIterationTab = new Map(); // stageKey → iterationNumber (user's las
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
 let costsFetched = false;
-let learnRunning = false;
+let learnConfirmOpen = false;
 
 function handleStageTabChange(stageKey, iterationNumber) {
   stageIterationTab.set(stageKey, iterationNumber);
@@ -233,6 +233,12 @@ ws.on('stage-restarted', () => {
     store.setState({ runs });
     if (payload.settings) settings = payload.settings;
   }).catch(() => {});
+});
+
+ws.on('learn-started', (payload) => {
+  if (payload?.runId && payload.runId === route.runId) {
+    ws.send('subscribe-run', { runId: payload.runId }).catch(() => {});
+  }
 });
 
 // --- Connection handling ---
@@ -573,24 +579,37 @@ function handleToggleCostRun(runId) {
 
 // --- Learn actions ---
 
-async function handleRunLearn() {
-  learnRunning = true;
+function handleRunLearn() {
+  const run = store.getState().runs[route.runId];
+  const learnStatus = run?.stages?.learn?.status;
+  if (learnStatus === 'completed' || learnStatus === 'error') {
+    learnConfirmOpen = true;
+    rerender();
+    requestAnimationFrame(() => {
+      document.getElementById('learn-confirm-dialog')?.show();
+    });
+    return;
+  }
+  doRunLearn();
+}
+
+function handleCancelLearn() {
+  learnConfirmOpen = false;
+  rerender();
+}
+
+async function doRunLearn() {
+  learnConfirmOpen = false;
   rerender();
   try {
-    const activeRun = Object.values(store.getState().runs)
-      .find(r => r.id === route.runId);
-    const runId = activeRun?.id || route.runId;
+    const runId = route.runId;
     const res = await fetch(`/api/runs/${runId}/learn`, { method: 'POST' });
     const data = await res.json();
     if (!data.ok) {
       showActionError(data.error || 'Failed to run learning analysis');
     }
-    // Status file watcher will update the UI when learnings are ready
   } catch (err) {
     showActionError(err?.message || 'Failed to run learning analysis');
-  } finally {
-    learnRunning = false;
-    rerender();
   }
 }
 
@@ -765,8 +784,8 @@ function mainContentView() {
           })}
           ${runBeadsSectionView(runBeads.get(route.runId))}
           ${learningsSectionView(
-            run?.stages?.learn?.iterations?.[0]?.output,
-            { onRunLearn: handleRunLearn, learnRunning }
+            run?.stages?.learn,
+            { onRunLearn: handleRunLearn }
           )}
         </div>
       </div>
@@ -867,6 +886,18 @@ function rerender() {
           document.getElementById('restart-stage-confirm-dialog')?.hide();
           handleConfirmRestartStage();
         }}>Restart</sl-button>
+      </sl-dialog>
+    ` : ''}
+    ${learnConfirmOpen ? html`
+      <sl-dialog id="learn-confirm-dialog" label="Re-run Learning Analysis?" @sl-after-hide=${handleCancelLearn}>
+        <p>This will replace existing learnings. Continue?</p>
+        <sl-button slot="footer" @click=${() => {
+          document.getElementById('learn-confirm-dialog')?.hide();
+        }}>Cancel</sl-button>
+        <sl-button slot="footer" variant="warning" @click=${() => {
+          document.getElementById('learn-confirm-dialog')?.hide();
+          doRunLearn();
+        }}>Re-run</sl-button>
       </sl-dialog>
     ` : ''}
   `, appEl);

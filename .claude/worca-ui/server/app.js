@@ -265,11 +265,27 @@ export function createApp(options = {}) {
       return res.status(409).json({ ok: false, error: `Pipeline is currently running (PID ${running.pid})` });
     }
 
+    let status;
+    try {
+      status = JSON.parse(readFileSync(statusPath, 'utf8'));
+    } catch (err) {
+      return res.status(500).json({ ok: false, error: `Failed to read status: ${err.message}` });
+    }
+
+    // Concurrency guard: check if learn is already running
+    const learnStage = status.stages?.learn;
+    if (learnStage?.status === 'in_progress' && learnStage.pid) {
+      try {
+        process.kill(learnStage.pid, 0); // throws if PID dead
+        return res.status(409).json({ ok: false, error: 'Learning analysis is already running' });
+      } catch { /* stale PID — allow re-run */ }
+    }
+
     const cwd = projectRoot || process.cwd();
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
-    const child = spawn('python', ['.claude/scripts/run_learn.py', '--run-id', runId], {
+    const child = spawn('python3', ['.claude/scripts/run_learn.py', '--run-id', runId], {
       detached: true,
       stdio: 'ignore',
       cwd,
@@ -277,11 +293,39 @@ export function createApp(options = {}) {
     });
     child.unref();
 
+    // Write in_progress status immediately so UI reflects it on refresh
+    const now = new Date().toISOString();
+    if (!status.stages) status.stages = {};
+    status.stages.learn = {
+      status: 'in_progress',
+      pid: child.pid,
+      started_at: now,
+      iterations: [{
+        number: 1, status: 'in_progress', started_at: now,
+        agent: 'learner', model: 'sonnet', trigger: 'manual',
+      }],
+    };
+    try {
+      writeFileSync(statusPath, JSON.stringify(status, null, 2) + '\n', 'utf8');
+    } catch { /* non-fatal */ }
+
     if (app.locals.broadcast) {
       app.locals.broadcast('learn-started', { runId });
     }
 
-    res.json({ ok: true, runId });
+    // Poll for status updates (non-active runs aren't caught by the file watcher)
+    const pollInterval = setInterval(() => {
+      try {
+        const fresh = JSON.parse(readFileSync(statusPath, 'utf8'));
+        if (app.locals.scheduleRefresh) app.locals.scheduleRefresh();
+        const ls = fresh.stages?.learn?.status;
+        if (ls !== 'in_progress' && ls !== 'pending') clearInterval(pollInterval);
+      } catch { clearInterval(pollInterval); }
+    }, 3000);
+    setTimeout(() => clearInterval(pollInterval), 15 * 60 * 1000);
+    if (pollInterval.unref) pollInterval.unref();
+
+    res.json({ ok: true, runId, pid: child.pid });
   });
 
   // GET /api/beads/issues

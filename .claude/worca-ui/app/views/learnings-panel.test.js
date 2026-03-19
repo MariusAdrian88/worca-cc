@@ -21,7 +21,7 @@ function renderToString(template) {
   return result;
 }
 
-const SAMPLE_LEARNINGS = {
+const SAMPLE_OUTPUT = {
   run_summary: {
     termination: 'success',
     total_iterations: 5,
@@ -63,51 +63,103 @@ const SAMPLE_LEARNINGS = {
   },
 };
 
+/** Wrap output in a completed learnStage object */
+function completedStage(output) {
+  return { status: 'completed', iterations: [{ number: 1, output }] };
+}
+
 describe('learningsSectionView', () => {
   describe('empty state', () => {
-    it('renders empty state when no learnings data', () => {
-      const html = renderToString(learningsSectionView(null, { onRunLearn: () => {}, learnRunning: false }));
+    it('renders empty state when no learnStage data', () => {
+      const html = renderToString(learningsSectionView(null, { onRunLearn: () => {} }));
       expect(html).toContain('learnings-section');
       expect(html).toContain('learnings-empty');
       expect(html).toContain('Learning analysis has not been run');
       expect(html).toContain('Run Learning Analysis');
     });
 
-    it('renders empty state for undefined learnings', () => {
-      const html = renderToString(learningsSectionView(undefined, { onRunLearn: () => {}, learnRunning: false }));
+    it('renders empty state for undefined learnStage', () => {
+      const html = renderToString(learningsSectionView(undefined, { onRunLearn: () => {} }));
       expect(html).toContain('learnings-empty');
     });
 
-    it('shows Analyzing... button text when learnRunning is true', () => {
-      const html = renderToString(learningsSectionView(null, { onRunLearn: () => {}, learnRunning: true }));
-      expect(html).toContain('Analyzing...');
-      expect(html).not.toContain('Run Learning Analysis');
+    it('renders empty state for skipped status', () => {
+      const html = renderToString(learningsSectionView({ status: 'skipped' }, { onRunLearn: () => {} }));
+      expect(html).toContain('learnings-empty');
+      expect(html).toContain('Run Learning Analysis');
     });
   });
 
-  describe('with learnings data', () => {
+  describe('in_progress state', () => {
+    it('renders spinner and progress message when status is in_progress', () => {
+      const stage = { status: 'in_progress', started_at: new Date().toISOString() };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('learnings-in-progress');
+      expect(html).toContain('Learning analysis in progress');
+      expect(html).not.toContain('learnings-empty');
+    });
+
+    it('renders pending state same as in_progress', () => {
+      const stage = { status: 'pending' };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('learnings-in-progress');
+    });
+
+    it('shows Analyzing badge in header', () => {
+      const stage = { status: 'in_progress', started_at: new Date().toISOString() };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('Analyzing');
+    });
+
+    it('shows stalled message when in_progress for over 15 minutes', () => {
+      const old = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+      const stage = { status: 'in_progress', started_at: old };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('appears to have stalled');
+      expect(html).toContain('Retry');
+    });
+  });
+
+  describe('error state', () => {
+    it('renders error message and retry button', () => {
+      const stage = { status: 'error', error: 'API timeout' };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('learnings-error');
+      expect(html).toContain('Learning analysis failed');
+      expect(html).toContain('API timeout');
+      expect(html).toContain('Retry Learning Analysis');
+    });
+
+    it('shows Error badge in header', () => {
+      const stage = { status: 'error', error: 'crash' };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('Error');
+    });
+  });
+
+  describe('with completed learnings data', () => {
     it('renders learnings-section wrapper', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-section');
       expect(html).not.toContain('learnings-empty');
     });
 
     it('renders header with observation count', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-header');
       expect(html).toContain('Learnings');
       expect(html).toContain('2 observations');
     });
 
     it('renders run summary strip', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-summary-strip');
       expect(html).toContain('success');
       expect(html).toContain('5');
     });
 
     it('renders observations table with rows', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('Observations');
       expect(html).toContain('learnings-table-header');
       expect(html).toContain('learnings-table-row');
@@ -117,7 +169,7 @@ describe('learningsSectionView', () => {
     });
 
     it('renders suggestions table with rows', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('Suggestions');
       expect(html).toContain('prompt:tester');
       expect(html).toContain('Add auth edge case coverage guidance');
@@ -125,7 +177,7 @@ describe('learningsSectionView', () => {
     });
 
     it('renders recurring patterns section', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('Recurring Patterns');
       expect(html).toContain('Cross-Bead');
       expect(html).toContain('Missing imports');
@@ -134,40 +186,43 @@ describe('learningsSectionView', () => {
     });
 
     it('does not render empty recurring pattern sections', () => {
-      const html = renderToString(learningsSectionView(SAMPLE_LEARNINGS, { onRunLearn: () => {}, learnRunning: false }));
-      // review_fix_loops is empty, should not render its sub-section
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).not.toContain('Review-Fix Loops');
+    });
+
+    it('renders re-run button after completed results', () => {
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
+      expect(html).toContain('learnings-rerun');
+      expect(html).toContain('Re-run Analysis');
     });
   });
 
   describe('edge cases', () => {
     it('handles learnings with no observations', () => {
-      const data = { ...SAMPLE_LEARNINGS, observations: [] };
-      const html = renderToString(learningsSectionView(data, { onRunLearn: () => {}, learnRunning: false }));
+      const data = { ...SAMPLE_OUTPUT, observations: [] };
+      const html = renderToString(learningsSectionView(completedStage(data), { onRunLearn: () => {} }));
       expect(html).toContain('0 observations');
     });
 
     it('handles learnings with no suggestions', () => {
-      const data = { ...SAMPLE_LEARNINGS, suggestions: [] };
-      const html = renderToString(learningsSectionView(data, { onRunLearn: () => {}, learnRunning: false }));
+      const data = { ...SAMPLE_OUTPUT, suggestions: [] };
+      const html = renderToString(learningsSectionView(completedStage(data), { onRunLearn: () => {} }));
       expect(html).toContain('Suggestions');
-      // Should still render the section header but no rows
     });
 
     it('handles missing recurring_patterns', () => {
-      const data = { ...SAMPLE_LEARNINGS, recurring_patterns: undefined };
-      const html = renderToString(learningsSectionView(data, { onRunLearn: () => {}, learnRunning: false }));
+      const data = { ...SAMPLE_OUTPUT, recurring_patterns: undefined };
+      const html = renderToString(learningsSectionView(completedStage(data), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-section');
       expect(html).not.toContain('Recurring Patterns');
     });
 
     it('defaults occurrences to 1 when missing', () => {
       const data = {
-        ...SAMPLE_LEARNINGS,
+        ...SAMPLE_OUTPUT,
         observations: [{ category: 'test_loop', importance: 'low', description: 'x', evidence: 'y' }],
       };
-      const html = renderToString(learningsSectionView(data, { onRunLearn: () => {}, learnRunning: false }));
-      // The row should render "1" as the count
+      const html = renderToString(learningsSectionView(completedStage(data), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-table-row');
     });
   });
