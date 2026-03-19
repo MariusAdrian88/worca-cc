@@ -607,6 +607,19 @@ async function doRunLearn() {
     const data = await res.json();
     if (!data.ok) {
       showActionError(data.error || 'Failed to run learning analysis');
+    } else {
+      // Optimistic update — show spinner immediately instead of waiting for WS
+      const run = store.getState().runs[runId];
+      if (run) {
+        if (!run.stages) run.stages = {};
+        run.stages.learn = {
+          status: 'in_progress',
+          pid: data.pid,
+          started_at: new Date().toISOString(),
+          iterations: [{ number: 1, status: 'in_progress', started_at: new Date().toISOString(), trigger: 'manual' }],
+        };
+        rerender();
+      }
     }
   } catch (err) {
     showActionError(err?.message || 'Failed to run learning analysis');
