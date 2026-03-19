@@ -227,6 +227,77 @@ Add to `.claude/settings.json` under `worca`:
 
 ---
 
+## Part 4: UI Rendering
+
+The worca-ui already renders stages in a timeline with expandable iterations. PREFLIGHT will appear automatically since it's in `STAGE_ORDER`. However, the default rendering shows raw JSON — both preflight checks and error classifications deserve proper visual treatment.
+
+### 4.1 Preflight checks view in iteration detail
+
+**File:** `.claude/worca-ui/app/views/run-detail.js`
+
+When the expanded stage is `preflight`, render the iteration output as a **checklist table** instead of raw JSON. Reuse the table pattern from `learnings-panel.js` (observations table).
+
+Each check becomes a row:
+
+| Status | Check | Message |
+|---|---|---|
+| `pass` (green checkmark) | `claude_cli` | claude CLI 1.0.40 |
+| `warn` (yellow warning) | `node_available` | node not found (optional) |
+| `fail` (red X) | `bd_cli` | bd command not found in PATH |
+
+- Use `sl-badge` with variant `success`/`warning`/`danger` for the status column
+- Show the summary line (`"6/10 checks passed, 0 failed, 4 warnings"`) above the table
+- If the stage was skipped (`skipped: true`), show a neutral badge "Skipped" instead of the table
+
+### 4.2 Error classification badge in iteration detail
+
+**File:** `.claude/worca-ui/app/views/run-detail.js`
+
+When an iteration has a `classification` field (set by the circuit breaker), render it as a **classification strip** below the existing error message. This is an addition to `_iterationDetailView()`.
+
+```
+[error message in red, existing behavior]
+[classification strip — new]
+  Category: sl-badge "infra_transient" (warning variant)
+  Retriable: yes/no
+  Remediation: "API rate limited. Wait 60s before retry."
+  Similar to previous: yes/no
+```
+
+Badge variant mapping:
+- `infra_transient` → `warning` (yellow)
+- `infra_permanent` → `danger` (red)
+- `logic_stuck` → `danger` (red)
+- `env_missing` → `danger` (red)
+- `unknown` → `neutral` (gray)
+
+### 4.3 Circuit breaker status in run header
+
+**File:** `.claude/worca-ui/app/views/run-detail.js`
+
+When `status.circuit_breaker.tripped` is true, show a banner/badge in the run header area:
+
+```
+Circuit breaker tripped: "3 consecutive failures (threshold: 3)"
+```
+
+Use `sl-alert` with `variant="danger"` and the `tripped_reason` from the circuit breaker state.
+
+Also show the consecutive failure count as a small indicator when > 0 but not yet tripped (e.g., `"2/3 failures"` in `warning` variant).
+
+### 4.4 Build step
+
+After modifying UI source files, run `npm run build` in `.claude/worca-ui/` to regenerate `app/main.bundle.js`.
+
+### Key UI files
+
+| File | Action | Purpose |
+|---|---|---|
+| `.claude/worca-ui/app/views/run-detail.js` | Modify | Preflight checklist, classification strip, CB banner |
+| `.claude/worca-ui/app/styles.css` | Modify | Styles for checklist table, classification strip |
+
+---
+
 ## Implementation Order
 
 ```
@@ -240,7 +311,8 @@ Then sequential:
   Step 5: runner.py integration (both features)   [Part 1.4, 1.5, 2.2, 2.3, 2.4]
   Step 6: run_pipeline.py CLI flag                [Part 1.6]
   Step 7: resume.py updates                       [Part 3]
-  Step 8: Tests
+  Step 8: UI rendering                            [Part 4.1, 4.2, 4.3, 4.4]
+  Step 9: Tests
 ```
 
 ## Key Files
@@ -255,6 +327,8 @@ Then sequential:
 | `.claude/scripts/run_pipeline.py` | Modify | Add --skip-preflight flag |
 | `.claude/worca/orchestrator/resume.py` | Modify | Handle PREFLIGHT on resume |
 | `.claude/settings.json` | Modify | Add preflight + circuit_breaker config |
+| `.claude/worca-ui/app/views/run-detail.js` | Modify | Preflight checklist, classification strip, CB banner |
+| `.claude/worca-ui/app/styles.css` | Modify | Styles for new UI components |
 
 ## Verification
 
