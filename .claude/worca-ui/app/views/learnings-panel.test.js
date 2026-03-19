@@ -170,7 +170,7 @@ describe('learningsSectionView', () => {
       const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).toContain('learnings-header');
       expect(html).toContain('Learnings');
-      expect(html).toContain('2 observations');
+      expect(html).toContain('learnings-count');
     });
 
     it('renders run summary strip', () => {
@@ -241,7 +241,7 @@ describe('learningsSectionView', () => {
     it('handles learnings with no observations', () => {
       const data = { ...SAMPLE_OUTPUT, observations: [] };
       const html = renderToString(learningsSectionView(completedStage(data), { onRunLearn: () => {} }));
-      expect(html).toContain('0 observations');
+      expect(html).toContain('learnings-count');
     });
 
     it('handles learnings with no suggestions', () => {

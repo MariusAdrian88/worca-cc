@@ -158,7 +158,7 @@ function recurringPatternsView(patterns) {
         <div class="learnings-table-header learnings-table-header--patterns">
           <span>Pattern</span>
           <span>Affected Beads</span>
-          <span class="col-center">Frequency</span>
+          <span class="col-center">Count</span>
         </div>
         ${crossBead.map(p => html`
           <div class="learnings-table-row learnings-table-row--patterns">
@@ -312,7 +312,7 @@ export function learningsSectionView(learnStage, options = {}) {
   }
 
   const observations = hasData ? output.observations : [];
-  const countLabel = `${observations.length} observation${observations.length !== 1 ? 's' : ''}`;
+  const countLabel = `${observations.length}`;
   const isInProgress = status === 'in_progress' || status === 'pending';
 
   return html`

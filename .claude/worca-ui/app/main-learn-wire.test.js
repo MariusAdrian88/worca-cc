@@ -53,7 +53,7 @@ describe('main.js learnings wiring contracts', () => {
       // Should render with data, not the empty state
       expect(html).not.toContain('learnings-empty');
       expect(html).toContain('learnings-summary-strip');
-      expect(html).toContain('1 observation');
+      expect(html).toContain('learnings-count');
     });
 
     it('shows empty state when learn stage has no iterations', () => {
