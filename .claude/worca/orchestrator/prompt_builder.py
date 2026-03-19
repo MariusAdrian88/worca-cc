@@ -303,6 +303,17 @@ class PromptBuilder:
         if plan_content:
             parts.append(f"## Plan File\n\n{plan_content}")
 
+        # Run reference — surface run_id and paths for traceability
+        run_id = full_status.get("run_id", "unknown")
+        run_dir = f".worca/runs/{run_id}/"
+        logs_dir = f".worca/runs/{run_id}/logs/"
+        parts.append(
+            f"## Run Reference\n\n"
+            f"**Run ID:** `{run_id}`\n"
+            f"**Run directory:** `{run_dir}`\n"
+            f"**Logs directory:** `{logs_dir}`"
+        )
+
         # Full run data as JSON (truncated if too large)
         status_json = json.dumps(full_status, indent=2, default=str)
         if len(status_json) > self._MAX_STATUS_JSON_LEN:
@@ -326,8 +337,14 @@ class PromptBuilder:
             "6. **Configuration** — Were loop limits hit? Were turn limits adequate? "
             "Was cost disproportionate to outcome?\n\n"
             "For each observation, rate importance as critical/high/medium/low "
-            "based on impact and recurrence. Formulate targeted suggestions "
-            "linking to specific artifacts (prompts, config, plan templates)."
+            "based on impact and recurrence. In each observation's `evidence` field, "
+            f"reference the run ID (`{run_id}`) and relevant log file paths "
+            f"(e.g., `{logs_dir}<stage>/iter-N.log`) so that follow-up investigation "
+            "can locate the source data.\n\n"
+            "Formulate targeted suggestions linking to specific artifacts "
+            "(prompts, config, plan templates). In each suggestion's `description`, "
+            f"include the run ID (`{run_id}`) and the specific log paths that "
+            "contain the evidence, so follow-up agents can reproduce and verify."
         )
 
         return "\n\n".join(parts)

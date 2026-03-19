@@ -9,11 +9,12 @@ const STAGE_AGENT_MAP = {
   implement: 'implementer',
   test: 'tester',
   review: 'guardian',
-  pr: 'guardian'
+  pr: 'guardian',
+  learn: 'learner'
 };
 
-const STAGE_ORDER = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr'];
-const AGENT_NAMES = ['planner', 'coordinator', 'implementer', 'tester', 'guardian'];
+const STAGE_ORDER = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr', 'learn'];
+const AGENT_NAMES = ['planner', 'coordinator', 'implementer', 'tester', 'guardian', 'learner'];
 const MODEL_OPTIONS = ['opus', 'sonnet', 'haiku'];
 
 const DEFAULT_STAGES = {
@@ -22,7 +23,8 @@ const DEFAULT_STAGES = {
   implement:  { agent: 'implementer', enabled: true },
   test:       { agent: 'tester',      enabled: true },
   review:     { agent: 'guardian',     enabled: true },
-  pr:         { agent: 'guardian',     enabled: true }
+  pr:         { agent: 'guardian',     enabled: true },
+  learn:      { agent: 'learner',     enabled: false }
 };
 
 export const PRICING_MODELS = ['opus', 'sonnet'];

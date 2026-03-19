@@ -2,7 +2,7 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Pipeline stage order for log display (orchestrator first, then stages in execution order). */
-const STAGE_ORDER = ['orchestrator', 'plan', 'coordinate', 'implement', 'test', 'review', 'pr'];
+const STAGE_ORDER = ['orchestrator', 'plan', 'coordinate', 'implement', 'test', 'review', 'pr', 'learn'];
 
 export function resolveLogPath(worcaDir, stage, iteration = null) {
   if (!stage) return join(worcaDir, 'logs', 'orchestrator.log');

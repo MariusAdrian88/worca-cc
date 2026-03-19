@@ -130,3 +130,31 @@ def test_build_learn_empty_status():
     prompt = pb.build("learn")
     assert "failure" in prompt
     assert "Unknown error" in prompt
+
+
+def test_build_learn_includes_run_reference():
+    """The learn prompt should surface run_id and log paths for traceability."""
+    status = _make_status()
+    status["run_id"] = "20260318-222430"
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("full_status", status)
+    pb.update_context("termination_type", "success")
+    prompt = pb.build("learn")
+    assert "20260318-222430" in prompt
+    assert ".worca/runs/20260318-222430/" in prompt
+    assert ".worca/runs/20260318-222430/logs/" in prompt
+    # Instructions should tell agent to reference run_id in observations and suggestions
+    assert "observation" in prompt.lower() or "evidence" in prompt.lower()
+    assert "suggestion" in prompt.lower()
+
+
+def test_build_learn_run_reference_fallback_when_no_run_id():
+    """When run_id is missing from status, should show 'unknown' gracefully."""
+    status = _make_status()
+    # No run_id key
+    pb = PromptBuilder("Add auth", "Desc")
+    pb.update_context("full_status", status)
+    pb.update_context("termination_type", "success")
+    prompt = pb.build("learn")
+    assert "unknown" in prompt
+    assert ".worca/runs/unknown/" in prompt

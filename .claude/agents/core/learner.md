@@ -35,3 +35,4 @@ Produce a structured result following the `learn.json` schema (LearnOutput). The
 - Only analyze the provided run data and report findings
 - Be factual — base observations on evidence from the run data, not speculation
 - Keep suggestions actionable and specific — avoid generic advice
+- Include the run ID and relevant log file paths in both observation evidence and suggestion descriptions so follow-up agents can locate and verify the source data

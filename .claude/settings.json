@@ -97,7 +97,7 @@
       },
       "learner": {
         "model": "sonnet",
-        "max_turns": 50
+        "max_turns": 100
       }
     },
     "models": {
@@ -119,16 +119,16 @@
     "pricing": {
       "models": {
         "opus": {
-          "input_per_mtok": 15.00,
-          "output_per_mtok": 75.00,
+          "input_per_mtok": 15.0,
+          "output_per_mtok": 75.0,
           "cache_write_per_mtok": 18.75,
-          "cache_read_per_mtok": 1.50
+          "cache_read_per_mtok": 1.5
         },
         "sonnet": {
-          "input_per_mtok": 3.00,
-          "output_per_mtok": 15.00,
+          "input_per_mtok": 3.0,
+          "output_per_mtok": 15.0,
           "cache_write_per_mtok": 3.75,
-          "cache_read_per_mtok": 0.30
+          "cache_read_per_mtok": 0.3
         }
       },
       "currency": "USD",
