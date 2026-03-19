@@ -1066,6 +1066,8 @@ def run_pipeline(
             if isinstance(raw_envelope, dict):
                 if raw_envelope.get("duration_api_ms"):
                     iter_extras["duration_api_ms"] = raw_envelope["duration_api_ms"]
+                if raw_envelope.get("duration_ms"):
+                    iter_extras["duration_session_ms"] = raw_envelope["duration_ms"]
                 if raw_envelope.get("num_turns"):
                     iter_extras["turns"] = raw_envelope["num_turns"]
                 if raw_envelope.get("total_cost_usd"):

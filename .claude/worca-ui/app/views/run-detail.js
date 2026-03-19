@@ -8,6 +8,66 @@ import { beadsDependencyGraph, priorityVariant, statusVariant } from './beads-pa
 import { resolveIterationTab } from './stage-tab-memory.js';
 import { scrollOnExpand } from '../utils/scroll.js';
 
+/**
+ * Render a stacked horizontal timing bar at the pipeline level.
+ * Segments: Thinking (AI) | Tools (AI) | Rest of Pipeline
+ * 100% = pipeline wall time (started_at → last stage end).
+ */
+function _pipelineTimingBar(allIters, pipelineWallMs) {
+  if (!pipelineWallMs || pipelineWallMs <= 0) return nothing;
+
+  const thinkingMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
+  // duration_session_ms = CLI session time; fall back to duration_ms (wall) if not available
+  const sessionMs = allIters.reduce((sum, it) => sum + (it.duration_session_ms || it.duration_ms || 0), 0);
+  const toolsMs = Math.max(0, sessionMs - thinkingMs);
+  const restMs = Math.max(0, pipelineWallMs - sessionMs);
+
+  if (thinkingMs <= 0 && toolsMs <= 0) return nothing;
+
+  const thinkingPct = Math.round(thinkingMs / pipelineWallMs * 100);
+  const toolsPct = Math.round(toolsMs / pipelineWallMs * 100);
+  const restPct = Math.max(0, 100 - thinkingPct - toolsPct);
+
+  const segments = [
+    { key: 'thinking', pct: thinkingPct, ms: thinkingMs, label: 'Thinking (AI)', desc: 'Time spent on model inference (API round-trips)', cls: 'timing-bar-thinking' },
+    { key: 'tools', pct: toolsPct, ms: toolsMs, label: 'Tools (AI)', desc: 'Time spent executing tools (bash, file I/O, subprocesses)', cls: 'timing-bar-tools' },
+    { key: 'rest', pct: restPct, ms: restMs, label: 'Rest of Pipeline', desc: 'Orchestration, status writes, stage transitions, retry delays', cls: 'timing-bar-rest' },
+  ].filter(s => s.pct > 0);
+
+  return html`
+    <div class="pipeline-timing-bar-container">
+      <div class="pipeline-timing-bar-label">
+        <span class="meta-label">Session:</span>
+        <span class="meta-value">${formatDuration(pipelineWallMs)}</span>
+      </div>
+      <div class="pipeline-timing-bar">
+        ${segments.map(s => html`
+          <sl-tooltip>
+            <div slot="content">
+              <strong>${s.label}</strong><br>
+              ${formatDuration(s.ms)} of ${formatDuration(pipelineWallMs)}<br>
+              <span style="opacity:0.7">${s.desc}</span>
+            </div>
+            <div class="timing-bar-segment ${s.cls}" style="width:${s.pct}%">
+              ${s.pct >= 15 ? html`<span class="timing-bar-segment-text">${s.label} ${s.pct}%</span>` :
+                s.pct >= 8 ? html`<span class="timing-bar-segment-text">${s.pct}%</span>` : nothing}
+            </div>
+          </sl-tooltip>
+        `)}
+      </div>
+      <div class="pipeline-timing-bar-legend">
+        ${segments.map(s => html`
+          <span class="timing-bar-legend-item">
+            <span class="timing-bar-legend-swatch ${s.cls}"></span>
+            <span class="timing-bar-legend-label">${s.label}</span>
+            <span class="timing-bar-legend-value">${formatDuration(s.ms)} (${s.pct}%)</span>
+          </span>
+        `)}
+      </div>
+    </div>
+  `;
+}
+
 function _lastStageEnd(stages) {
   if (!stages) return null;
   let latest = null;
@@ -177,6 +237,7 @@ function _stageToJson(key, stage, stageAgent, stageModel, promptData) {
       turns: it.turns || undefined,
       cost_usd: it.cost_usd || undefined,
       duration_ms: it.duration_ms || undefined,
+      duration_session_ms: it.duration_session_ms || undefined,
       duration_api_ms: it.duration_api_ms || undefined,
       started_at: it.started_at || undefined,
       completed_at: it.completed_at || undefined,
@@ -360,20 +421,17 @@ export function runDetailView(run, settings = {}, options = {}) {
         ${(() => {
           const allIters = Object.values(stages).flatMap(s => s.iterations || []);
           const pipelineCost = allIters.reduce((sum, it) => sum + (it.cost_usd || 0), 0);
-          const pipelineApiMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
           const pipelineTurns = allIters.reduce((sum, it) => sum + (it.turns || 0), 0);
-          const pipelineWallMs = allIters.reduce((sum, it) => {
-            if (it.started_at && it.completed_at) return sum + elapsed(it.started_at, it.completed_at);
-            return sum;
-          }, 0);
-          const apiPct = pipelineWallMs > 0 && pipelineApiMs > 0 ? Math.round(pipelineApiMs / pipelineWallMs * 100) : 0;
-          return (pipelineCost > 0 || pipelineApiMs > 0 || pipelineTurns > 0) ? html`
-            <div class="pipeline-cost-strip">
-              ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
-              ${pipelineApiMs > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(pipelineApiMs)}${apiPct > 0 ? ` (${apiPct}%)` : ''}</span></span>` : nothing}
-              ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
-            </div>
-          ` : nothing;
+          const pipelineWallMs = run.started_at && endTime ? elapsed(run.started_at, endTime) : 0;
+          return html`
+            ${(pipelineCost > 0 || pipelineTurns > 0) ? html`
+              <div class="pipeline-cost-strip">
+                ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
+                ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
+              </div>
+            ` : nothing}
+            ${_pipelineTimingBar(allIters, pipelineWallMs)}
+          `;
         })()}
       </div>
 
