@@ -1,6 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw } from '../utils/icons.js';
+import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 
 /**
  * Map importance level to sl-badge variant.
@@ -15,12 +16,15 @@ export function importanceBadge(importance) {
   }
 }
 
-function formatElapsed(ms) {
-  const totalSec = Math.floor(ms / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  if (min === 0) return `${sec}s`;
-  return `${min}m ${sec}s`;
+function timingStripView(startedAt, completedAt) {
+  const dur = startedAt ? formatDuration(elapsed(startedAt, completedAt || null)) : '';
+  return html`
+    <div class="timing-strip">
+      ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> <span class="meta-value">${formatTimestamp(startedAt)}</span></span>` : nothing}
+      ${completedAt ? html`<span class="timing-strip-item"><span class="meta-label">Finished:</span> <span class="meta-value">${formatTimestamp(completedAt)}</span></span>` : nothing}
+      ${dur ? html`<span class="timing-strip-item"><span class="meta-label">Duration:</span> <span class="meta-value">${dur}</span></span>` : nothing}
+    </div>
+  `;
 }
 
 function summaryStripView(summary) {
@@ -157,6 +161,7 @@ export function learningsSectionView(learnStage, options = {}) {
   const hasData = output && output.observations;
   const error = learnStage?.error || learnStage?.iterations?.[0]?.error;
   const startedAt = learnStage?.started_at || learnStage?.iterations?.[0]?.started_at;
+  const completedAt = learnStage?.completed_at || learnStage?.iterations?.[0]?.completed_at;
 
   let innerContent;
 
@@ -173,7 +178,7 @@ export function learningsSectionView(learnStage, options = {}) {
           </div>
           <div class="learnings-error-text">
             <p class="learnings-error-title">Learning analysis appears to have stalled</p>
-            <p class="learnings-error-detail">Started ${startTime.toLocaleTimeString()} (${formatElapsed(elapsedMs)} ago)</p>
+            ${timingStripView(startedAt, null)}
           </div>
           <sl-button variant="warning" size="small" @click=${options.onRunLearn}>
             ${unsafeHTML(iconSvg(RefreshCw, 14))} Retry
@@ -181,7 +186,6 @@ export function learningsSectionView(learnStage, options = {}) {
         </div>
       `;
     } else {
-      const elapsed = startTime ? formatElapsed(elapsedMs) : '';
       innerContent = html`
         <div class="learnings-in-progress">
           <div class="learnings-in-progress-spinner">
@@ -189,11 +193,7 @@ export function learningsSectionView(learnStage, options = {}) {
           </div>
           <div class="learnings-in-progress-text">
             <p class="learnings-in-progress-title">Learning analysis in progress...</p>
-            ${startTime ? html`
-              <p class="learnings-in-progress-meta">
-                Started ${startTime.toLocaleTimeString()}${elapsed ? html` &mdash; ${elapsed}` : nothing}
-              </p>
-            ` : nothing}
+            ${timingStripView(startedAt, null)}
           </div>
         </div>
       `;
@@ -207,6 +207,7 @@ export function learningsSectionView(learnStage, options = {}) {
         <div class="learnings-error-text">
           <p class="learnings-error-title">Learning analysis failed</p>
           ${error ? html`<p class="learnings-error-detail">${error}</p>` : nothing}
+          ${timingStripView(startedAt, completedAt)}
         </div>
         <sl-button variant="warning" size="small" @click=${options.onRunLearn}>
           ${unsafeHTML(iconSvg(RefreshCw, 14))} Retry Learning Analysis
@@ -214,7 +215,19 @@ export function learningsSectionView(learnStage, options = {}) {
       </div>
     `;
   } else if (hasData) {
+    const iter = learnStage?.iterations?.[0];
+    const turns = iter?.turns;
+    const costUsd = iter?.cost_usd;
+    const apiMs = iter?.duration_api_ms;
+    const wallMs = startedAt && completedAt ? elapsed(startedAt, completedAt) : 0;
+
     innerContent = html`
+      ${timingStripView(startedAt, completedAt)}
+      <div class="stage-info-strip">
+        ${turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> <span class="meta-value">${turns}</span></span>` : nothing}
+        ${apiMs ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(apiMs)}${wallMs > 0 ? ` (${Math.round(apiMs / wallMs * 100)}%)` : ''}</span></span>` : nothing}
+        ${costUsd != null ? html`<span class="stage-info-item"><span class="meta-label">Cost:</span> <span class="meta-value">$${Number(costUsd).toFixed(2)}</span></span>` : nothing}
+      </div>
       ${summaryStripView(output.run_summary)}
       ${observationsTableView(output.observations)}
       ${suggestionsTableView(output.suggestions || [])}

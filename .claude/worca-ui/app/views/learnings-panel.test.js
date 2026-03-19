@@ -64,8 +64,22 @@ const SAMPLE_OUTPUT = {
 };
 
 /** Wrap output in a completed learnStage object */
-function completedStage(output) {
-  return { status: 'completed', iterations: [{ number: 1, output }] };
+function completedStage(output, overrides = {}) {
+  return {
+    status: 'completed',
+    started_at: '2026-03-19T10:00:00.000Z',
+    completed_at: '2026-03-19T10:04:30.000Z',
+    iterations: [{
+      number: 1,
+      output,
+      started_at: '2026-03-19T10:00:00.000Z',
+      completed_at: '2026-03-19T10:04:30.000Z',
+      turns: 12,
+      cost_usd: 0.85,
+      duration_api_ms: 210000,
+    }],
+    ...overrides,
+  };
 }
 
 describe('learningsSectionView', () => {
@@ -97,6 +111,14 @@ describe('learningsSectionView', () => {
       expect(html).toContain('learnings-in-progress');
       expect(html).toContain('Learning analysis in progress');
       expect(html).not.toContain('learnings-empty');
+    });
+
+    it('shows timing strip with Started label during in_progress', () => {
+      const stage = { status: 'in_progress', started_at: '2026-03-19T10:00:00.000Z' };
+      const html = renderToString(learningsSectionView(stage, { onRunLearn: () => {} }));
+      expect(html).toContain('timing-strip');
+      expect(html).toContain('Started:');
+      expect(html).not.toContain('Finished:');
     });
 
     it('renders pending state same as in_progress', () => {
@@ -188,6 +210,24 @@ describe('learningsSectionView', () => {
     it('does not render empty recurring pattern sections', () => {
       const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
       expect(html).not.toContain('Review-Fix Loops');
+    });
+
+    it('renders timing strip with started, finished, duration', () => {
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
+      expect(html).toContain('timing-strip');
+      expect(html).toContain('Started:');
+      expect(html).toContain('Finished:');
+      expect(html).toContain('Duration:');
+    });
+
+    it('renders stage meta with turns and cost', () => {
+      const html = renderToString(learningsSectionView(completedStage(SAMPLE_OUTPUT), { onRunLearn: () => {} }));
+      expect(html).toContain('stage-info-strip');
+      expect(html).toContain('Turns:');
+      expect(html).toContain('12');
+      expect(html).toContain('Cost:');
+      expect(html).toContain('$0.85');
+      expect(html).toContain('API Duration:');
     });
 
     it('renders re-run button after completed results', () => {

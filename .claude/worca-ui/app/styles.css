@@ -2607,6 +2607,19 @@ sl-details.learnings-panel::part(content) {
   flex: 1;
 }
 
+/* Timing and meta strips inside learnings panel */
+.learnings-panel .timing-strip {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.learnings-panel .stage-info-strip {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
 /* Re-run button after completed results */
 .learnings-rerun {
   margin-top: 8px;
