@@ -5,7 +5,8 @@ const CLASS_MAP = {
   in_progress: 'status-in-progress',
   completed: 'status-completed',
   error: 'status-error',
-  interrupted: 'status-interrupted'
+  interrupted: 'status-interrupted',
+  skipped: 'status-skipped'
 };
 
 const ICON_DATA = {
@@ -13,7 +14,8 @@ const ICON_DATA = {
   in_progress: Loader,
   completed: CircleCheck,
   error: CircleAlert,
-  interrupted: Pause
+  interrupted: Pause,
+  skipped: Circle
 };
 
 /**

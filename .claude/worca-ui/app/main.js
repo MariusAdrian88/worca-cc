@@ -17,6 +17,7 @@ import { statusIcon } from './utils/status-badge.js';
 import { createNotificationManager } from './notifications.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
 import { tokenCostsView } from './views/token-costs.js';
+import { learningsSectionView } from './views/learnings-panel.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
 import '@shoelace-style/shoelace/dist/components/details/details.js';
@@ -65,6 +66,7 @@ const stageIterationTab = new Map(); // stageKey → iterationNumber (user's las
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
 let costsFetched = false;
+let learnRunning = false;
 
 function handleStageTabChange(stageKey, iterationNumber) {
   stageIterationTab.set(stageKey, iterationNumber);
@@ -569,6 +571,29 @@ function handleToggleCostRun(runId) {
   rerender();
 }
 
+// --- Learn actions ---
+
+async function handleRunLearn() {
+  learnRunning = true;
+  rerender();
+  try {
+    const activeRun = Object.values(store.getState().runs)
+      .find(r => r.id === route.runId);
+    const runId = activeRun?.id || route.runId;
+    const res = await fetch(`/api/runs/${runId}/learn`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      showActionError(data.error || 'Failed to run learning analysis');
+    }
+    // Status file watcher will update the UI when learnings are ready
+  } catch (err) {
+    showActionError(err?.message || 'Failed to run learning analysis');
+  } finally {
+    learnRunning = false;
+    rerender();
+  }
+}
+
 // --- Render ---
 
 function contentHeaderView() {
@@ -739,6 +764,10 @@ function mainContentView() {
             runStages: run?.stages,
           })}
           ${runBeadsSectionView(runBeads.get(route.runId))}
+          ${learningsSectionView(
+            run?.stages?.learn?.iterations?.[0]?.output,
+            { onRunLearn: handleRunLearn, learnRunning }
+          )}
         </div>
       </div>
     `;

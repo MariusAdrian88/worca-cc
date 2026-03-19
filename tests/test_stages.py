@@ -5,9 +5,12 @@ from worca.orchestrator.stages import (
     Stage,
     TRANSITIONS,
     STAGE_AGENT_MAP,
+    STAGE_SCHEMA_MAP,
+    STAGE_ORDER,
     can_transition,
     get_stage_config,
     get_enabled_stages,
+    is_learn_enabled,
 )
 
 
@@ -32,8 +35,8 @@ class TestStageEnum:
     def test_pr_value(self):
         assert Stage.PR.value == "pr"
 
-    def test_has_exactly_six_stages(self):
-        assert len(Stage) == 6
+    def test_has_exactly_seven_stages(self):
+        assert len(Stage) == 7
 
 
 # --- TRANSITIONS dict ---
@@ -57,8 +60,8 @@ class TestTransitions:
     def test_pr_is_terminal(self):
         assert TRANSITIONS[Stage.PR] == set()
 
-    def test_all_stages_have_transition_entries(self):
-        for stage in Stage:
+    def test_all_pipeline_stages_have_transition_entries(self):
+        for stage in STAGE_ORDER:
             assert stage in TRANSITIONS
 
 
@@ -93,7 +96,7 @@ class TestCanTransition:
         assert can_transition(Stage.REVIEW, Stage.PR) is True
 
     def test_pr_cannot_go_anywhere(self):
-        for stage in Stage:
+        for stage in STAGE_ORDER:
             assert can_transition(Stage.PR, stage) is False
 
     def test_coordinate_cannot_go_to_plan(self):
@@ -326,3 +329,94 @@ class TestGetEnabledStages:
         settings_file.write_text(json.dumps(settings))
         stages = get_enabled_stages(str(settings_file))
         assert Stage.PLAN in stages
+
+
+# --- LEARN stage (out-of-band) ---
+
+class TestLearnStage:
+    """Tests for LEARN stage enum, maps, and exclusion from pipeline flow."""
+
+    def test_learn_enum_value(self):
+        assert Stage.LEARN.value == "learn"
+
+    def test_learn_in_agent_map(self):
+        assert STAGE_AGENT_MAP[Stage.LEARN] == "learner"
+
+    def test_learn_in_schema_map(self):
+        assert STAGE_SCHEMA_MAP[Stage.LEARN] == "learn.json"
+
+    def test_learn_not_in_stage_order(self):
+        assert Stage.LEARN not in STAGE_ORDER
+
+    def test_learn_not_in_transitions(self):
+        assert Stage.LEARN not in TRANSITIONS
+
+    def test_learn_not_in_enabled_stages(self, tmp_path):
+        """LEARN should never appear in get_enabled_stages (it's out-of-band)."""
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({}))
+        stages = get_enabled_stages(str(settings_file))
+        assert Stage.LEARN not in stages
+
+    def test_learn_not_in_enabled_stages_even_when_enabled(self, tmp_path):
+        """Even with learn.enabled=True, it should not appear in pipeline stages."""
+        settings = {
+            "worca": {
+                "stages": {
+                    "learn": {"agent": "learner", "enabled": True}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        stages = get_enabled_stages(str(settings_file))
+        assert Stage.LEARN not in stages
+
+
+class TestIsLearnEnabled:
+    """Tests for is_learn_enabled() helper."""
+
+    def test_defaults_to_false(self, tmp_path):
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({}))
+        assert is_learn_enabled(str(settings_file)) is False
+
+    def test_false_when_explicitly_disabled(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "learn": {"enabled": False}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        assert is_learn_enabled(str(settings_file)) is False
+
+    def test_true_when_enabled(self, tmp_path):
+        settings = {
+            "worca": {
+                "stages": {
+                    "learn": {"enabled": True}
+                }
+            }
+        }
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps(settings))
+        assert is_learn_enabled(str(settings_file)) is True
+
+    def test_false_when_settings_file_missing(self, tmp_path):
+        missing = str(tmp_path / "nonexistent.json")
+        assert is_learn_enabled(missing) is False
+
+    def test_false_when_malformed_json(self, tmp_path):
+        bad_file = tmp_path / "bad.json"
+        bad_file.write_text("not valid json")
+        assert is_learn_enabled(str(bad_file)) is False
+
+    def test_get_stage_config_works_for_learn(self, tmp_path):
+        """get_stage_config should return proper config for LEARN stage."""
+        missing = str(tmp_path / "nonexistent.json")
+        config = get_stage_config(Stage.LEARN, settings_path=missing)
+        assert config["agent"] == "learner"
+        assert config["schema"] == "learn.json"

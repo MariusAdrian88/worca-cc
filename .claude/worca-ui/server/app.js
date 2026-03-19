@@ -3,9 +3,9 @@ import express from 'express';
 import { fileURLToPath } from 'node:url';
 import { join, dirname } from 'node:path';
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { validateSettingsPayload } from './settings-validator.js';
-import { startPipeline, stopPipeline, restartStage } from './process-manager.js';
+import { startPipeline, stopPipeline, restartStage, getRunningPid } from './process-manager.js';
 import { discoverRuns } from './watcher.js';
 import { listIssues, getIssue, dbExists } from './beads-reader.js';
 
@@ -247,6 +247,41 @@ export function createApp(options = {}) {
       }
       res.status(500).json({ ok: false, error: err.message });
     }
+  });
+
+  // POST /api/runs/:id/learn — trigger learning analysis for a completed run
+  app.post('/api/runs/:id/learn', (req, res) => {
+    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+
+    const runId = req.params.id;
+    const statusPath = join(worcaDir, 'runs', runId, 'status.json');
+
+    if (!existsSync(statusPath)) {
+      return res.status(404).json({ ok: false, error: `Run "${runId}" not found` });
+    }
+
+    const running = getRunningPid(worcaDir);
+    if (running) {
+      return res.status(409).json({ ok: false, error: `Pipeline is currently running (PID ${running.pid})` });
+    }
+
+    const cwd = projectRoot || process.cwd();
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
+    const child = spawn('python', ['.claude/scripts/run_learn.py', '--run-id', runId], {
+      detached: true,
+      stdio: 'ignore',
+      cwd,
+      env,
+    });
+    child.unref();
+
+    if (app.locals.broadcast) {
+      app.locals.broadcast('learn-started', { runId });
+    }
+
+    res.json({ ok: true, runId });
   });
 
   // GET /api/beads/issues

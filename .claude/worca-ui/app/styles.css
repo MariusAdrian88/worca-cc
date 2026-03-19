@@ -2497,6 +2497,173 @@ sl-details.run-beads-panel::part(content) {
   overflow-x: auto;
 }
 
+/* --- Learnings section --- */
+.learnings-section {
+  margin: 0 0 8px;
+}
+
+sl-details.learnings-panel::part(base) {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--bg-secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+sl-details.learnings-panel::part(header) {
+  padding: 10px 16px;
+}
+
+sl-details.learnings-panel::part(content) {
+  padding: 0 16px 12px;
+}
+
+.learnings-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.learnings-icon {
+  display: flex;
+  align-items: center;
+  color: var(--muted);
+}
+
+.learnings-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--fg);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.learnings-count {
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.7rem;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+}
+
+.learnings-empty {
+  font-size: 0.82rem;
+  color: var(--muted);
+  padding: 4px 0;
+}
+
+/* Skipped status for timeline */
+.status-skipped {
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.stage-node.status-skipped .stage-icon {
+  border-color: var(--muted);
+  border-style: dashed;
+  opacity: 0.5;
+}
+
+/* Learnings table */
+.learnings-table {
+  display: grid;
+  gap: 1px;
+  background: var(--border-subtle);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.learnings-table-header {
+  display: grid;
+  grid-template-columns: 80px 100px 1fr 1fr 50px;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--muted);
+}
+
+.learnings-table-row {
+  display: grid;
+  grid-template-columns: 80px 100px 1fr 1fr 50px;
+  gap: 12px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  font-size: 13px;
+  align-items: center;
+}
+
+.learnings-table-row:hover {
+  background: var(--bg-tertiary);
+}
+
+.learnings-table-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 12px 0 6px;
+}
+
+.learnings-summary-strip {
+  display: flex;
+  gap: 16px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: var(--radius);
+  font-size: 13px;
+  color: var(--fg);
+  margin-bottom: 12px;
+}
+
+.learnings-summary-strip span {
+  white-space: nowrap;
+}
+
+.learnings-evidence {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.learnings-category {
+  font-size: 0.78rem;
+  font-family: var(--sl-font-mono);
+  color: var(--muted);
+}
+
+.learnings-table-header--suggestions,
+.learnings-table-row--suggestions {
+  grid-template-columns: 120px 1fr 1fr;
+}
+
+.learnings-table-header--patterns,
+.learnings-table-row--patterns {
+  grid-template-columns: 1fr 150px 80px;
+}
+
+.learnings-subtable-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+
+.learnings-target {
+  font-family: var(--sl-font-mono);
+  font-size: 0.78rem;
+  color: var(--fg);
+}
+
+.learnings-rationale {
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* --- 31. Token & Cost Dashboard --- */
 
 .costs-dashboard {

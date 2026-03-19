@@ -237,7 +237,8 @@ export function runDetailView(run, settings = {}, options = {}) {
   const branch = run.branch || run.work_request?.branch || '';
   const pr = run.pr_url || null;
   const endTime = run.completed_at || _lastStageEnd(run.stages);
-  const stages = run.stages || {};
+  const rawStages = run.stages || {};
+  const stages = rawStages.learn ? rawStages : { ...rawStages, learn: { status: 'skipped' } };
   const stageUi = settings.stageUi || {};
   const agents = settings.agents || {};
 

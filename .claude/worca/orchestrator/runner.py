@@ -16,6 +16,7 @@ from typing import Optional
 from worca.orchestrator.prompt_builder import PromptBuilder
 from worca.orchestrator.stages import (
     Stage, can_transition, get_stage_config, get_enabled_stages, STAGE_AGENT_MAP,
+    is_learn_enabled,
 )
 from worca.orchestrator.work_request import WorkRequest
 from worca.state.status import (
@@ -361,6 +362,11 @@ _STAGE_PROMPT_PREFIX = {
         "Summarize the changes and ensure the commit history is clean.\n\n"
         "Work request: {prompt}"
     ),
+    Stage.LEARN: (
+        "Analyze the completed pipeline run and produce a retrospective report. "
+        "Identify patterns, recurring issues, and improvement suggestions.\n\n"
+        "Run data: {prompt}"
+    ),
 }
 
 
@@ -370,6 +376,65 @@ def _build_stage_prompt(stage: Stage, raw_prompt: str) -> str:
     if template:
         return template.format(prompt=raw_prompt)
     return raw_prompt
+
+
+def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
+                     termination_type, termination_reason, msize, logs_dir,
+                     force=False):
+    """Run the LEARN stage if enabled (or forced). Called after pipeline termination.
+
+    Non-fatal: any exception is logged but not propagated.
+
+    Args:
+        force: If True, skip the is_learn_enabled() check. Used by the
+               manual trigger (run_learn.py / UI button) so that learning
+               analysis runs even when learn.enabled is false.
+    """
+    if not force and not is_learn_enabled(settings_path):
+        return
+    _log("Running learn stage...", "info")
+    actual_status_path = os.path.join(run_dir, "status.json") if run_dir else ".worca/status.json"
+    try:
+        # Feed context
+        prompt_builder.update_context("full_status", status)
+        prompt_builder.update_context("termination_type", termination_type)
+        prompt_builder.update_context("termination_reason", termination_reason or "")
+        plan_path = status.get("plan_file")
+        if plan_path and os.path.exists(plan_path):
+            with open(plan_path) as f:
+                prompt_builder.update_context("plan_file_content", f.read())
+
+        # Initialize learn stage in status
+        status["stages"]["learn"] = {"status": "pending"}
+        start_iteration(status, "learn", agent="learner",
+                        model="sonnet", trigger="initial")
+
+        rendered = prompt_builder.build("learn", 0)
+        result, raw = run_stage(Stage.LEARN, {}, settings_path, msize=msize,
+                                prompt_override=rendered)
+
+        # Complete iteration
+        complete_iteration(status, "learn", status="completed", outcome="success",
+                           completed_at=datetime.now(timezone.utc).isoformat(),
+                           output=result)
+        update_stage(status, "learn", status="completed")
+
+        # Save standalone learnings file
+        if run_dir:
+            learnings_path = os.path.join(run_dir, "learnings.json")
+            with open(learnings_path, "w") as f:
+                json.dump(result, f, indent=2)
+        save_status(status, actual_status_path)
+        _log("Learnings saved", "ok")
+    except Exception as e:
+        _log(f"Learn stage failed (non-fatal): {e}", "warn")
+        try:
+            complete_iteration(status, "learn", status="error", error=str(e),
+                               completed_at=datetime.now(timezone.utc).isoformat())
+            update_stage(status, "learn", status="error", error=str(e))
+            save_status(status, actual_status_path)
+        except Exception:
+            pass
 
 
 def run_stage(
@@ -1130,7 +1195,24 @@ def run_pipeline(
         if summary_parts:
             _log(f"Totals: {' | '.join(summary_parts)}")
 
+        _run_learn_stage(status, prompt_builder, settings_path, run_dir,
+                         "success", "", msize, logs_dir)
+
         return status
+    except PipelineInterrupted:
+        raise  # Do NOT run learn on user interruption
+    except LoopExhaustedError as e:
+        _run_learn_stage(status, prompt_builder, settings_path, run_dir,
+                         "loop_exhausted", str(e), msize, logs_dir)
+        raise
+    except PipelineError as e:
+        _run_learn_stage(status, prompt_builder, settings_path, run_dir,
+                         "failure", str(e), msize, logs_dir)
+        raise
+    except Exception as e:
+        _run_learn_stage(status, prompt_builder, settings_path, run_dir,
+                         "failure", str(e), msize, logs_dir)
+        raise
     finally:
         _restore_signal_handlers()
         _remove_pid(status_path)
