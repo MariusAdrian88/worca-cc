@@ -68,6 +68,10 @@
       "pr": {
         "agent": "guardian",
         "enabled": true
+      },
+      "learn": {
+        "agent": "learner",
+        "enabled": false
       }
     },
     "agents": {
@@ -89,6 +93,10 @@
       },
       "guardian": {
         "model": "opus",
+        "max_turns": 50
+      },
+      "learner": {
+        "model": "sonnet",
         "max_turns": 50
       }
     },

@@ -32,14 +32,15 @@ const settingsPath = join(projectRoot, '.claude', 'settings.json');
 const app = createApp({ settingsPath, worcaDir, projectRoot });
 const server = createServer(app);
 
-const { broadcast } = attachWsServer(server, {
+const { broadcast, scheduleRefresh } = attachWsServer(server, {
   worcaDir,
   settingsPath,
   prefsPath: join(homedir(), '.worca', 'preferences.json')
 });
 
-// Expose broadcast to REST route handlers
+// Expose broadcast and scheduleRefresh to REST route handlers
 app.locals.broadcast = broadcast;
+app.locals.scheduleRefresh = scheduleRefresh;
 
 server.listen(port, host, () => {
   console.log(`worca-ui running at http://${host}:${port}`);

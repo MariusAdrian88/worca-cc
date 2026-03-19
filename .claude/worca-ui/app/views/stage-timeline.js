@@ -8,7 +8,8 @@ const STAGE_ICON = {
   in_progress: Loader,
   completed: CircleCheck,
   error: CircleAlert,
-  interrupted: Pause
+  interrupted: Pause,
+  skipped: Circle
 };
 
 function stageLabel(key, stageUi) {

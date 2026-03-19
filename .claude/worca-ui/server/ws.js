@@ -119,9 +119,16 @@ export function attachWsServer(httpServer, config) {
       try { settings = readSettings(settingsPath); } catch { /* ignore */ }
       try {
         const runs = discoverRuns(worcaDir);
-        const active = runs.find(r => r.active);
-        if (active) {
-          broadcastToSubscribers(active.id, 'run-snapshot', active);
+        // Broadcast run-snapshot to all subscribed runs (not just active)
+        const subscribedIds = new Set();
+        for (const ws of wss.clients) {
+          const s = subs.get(ws);
+          if (s?.runId) subscribedIds.add(s.runId);
+        }
+        for (const run of runs) {
+          if (subscribedIds.has(run.id)) {
+            broadcastToSubscribers(run.id, 'run-snapshot', run);
+          }
         }
         // Broadcast updated runs list so list views auto-update
         broadcast('runs-list', { runs, settings });
@@ -832,5 +839,5 @@ export function attachWsServer(httpServer, config) {
     ws.send(JSON.stringify(makeError(req, 'unknown_type', `Unknown message type: ${req.type}`)));
   }
 
-  return { wss, broadcast };
+  return { wss, broadcast, scheduleRefresh };
 }

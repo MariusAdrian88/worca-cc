@@ -12,6 +12,7 @@ class Stage(Enum):
     TEST = "test"
     REVIEW = "review"
     PR = "pr"
+    LEARN = "learn"
 
 
 TRANSITIONS = {
@@ -30,6 +31,7 @@ STAGE_AGENT_MAP = {
     Stage.TEST: "tester",
     Stage.REVIEW: "guardian",
     Stage.PR: "guardian",
+    Stage.LEARN: "learner",
 }
 
 STAGE_SCHEMA_MAP = {
@@ -39,6 +41,7 @@ STAGE_SCHEMA_MAP = {
     Stage.TEST: "test_result.json",
     Stage.REVIEW: "review.json",
     Stage.PR: "pr.json",
+    Stage.LEARN: "learn.json",
 }
 
 
@@ -99,3 +102,9 @@ def get_enabled_stages(settings_path: str = ".claude/settings.json") -> list:
         if stage_entry.get("enabled", True):
             enabled.append(stage)
     return enabled
+
+
+def is_learn_enabled(settings_path: str = ".claude/settings.json") -> bool:
+    """Check if learn stage is enabled. Defaults to False (opposite of other stages)."""
+    settings = _read_settings(settings_path)
+    return settings.get("worca", {}).get("stages", {}).get("learn", {}).get("enabled", False)

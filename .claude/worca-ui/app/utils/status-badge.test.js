@@ -14,6 +14,9 @@ describe('status-badge', () => {
   it('maps error', () => {
     expect(statusClass('error')).toBe('status-error');
   });
+  it('maps skipped', () => {
+    expect(statusClass('skipped')).toBe('status-skipped');
+  });
   it('returns fallback for unknown', () => {
     expect(statusClass('whatever')).toBe('status-unknown');
   });
@@ -22,6 +25,7 @@ describe('status-badge', () => {
     expect(statusIcon('completed')).toContain('</svg>');
     expect(statusIcon('error')).toContain('<svg');
     expect(statusIcon('pending')).toContain('<svg');
+    expect(statusIcon('skipped')).toContain('<svg');
   });
   it('statusIcon returns ? for unknown', () => {
     expect(statusIcon('whatever')).toBe('?');

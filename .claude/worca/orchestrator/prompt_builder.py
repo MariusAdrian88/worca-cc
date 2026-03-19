@@ -3,6 +3,7 @@
 Constructs per-stage user prompts that include the work request plus
 accumulated inter-stage context (plan output, bead IDs, test results, etc.).
 """
+import json
 import os
 
 
@@ -271,4 +272,62 @@ class PromptBuilder:
         approach = self._context.get("plan_approach")
         if approach:
             parts.append(f"## Approach\n\n{approach}")
+        return "\n\n".join(parts)
+
+    # -- Learn stage -------------------------------------------------------
+
+    _MAX_STATUS_JSON_LEN = 50_000  # truncate serialised status beyond this
+
+    def _build_learn(self, iteration: int) -> str:
+        """Build the retrospective analysis prompt for the LEARN stage."""
+        full_status = self._context.get("full_status") or {}
+        termination_type = self._context.get("termination_type", "unknown")
+        termination_reason = self._context.get("termination_reason", "")
+        plan_content = self._context.get("plan_file_content")
+
+        parts = [
+            "Analyze the completed pipeline run and produce a structured retrospective.",
+            "You are a read-only analyst. Do NOT modify files or run tests.",
+        ]
+
+        # Work request context
+        parts.append(self._work_request_section())
+
+        # Termination info
+        term_section = f"## Termination\n\n**Type:** {termination_type}"
+        if termination_reason:
+            term_section += f"\n**Reason:** {termination_reason}"
+        parts.append(term_section)
+
+        # Plan content (if available)
+        if plan_content:
+            parts.append(f"## Plan File\n\n{plan_content}")
+
+        # Full run data as JSON (truncated if too large)
+        status_json = json.dumps(full_status, indent=2, default=str)
+        if len(status_json) > self._MAX_STATUS_JSON_LEN:
+            status_json = status_json[:self._MAX_STATUS_JSON_LEN] + "\n... (truncated)"
+        parts.append(f"## Run Data\n\n```json\n{status_json}\n```")
+
+        # Analysis instructions per category
+        parts.append(
+            "## Analysis Instructions\n\n"
+            "Analyze the run data above across these categories:\n\n"
+            "1. **Test loops** — What triggered each test failure? Did fixes address "
+            "root causes or just symptoms? Did the same failure types recur?\n"
+            "2. **Review loops** — What severity/category of issues were raised? "
+            "Were they systemic or isolated?\n"
+            "3. **Implementation** — Were there recurring issues across beads "
+            "(same error types, missing patterns, same test categories failing)?\n"
+            "4. **Planning** — Did the plan anticipate actual challenges? "
+            "Were task decompositions appropriate?\n"
+            "5. **Coordination** — Were dependencies correct? Did the bead ordering "
+            "cause unnecessary rework?\n"
+            "6. **Configuration** — Were loop limits hit? Were turn limits adequate? "
+            "Was cost disproportionate to outcome?\n\n"
+            "For each observation, rate importance as critical/high/medium/low "
+            "based on impact and recurrence. Formulate targeted suggestions "
+            "linking to specific artifacts (prompts, config, plan templates)."
+        )
+
         return "\n\n".join(parts)
