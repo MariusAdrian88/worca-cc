@@ -2639,6 +2639,11 @@ sl-details.learnings-panel::part(content) {
 }
 
 /* Learnings table */
+.col-center {
+  text-align: center;
+  justify-self: center;
+}
+
 .learnings-table {
   display: grid;
   gap: 1px;

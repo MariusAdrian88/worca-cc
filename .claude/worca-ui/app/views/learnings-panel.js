@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw, ClipboardCopy } from '../utils/icons.js';
+import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw, ClipboardCopy, Zap } from '../utils/icons.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 
 /**
@@ -88,22 +88,24 @@ function observationsTableView(observations) {
     <h4 class="learnings-table-title">Observations</h4>
     <div class="learnings-table">
       <div class="learnings-table-header">
-        <span>Importance</span>
+        <span class="col-center">Importance</span>
         <span>Category</span>
         <span>Description</span>
         <span>Evidence</span>
-        <span>Count</span>
-        <span></span>
+        <span class="col-center">Count</span>
+        <span class="col-center">${unsafeHTML(iconSvg(Zap, 12))}</span>
       </div>
       ${observations.map(obs => html`
         <div class="learnings-table-row">
-          <sl-badge variant="${importanceBadge(obs.importance)}" pill>
-            ${obs.importance}
-          </sl-badge>
+          <span class="col-center">
+            <sl-badge variant="${importanceBadge(obs.importance)}" pill>
+              ${obs.importance}
+            </sl-badge>
+          </span>
           <span class="learnings-category">${obs.category}</span>
           <span>${obs.description}</span>
           <span class="learnings-evidence">${obs.evidence}</span>
-          <span>${obs.occurrences || 1}</span>
+          <span class="col-center">${obs.occurrences || 1}</span>
           <sl-tooltip content="Copy investigation prompt">
             <button class="learnings-copy-btn" @click=${(e) => copyToClipboard(observationPrompt(obs), e.currentTarget)}>
               <span class="copy-icon">${unsafeHTML(iconSvg(ClipboardCopy, 14))}</span>
@@ -123,7 +125,7 @@ function suggestionsTableView(suggestions) {
         <span>Target</span>
         <span>Suggestion</span>
         <span>Rationale</span>
-        <span></span>
+        <span class="col-center">${unsafeHTML(iconSvg(Zap, 12))}</span>
       </div>
       ${suggestions.map(s => html`
         <div class="learnings-table-row learnings-table-row--suggestions">
@@ -156,13 +158,13 @@ function recurringPatternsView(patterns) {
         <div class="learnings-table-header learnings-table-header--patterns">
           <span>Pattern</span>
           <span>Affected Beads</span>
-          <span>Frequency</span>
+          <span class="col-center">Frequency</span>
         </div>
         ${crossBead.map(p => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
             <span>${(p.affected_beads || []).join(', ')}</span>
-            <span>${p.frequency}</span>
+            <span class="col-center">${p.frequency}</span>
           </div>
         `)}
       </div>
@@ -172,14 +174,16 @@ function recurringPatternsView(patterns) {
       <div class="learnings-table">
         <div class="learnings-table-header learnings-table-header--patterns">
           <span>Pattern</span>
-          <span>Iterations</span>
-          <span>Resolved</span>
+          <span class="col-center">Iterations</span>
+          <span class="col-center">Resolved</span>
         </div>
         ${testFix.map(p => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
-            <span>${p.loop_iterations}</span>
-            <span>${p.resolved ? 'Yes' : 'No'}</span>
+            <span class="col-center">${p.loop_iterations}</span>
+            <span class="col-center">
+              <sl-badge variant="${p.resolved ? 'success' : 'warning'}" pill>${p.resolved ? 'Yes' : 'No'}</sl-badge>
+            </span>
           </div>
         `)}
       </div>
@@ -189,14 +193,16 @@ function recurringPatternsView(patterns) {
       <div class="learnings-table">
         <div class="learnings-table-header learnings-table-header--patterns">
           <span>Pattern</span>
-          <span>Iterations</span>
-          <span>Resolved</span>
+          <span class="col-center">Iterations</span>
+          <span class="col-center">Resolved</span>
         </div>
         ${reviewFix.map(p => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
-            <span>${p.loop_iterations}</span>
-            <span>${p.resolved ? 'Yes' : 'No'}</span>
+            <span class="col-center">${p.loop_iterations}</span>
+            <span class="col-center">
+              <sl-badge variant="${p.resolved ? 'success' : 'warning'}" pill>${p.resolved ? 'Yes' : 'No'}</sl-badge>
+            </span>
           </div>
         `)}
       </div>
