@@ -1832,7 +1832,7 @@ sl-details.live-output-panel::part(content) {
 /* Remove top margin from live-output and log-history when inside the layout columns,
    since the grid gap handles spacing */
 .run-detail-layout__logs .live-output-container {
-  margin-top: 0;
+  margin-top: 16px;
 }
 
 .run-detail-layout__logs .log-history-container {

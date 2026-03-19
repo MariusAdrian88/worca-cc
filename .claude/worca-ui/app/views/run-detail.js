@@ -6,6 +6,7 @@ import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy, Coins, RotateCcw, List } from '../utils/icons.js';
 import { beadsDependencyGraph, priorityVariant, statusVariant } from './beads-panel.js';
 import { resolveIterationTab } from './stage-tab-memory.js';
+import { scrollOnExpand } from '../utils/scroll.js';
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -255,7 +256,7 @@ function _agentPromptSection(_stageKey, promptData) {
   const { agentInstructions, userPrompt } = promptData;
   if (!agentInstructions && !userPrompt) return nothing;
   return html`
-    <sl-details class="agent-prompt-section">
+    <sl-details class="agent-prompt-section" @sl-after-show=${scrollOnExpand}>
       <div slot="summary" class="agent-prompt-header">
         <span class="stage-meta-icon">${unsafeHTML(iconSvg(FileText, 12))}</span>
         Agent Instructions
@@ -291,7 +292,7 @@ export function runBeadsSectionView(beads) {
   if (beads.length === 0) {
     return html`
       <div class="run-beads-section">
-        <sl-details class="run-beads-panel">
+        <sl-details class="run-beads-panel" @sl-after-show=${scrollOnExpand}>
           <div slot="summary" class="run-beads-header">
             <span class="run-beads-icon">${unsafeHTML(iconSvg(List, 16))}</span>
             <span class="run-beads-title">Beads</span>
@@ -303,7 +304,7 @@ export function runBeadsSectionView(beads) {
   }
   return html`
     <div class="run-beads-section">
-      <sl-details class="run-beads-panel">
+      <sl-details class="run-beads-panel" @sl-after-show=${scrollOnExpand}>
         <div slot="summary" class="run-beads-header">
           <span class="run-beads-icon">${unsafeHTML(iconSvg(List, 16))}</span>
           <span class="run-beads-title">Beads</span>
@@ -391,6 +392,7 @@ export function runDetailView(run, settings = {}, options = {}) {
           return html`
             <sl-details ?open=${stageStatus === 'in_progress'} class="stage-panel"
               @sl-after-show=${(e) => {
+                scrollOnExpand(e);
                 if (!hasMultipleIterations) return;
                 const tabGroup = e.target.querySelector('sl-tab-group');
                 if (!tabGroup) return;

@@ -2,6 +2,7 @@ import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw, ClipboardCopy, Zap } from '../utils/icons.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
+import { scrollOnExpand } from '../utils/scroll.js';
 
 /**
  * Map importance level to sl-badge variant.
@@ -326,7 +327,7 @@ export function learningsSectionView(learnStage, options = {}) {
 
   return html`
     <div class="learnings-section">
-      <sl-details class="learnings-panel" ?open=${isInProgress}>
+      <sl-details class="learnings-panel" ?open=${isInProgress} @sl-after-show=${scrollOnExpand}>
         <div slot="summary" class="learnings-header">
           <span class="learnings-icon">${unsafeHTML(iconSvg(Lightbulb, 16))}</span>
           <span class="learnings-title">Learnings</span>
