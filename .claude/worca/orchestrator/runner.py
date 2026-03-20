@@ -34,6 +34,38 @@ from worca.utils.claude_cli import run_agent, terminate_current
 from worca.utils.git import create_branch
 from worca.utils.token_usage import extract_token_usage, aggregate_token_usage, aggregate_by_model
 from worca.utils.stats import update_cumulative_stats
+from worca.events.emitter import EventContext, emit_event, _check_control_response
+from worca.events.types import (
+    RUN_STARTED, RUN_COMPLETED, RUN_FAILED, RUN_INTERRUPTED,
+    RUN_RESUMED, RUN_PAUSED, RUN_RESUMED_FROM_PAUSE,
+    run_started_payload, run_completed_payload, run_failed_payload, run_interrupted_payload,
+    run_resumed_payload, run_paused_payload, run_resumed_from_pause_payload,
+    STAGE_STARTED, STAGE_COMPLETED, STAGE_FAILED, STAGE_INTERRUPTED,
+    stage_started_payload, stage_completed_payload,
+    stage_failed_payload, stage_interrupted_payload,
+    AGENT_SPAWNED, AGENT_TOOL_USE, AGENT_TOOL_RESULT, AGENT_TEXT, AGENT_COMPLETED,
+    agent_spawned_payload, agent_tool_use_payload, agent_tool_result_payload,
+    agent_text_payload, agent_completed_payload,
+    BEAD_ASSIGNED, BEAD_COMPLETED, BEAD_FAILED, BEAD_LABELED, BEAD_NEXT,
+    bead_assigned_payload, bead_completed_payload, bead_failed_payload,
+    bead_labeled_payload, bead_next_payload,
+    TEST_SUITE_STARTED, TEST_SUITE_PASSED, TEST_SUITE_FAILED, TEST_FIX_ATTEMPT,
+    test_suite_started_payload, test_suite_passed_payload, test_suite_failed_payload, test_fix_attempt_payload,
+    REVIEW_STARTED, REVIEW_VERDICT, REVIEW_FIX_ATTEMPT,
+    review_started_payload, review_verdict_payload, review_fix_attempt_payload,
+    MILESTONE_SET, LOOP_TRIGGERED, LOOP_EXHAUSTED,
+    milestone_set_payload, loop_triggered_payload, loop_exhausted_payload,
+    CB_FAILURE_RECORDED, CB_RETRY, CB_TRIPPED, CB_RESET,
+    cb_failure_recorded_payload, cb_retry_payload, cb_tripped_payload, cb_reset_payload,
+    COST_STAGE_TOTAL, COST_RUNNING_TOTAL, COST_BUDGET_WARNING,
+    cost_stage_total_payload, cost_running_total_payload, cost_budget_warning_payload,
+    GIT_BRANCH_CREATED, GIT_PR_CREATED,
+    git_branch_created_payload, git_pr_created_payload,
+    PREFLIGHT_COMPLETED, PREFLIGHT_SKIPPED,
+    preflight_completed_payload, preflight_skipped_payload,
+    LEARN_COMPLETED, LEARN_FAILED,
+    learn_completed_payload, learn_failed_payload,
+)
 
 
 class LoopExhaustedError(Exception):
@@ -58,6 +90,33 @@ class PipelineInterrupted(Exception):
 
 # Shutdown flag set by signal handlers
 _shutdown_requested = False
+
+
+def _handle_pause(ctx: EventContext, reason: str) -> None:
+    """Enter a pause polling loop until a control webhook returns resume or abort.
+
+    Emits pipeline.run.paused on entry and on each poll tick (30s interval).
+    On "resume": emits pipeline.run.resumed_from_pause and returns.
+    On "abort": raises PipelineInterrupted.
+    On timeout/no response: continues polling.
+    """
+    pause_event = emit_event(ctx, RUN_PAUSED, run_paused_payload(reason=reason))
+    _log(f"Pipeline paused: {reason}", "warn")
+    while True:
+        for _ in range(30):
+            if _shutdown_requested:
+                raise PipelineInterrupted("Interrupted by signal during pause")
+            time.sleep(1)
+        poll_event = emit_event(ctx, RUN_PAUSED, run_paused_payload(reason=reason, waiting=True))
+        action = _check_control_response(ctx, poll_event or pause_event)
+        if action == "resume":
+            emit_event(ctx, RUN_RESUMED_FROM_PAUSE, run_resumed_from_pause_payload(
+                reason="control webhook",
+            ))
+            _log("Pipeline resumed by control webhook", "ok")
+            return
+        elif action == "abort":
+            raise PipelineInterrupted(f"Aborted via control webhook: {reason}")
 
 
 def _base62(n: int, length: int = 3) -> str:
@@ -166,6 +225,8 @@ def _archive_run(status: dict, status_path: str) -> None:
         run_dir = os.path.join(worca_dir, "runs", run_id)
         dest = os.path.join(results_dir, run_id)
         if os.path.isdir(run_dir):
+            # events.jsonl is co-located in run_dir; it is archived automatically.
+            # Graceful skip: if events.jsonl is absent (events disabled), no action needed.
             shutil.move(run_dir, dest)
         elif os.path.exists(status_path):
             # Run dir missing but status exists — save status to results
@@ -390,7 +451,7 @@ def _build_stage_prompt(stage: Stage, raw_prompt: str) -> str:
 
 def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
                      termination_type, termination_reason, msize, logs_dir,
-                     force=False):
+                     force=False, ctx=None):
     """Run the LEARN stage if enabled (or forced). Called after pipeline termination.
 
     Non-fatal: any exception is logged but not propagated.
@@ -399,6 +460,7 @@ def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
         force: If True, skip the is_learn_enabled() check. Used by the
                manual trigger (run_learn.py / UI button) so that learning
                analysis runs even when learn.enabled is false.
+        ctx: Optional EventContext for emitting learn events.
     """
     if not force and not is_learn_enabled(settings_path):
         return
@@ -430,14 +492,25 @@ def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
         update_stage(status, "learn", status="completed")
 
         # Save standalone learnings file
+        learnings_path = None
         if run_dir:
             learnings_path = os.path.join(run_dir, "learnings.json")
             with open(learnings_path, "w") as f:
                 json.dump(result, f, indent=2)
         save_status(status, actual_status_path)
         _log("Learnings saved", "ok")
+        if ctx:
+            emit_event(ctx, LEARN_COMPLETED, learn_completed_payload(
+                termination_type=termination_type,
+                learnings_path=learnings_path or "",
+            ))
     except Exception as e:
         _log(f"Learn stage failed (non-fatal): {e}", "warn")
+        if ctx:
+            try:
+                emit_event(ctx, LEARN_FAILED, learn_failed_payload(error=str(e)))
+            except Exception:
+                pass
         try:
             complete_iteration(status, "learn", status="error", error=str(e),
                                completed_at=datetime.now(timezone.utc).isoformat())
@@ -447,6 +520,122 @@ def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
             pass
 
 
+def _summarize_tool_input(block: dict) -> str:
+    """Extract a short summary of a tool_use block's input for telemetry."""
+    tool = block.get("name", "")
+    inp = block.get("input", {})
+    if tool in ("Read", "Write", "Edit"):
+        return inp.get("file_path", "")
+    if tool == "Bash":
+        return (inp.get("command") or "")[:120]
+    if tool == "Grep":
+        return inp.get("pattern", "")
+    if tool == "Glob":
+        return inp.get("pattern", "")
+    if tool == "Agent":
+        return inp.get("description", "")
+    return ""
+
+
+def _is_agent_telemetry_enabled(settings_path: str) -> bool:
+    """Check worca.events.agent_telemetry setting (defaults to True)."""
+    try:
+        with open(settings_path) as f:
+            settings = json.load(f)
+        return settings.get("worca", {}).get("events", {}).get("agent_telemetry", True)
+    except Exception:
+        return True
+
+
+def _make_agent_event_handler(
+    ctx: Optional[EventContext],
+    stage: Stage,
+    iteration: int,
+    settings_path: str,
+):
+    """Create an on_event callback closure for agent telemetry.
+
+    Returns None if ctx is None or agent_telemetry is disabled.
+    The returned callable translates stream-json events to pipeline events.
+    """
+    if ctx is None:
+        return None
+    if not _is_agent_telemetry_enabled(settings_path):
+        return None
+
+    turn_counter = [0]
+    tool_id_to_name: dict = {}
+
+    def handler(event: dict) -> None:
+        etype = event.get("type", "")
+
+        if etype == "system":
+            if event.get("subtype") == "init":
+                emit_event(ctx, AGENT_SPAWNED, agent_spawned_payload(
+                    stage=stage.value,
+                    iteration=iteration,
+                    agent=STAGE_AGENT_MAP.get(stage, ""),
+                    model=event.get("model", ""),
+                    max_turns=0,
+                ))
+            # All other system subtypes (hook, etc.) are silently ignored.
+
+        elif etype == "assistant":
+            turn_counter[0] += 1
+            turn = turn_counter[0]
+            content = event.get("message", {}).get("content", [])
+            for block in content:
+                btype = block.get("type", "")
+                if btype == "tool_use":
+                    tool_name = block.get("name", "")
+                    tool_id = block.get("id", "")
+                    if tool_id:
+                        tool_id_to_name[tool_id] = tool_name
+                    emit_event(ctx, AGENT_TOOL_USE, agent_tool_use_payload(
+                        stage=stage.value,
+                        iteration=iteration,
+                        tool=tool_name,
+                        tool_input_summary=_summarize_tool_input(block),
+                        turn=turn,
+                    ))
+                elif btype == "text":
+                    text = block.get("text", "")
+                    if text:
+                        emit_event(ctx, AGENT_TEXT, agent_text_payload(
+                            stage=stage.value,
+                            iteration=iteration,
+                            text_length=len(text),
+                            turn=turn,
+                        ))
+
+        elif etype == "user":
+            content = event.get("content", [])
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "tool_result":
+                        tool_id = block.get("tool_use_id", "")
+                        tool_name = tool_id_to_name.get(tool_id, "")
+                        emit_event(ctx, AGENT_TOOL_RESULT, agent_tool_result_payload(
+                            stage=stage.value,
+                            iteration=iteration,
+                            tool=tool_name,
+                            is_error=block.get("is_error", False),
+                            turn=turn_counter[0],
+                        ))
+
+        elif etype == "result":
+            emit_event(ctx, AGENT_COMPLETED, agent_completed_payload(
+                stage=stage.value,
+                iteration=iteration,
+                turns=event.get("num_turns", 0),
+                cost_usd=event.get("total_cost_usd", 0.0),
+                duration_ms=event.get("duration_ms", 0),
+                exit_code=0,
+            ))
+
+    return handler
+
+
 def run_stage(
     stage: Stage,
     context: dict,
@@ -454,6 +643,7 @@ def run_stage(
     msize: int = 1,
     iteration: int = 1,
     prompt_override: str = None,
+    ctx: Optional[EventContext] = None,
 ) -> tuple[dict, dict]:
     """Run a single pipeline stage.
 
@@ -473,13 +663,14 @@ def run_stage(
     """
     config = get_stage_config(stage, settings_path=settings_path)
     max_turns = config["max_turns"] * msize
-    raw_prompt = prompt_override or context.get("prompt", "")
-    prompt = _build_stage_prompt(stage, raw_prompt)
+    raw_prompt = context.get("prompt", "")
+    prompt = prompt_override if prompt_override is not None else _build_stage_prompt(stage, raw_prompt)
     logs_dir = context.get("_logs_dir", ".worca/logs")
     run_dir = context.get("_run_dir")
     log_dir = os.path.join(logs_dir, stage.value)
     os.makedirs(log_dir, exist_ok=True)
     log_path = os.path.join(log_dir, f"iter-{iteration}.log")
+    on_event = _make_agent_event_handler(ctx, stage, iteration, settings_path)
     raw = run_agent(
         prompt=prompt,
         agent=_agent_path(config["agent"], run_dir=run_dir),
@@ -488,6 +679,7 @@ def run_stage(
         json_schema=_schema_path(config["schema"]),
         model=config.get("model"),
         log_path=log_path,
+        on_event=on_event,
     )
     # claude CLI returns a JSON envelope; extract structured_output if present
     if isinstance(raw, dict) and "structured_output" in raw:
@@ -598,6 +790,16 @@ def check_loop_limit(
     loops = settings.get("worca", {}).get("loops", {})
     limit = loops.get(loop_name, default_limit) * mloops
     return current_iteration < limit
+
+
+def _get_loop_limit(loop_name: str, settings_path: str, mloops: int = 1, default: int = 5) -> int:
+    """Return the configured loop limit for event payloads."""
+    try:
+        with open(settings_path) as f:
+            settings = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        settings = {}
+    return settings.get("worca", {}).get("loops", {}).get(loop_name, default) * mloops
 
 
 def handle_pr_review(outcome: str, status: dict) -> tuple:
@@ -716,6 +918,7 @@ def run_pipeline(
 
     resume_stage = None
 
+    _branch_just_created = False
     if resume and existing and _is_same_work_request(existing.get("work_request", {}), work_request):
         # Explicit resume requested and same work request found
         from worca.orchestrator.resume import find_resume_point
@@ -743,6 +946,7 @@ def run_pipeline(
         else:
             branch_name = _sanitize_branch_name(work_request.title)
             create_branch(branch_name)
+            _branch_just_created = True
 
         wr_dict = {
             "source_type": work_request.source_type,
@@ -774,10 +978,59 @@ def run_pipeline(
     logs_dir = os.path.join(run_dir, "logs") if run_dir else os.path.join(worca_dir, "logs")
     _init_orchestrator_log(logs_dir)
 
+    ctx = None
     try:
         _log(f"Pipeline: {work_request.title}")
         _log(f"Branch: {branch_name}")
         pipeline_t0 = time.time()
+
+        # Initialize EventContext for structured event emission
+        events_path = os.path.join(run_dir, "events.jsonl") if run_dir else None
+        if events_path:
+            ctx = EventContext(
+                run_id=status.get("run_id", ""),
+                branch=branch_name,
+                work_request=status.get("work_request", {}),
+                events_path=events_path,
+                settings_path=settings_path,
+            )
+            os.environ["WORCA_EVENTS_PATH"] = events_path
+
+            # Validate control webhooks: warn and skip those without a secret.
+            # (control_webhooks property already enforces this, this is just logging.)
+            try:
+                with open(settings_path) as _sf:
+                    _all_wh = json.load(_sf).get("worca", {}).get("webhooks", [])
+                for _wh in _all_wh:
+                    if _wh.get("control") and not _wh.get("secret"):
+                        _log(
+                            f"[webhook] Control webhook {_wh.get('url', '?')} has no "
+                            "secret configured — skipping for security",
+                            "warn",
+                        )
+            except Exception:
+                pass
+
+            if resume_stage is not None:
+                previous = [
+                    s for s, v in status.get("stages", {}).items()
+                    if v.get("status") == "completed"
+                ]
+                emit_event(ctx, RUN_RESUMED, run_resumed_payload(
+                    resume_stage=resume_stage.value,
+                    previous_stages_completed=previous,
+                ))
+            else:
+                emit_event(ctx, RUN_STARTED, run_started_payload(
+                    resume=False,
+                    started_at=status.get("started_at", ""),
+                    plan_file=status.get("plan_file"),
+                ))
+
+            if _branch_just_created:
+                emit_event(ctx, GIT_BRANCH_CREATED, git_branch_created_payload(
+                    branch=branch_name,
+                ))
 
         context = {
             "prompt": work_request.description or work_request.title,
@@ -833,6 +1086,11 @@ def run_pipeline(
 
             save_status(status, actual_status_path)
 
+        # Ensure hook env vars are set for both new and resumed runs
+        os.environ["WORCA_PLAN_FILE"] = status.get("plan_file", "")
+        if status.get("run_id"):
+            os.environ["WORCA_RUN_ID"] = status["run_id"]
+
         # Determine starting index
         if resume_stage:
             stage_idx = stage_order.index(resume_stage)
@@ -841,6 +1099,16 @@ def run_pipeline(
             update_stage(status, Stage.PLAN.value,
                          status="completed", skipped=True, plan_file=plan_file)
             set_milestone(status, "plan_approved", True)
+            if ctx:
+                _ms_event = emit_event(ctx, MILESTONE_SET, milestone_set_payload(
+                    milestone="plan_approved", value=True, stage=Stage.PLAN.value,
+                ))
+                if _ms_event:
+                    _action = _check_control_response(ctx, _ms_event)
+                    if _action == "pause":
+                        _handle_pause(ctx, "plan_approved milestone")
+                    elif _action == "abort":
+                        raise PipelineInterrupted("Aborted via control webhook")
             save_status(status, actual_status_path)
 
             # Start from the beginning (includes PREFLIGHT) — PLAN will be
@@ -893,6 +1161,26 @@ def run_pipeline(
             )
             iter_num = iter_record["number"]
             save_status(status, actual_status_path)
+            if ctx:
+                emit_event(ctx, STAGE_STARTED, stage_started_payload(
+                    stage=current_stage.value,
+                    iteration=iter_num,
+                    agent=stage_config["agent"],
+                    model=stage_config.get("model", ""),
+                    trigger=trigger,
+                    max_turns=(stage_config.get("max_turns") or 0) * msize,
+                ))
+                if current_stage == Stage.TEST:
+                    emit_event(ctx, TEST_SUITE_STARTED, test_suite_started_payload(
+                        stage=current_stage.value,
+                        iteration=iter_num,
+                        trigger=trigger,
+                    ))
+                elif current_stage == Stage.REVIEW:
+                    emit_event(ctx, REVIEW_STARTED, review_started_payload(
+                        iteration=iter_num,
+                        files_under_review=prompt_builder.get_context("files_changed"),
+                    ))
 
             stage_label = current_stage.value.upper()
             iter_label = f" (iter {iter_num})" if iter_num > 1 else ""
@@ -904,6 +1192,12 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, status="interrupted")
                 update_stage(status, current_stage.value, status="interrupted")
                 save_status(status, actual_status_path)
+                if ctx:
+                    emit_event(ctx, STAGE_INTERRUPTED, stage_interrupted_payload(
+                        stage=current_stage.value,
+                        iteration=iter_num,
+                        elapsed_ms=int((time.time() - t0) * 1000),
+                    ))
                 raise PipelineInterrupted("Pipeline interrupted before stage start")
 
             # --- Phase 1 bead assignment (IMPLEMENT only) ---
@@ -915,6 +1209,12 @@ def run_pipeline(
                     if bead:
                         bead_id = bead["id"]
                         _claim_bead(bead_id)
+                        if ctx:
+                            emit_event(ctx, BEAD_ASSIGNED, bead_assigned_payload(
+                                bead_id=bead_id,
+                                title=bead["title"],
+                                iteration=loop_counters.get("bead_iteration", 0) + 1,
+                            ))
                         prompt_builder.update_context("assigned_bead_id", bead_id)
                         prompt_builder.update_context("assigned_bead_title", bead["title"])
                         try:
@@ -952,6 +1252,7 @@ def run_pipeline(
                 if current_stage == Stage.PREFLIGHT and skip_preflight:
                     _log("PREFLIGHT skipped (--skip-preflight)", "warn")
                     stage_completed = datetime.now(timezone.utc).isoformat()
+                    _elapsed_ms = int((time.time() - t0) * 1000)
                     complete_iteration(
                         status, current_stage.value,
                         status="completed",
@@ -964,6 +1265,24 @@ def run_pipeline(
                         completed_at=stage_completed,
                     )
                     save_status(status, actual_status_path)
+                    if ctx:
+                        emit_event(ctx, PREFLIGHT_SKIPPED, preflight_skipped_payload(
+                            reason="--skip-preflight",
+                        ))
+                        _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                            stage=current_stage.value,
+                            iteration=iter_num,
+                            duration_ms=_elapsed_ms,
+                            cost_usd=0.0,
+                            turns=0,
+                            outcome="skipped",
+                        ))
+                        if _sc_event:
+                            _action = _check_control_response(ctx, _sc_event)
+                            if _action == "pause":
+                                _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                            elif _action == "abort":
+                                raise PipelineInterrupted("Aborted via control webhook")
                     stage_idx += 1
                     continue
                 elif current_stage == Stage.PREFLIGHT:
@@ -976,6 +1295,7 @@ def run_pipeline(
                         current_stage, context, settings_path,
                         msize=msize, iteration=iter_num,
                         prompt_override=rendered_prompt,
+                        ctx=ctx,
                     )
             except InterruptedError:
                 stage_completed = datetime.now(timezone.utc).isoformat()
@@ -990,6 +1310,12 @@ def run_pipeline(
                     completed_at=stage_completed,
                 )
                 save_status(status, actual_status_path)
+                if ctx:
+                    emit_event(ctx, STAGE_INTERRUPTED, stage_interrupted_payload(
+                        stage=current_stage.value,
+                        iteration=iter_num,
+                        elapsed_ms=int((time.time() - t0) * 1000),
+                    ))
                 raise PipelineInterrupted(f"Pipeline interrupted during {current_stage.value}")
             except Exception as e:
                 stage_completed = datetime.now(timezone.utc).isoformat()
@@ -1006,6 +1332,14 @@ def run_pipeline(
                     error=str(e),
                 )
                 save_status(status, actual_status_path)
+                if ctx:
+                    emit_event(ctx, STAGE_FAILED, stage_failed_payload(
+                        stage=current_stage.value,
+                        iteration=iter_num,
+                        error=str(e),
+                        error_type=type(e).__name__,
+                        elapsed_ms=int((time.time() - t0) * 1000),
+                    ))
 
                 # Circuit breaker integration
                 try:
@@ -1020,6 +1354,14 @@ def run_pipeline(
                         str(e), current_stage.value, _failure_history, settings_path
                     )
                     record_failure(status, current_stage.value, str(e), classification)
+                    if ctx:
+                        emit_event(ctx, CB_FAILURE_RECORDED, cb_failure_recorded_payload(
+                            stage=current_stage.value,
+                            error=str(e),
+                            category=classification.get("category", "unknown"),
+                            retriable=classification.get("retriable", False),
+                            consecutive_failures=get_circuit_breaker_state(status)["consecutive_failures"],
+                        ))
                     iter_record["classification"] = classification
                     save_status(status, actual_status_path)
 
@@ -1032,6 +1374,12 @@ def run_pipeline(
                         status["circuit_breaker"]["tripped"] = True
                         status["circuit_breaker"]["tripped_reason"] = reason
                         save_status(status, actual_status_path)
+                        if ctx:
+                            emit_event(ctx, CB_TRIPPED, cb_tripped_payload(
+                                reason=reason,
+                                consecutive_failures=get_circuit_breaker_state(status)["consecutive_failures"],
+                                category=_cat,
+                            ))
                         raise CircuitBreakerTripped(reason)
 
                     if _retriable and _cat == CATEGORY_TRANSIENT:
@@ -1044,12 +1392,25 @@ def run_pipeline(
                         _delay = get_retry_delay(_retry_attempt, settings_path)
                         if _delay is not None:
                             _log(f"Transient error — retrying in {_delay}s", "warn")
+                            if ctx:
+                                emit_event(ctx, CB_RETRY, cb_retry_payload(
+                                    stage=current_stage.value,
+                                    attempt=_retry_attempt + 1,
+                                    delay_seconds=_delay,
+                                    consecutive_failures=get_circuit_breaker_state(status)["consecutive_failures"],
+                                ))
                             time.sleep(_delay)
                             continue
 
                 raise
             else:
+                _prev_consecutive = get_circuit_breaker_state(status)["consecutive_failures"]
                 record_success(status)
+                if ctx and _prev_consecutive > 0:
+                    emit_event(ctx, CB_RESET, cb_reset_payload(
+                        stage=current_stage.value,
+                        previous_consecutive_failures=_prev_consecutive,
+                    ))
 
             elapsed = time.time() - t0
             _log(f"{stage_label}{iter_label} completed ({_format_duration(elapsed)})", "ok")
@@ -1063,6 +1424,57 @@ def run_pipeline(
 
             # Extract token usage from the raw envelope
             usage = extract_token_usage(raw_envelope) if isinstance(raw_envelope, dict) else {}
+
+            # Emit cost events after token extraction
+            if ctx and isinstance(raw_envelope, dict):
+                _stage_cost = raw_envelope.get("total_cost_usd") or 0.0
+                _stage_input = usage.get("input_tokens", 0)
+                _stage_output = usage.get("output_tokens", 0)
+                if _stage_cost or _stage_input or _stage_output:
+                    emit_event(ctx, COST_STAGE_TOTAL, cost_stage_total_payload(
+                        stage=current_stage.value,
+                        iteration=iter_num,
+                        cost_usd=_stage_cost,
+                        input_tokens=_stage_input,
+                        output_tokens=_stage_output,
+                        model=stage_config.get("model", ""),
+                    ))
+                # Running total: sum of all previously-completed stages + current
+                _prev_costs = sum(
+                    (v.get("cost_usd") or 0)
+                    for k, v in status.get("stages", {}).items()
+                    if k != current_stage.value
+                )
+                _running_cost = _prev_costs + _stage_cost
+                _prev_input = sum(
+                    (v.get("token_usage", {}).get("input_tokens") or 0)
+                    for v in status.get("stages", {}).values()
+                )
+                _prev_output = sum(
+                    (v.get("token_usage", {}).get("output_tokens") or 0)
+                    for v in status.get("stages", {}).values()
+                )
+                emit_event(ctx, COST_RUNNING_TOTAL, cost_running_total_payload(
+                    total_cost_usd=_running_cost,
+                    total_input_tokens=_prev_input + _stage_input,
+                    total_output_tokens=_prev_output + _stage_output,
+                ))
+                # Budget warning check
+                try:
+                    with open(settings_path) as _bf:
+                        _budget_settings = json.load(_bf).get("worca", {}).get("budget", {})
+                except Exception:
+                    _budget_settings = {}
+                _max_cost = _budget_settings.get("max_cost_usd")
+                if _max_cost and _max_cost > 0 and _running_cost > 0:
+                    _warning_pct = _budget_settings.get("warning_pct", 80.0)
+                    _pct_used = (_running_cost / _max_cost) * 100.0
+                    if _pct_used >= _warning_pct:
+                        emit_event(ctx, COST_BUDGET_WARNING, cost_budget_warning_payload(
+                            total_cost_usd=_running_cost,
+                            budget_usd=_max_cost,
+                            pct_used=_pct_used,
+                        ))
 
             # Build iteration completion kwargs
             stage_completed = datetime.now(timezone.utc).isoformat()
@@ -1116,6 +1528,34 @@ def run_pipeline(
                 update_stage(status, current_stage.value,
                              **{**stage_extras, "skipped": preflight_skipped})
                 save_status(status, actual_status_path)
+                if ctx:
+                    if preflight_skipped:
+                        emit_event(ctx, PREFLIGHT_SKIPPED, preflight_skipped_payload(
+                            reason=result.get("summary", "preflight skipped"),
+                        ))
+                    else:
+                        _pf_checks = result.get("checks", [])
+                        _pf_all_passed = all(
+                            c.get("status") in ("pass", "warn") for c in _pf_checks
+                        ) if _pf_checks else True
+                        emit_event(ctx, PREFLIGHT_COMPLETED, preflight_completed_payload(
+                            checks=_pf_checks,
+                            all_passed=_pf_all_passed,
+                        ))
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
 
             # Milestone gate after PLAN
             elif current_stage == Stage.PLAN:
@@ -1124,7 +1564,40 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 set_milestone(status, "plan_approved", approved)
+                if ctx:
+                    _ms_event = emit_event(ctx, MILESTONE_SET, milestone_set_payload(
+                        milestone="plan_approved", value=approved, stage=Stage.PLAN.value,
+                    ))
+                    if _ms_event:
+                        _action = _check_control_response(ctx, _ms_event)
+                        if _action == "approve":
+                            approved = True
+                            set_milestone(status, "plan_approved", True)
+                            iter_extras["outcome"] = "success"
+                        elif _action == "reject":
+                            approved = False
+                            set_milestone(status, "plan_approved", False)
+                            iter_extras["outcome"] = "rejected"
+                        elif _action == "pause":
+                            _handle_pause(ctx, "plan_approved milestone")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
                 save_status(status, actual_status_path)
+                if ctx:
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
                 if not approved:
                     _log("PLAN not approved — stopping", "err")
                     raise PipelineError("Plan not approved")
@@ -1139,6 +1612,21 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 save_status(status, actual_status_path)
+                if ctx:
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
                 # Thread coordinate outputs into PromptBuilder
                 beads_ids = result.get("beads_ids", [])
                 max_beads = len(beads_ids)
@@ -1149,6 +1637,11 @@ def run_pipeline(
                     run_label = f"run:{status['run_id']}"
                     if bd_label_add(beads_ids, run_label):
                         _log(f"Labeled {len(beads_ids)} beads with {run_label}", "ok")
+                        if ctx:
+                            emit_event(ctx, BEAD_LABELED, bead_labeled_payload(
+                                bead_ids=beads_ids,
+                                label=run_label,
+                            ))
                     else:
                         _log(f"Failed to label beads with {run_label}", "warn")
 
@@ -1158,6 +1651,21 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 save_status(status, actual_status_path)
+                if ctx:
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
 
                 # Thread implement outputs into PromptBuilder
                 new_files = result.get("files_changed", [])
@@ -1172,8 +1680,18 @@ def run_pipeline(
                     if claimed_bead:
                         if bd_close(claimed_bead, reason="implemented"):
                             _log(f"Closed bead {claimed_bead}", "ok")
+                            if ctx:
+                                emit_event(ctx, BEAD_COMPLETED, bead_completed_payload(
+                                    bead_id=claimed_bead,
+                                    reason="implemented",
+                                ))
                         else:
                             _log(f"Failed to close bead {claimed_bead}", "warn")
+                            if ctx:
+                                emit_event(ctx, BEAD_FAILED, bead_failed_payload(
+                                    bead_id=claimed_bead,
+                                    error="bd_close failed",
+                                ))
 
                     # Accumulate files across all beads
                     all_files = prompt_builder.get_context("all_files_changed") or []
@@ -1192,6 +1710,12 @@ def run_pipeline(
                             _log(f"Next bead available — looping back to IMPLEMENT (bead {loop_counters['bead_iteration']})", "ok")
                             _next_trigger[Stage.IMPLEMENT.value] = "next_bead"
                             stage_idx = stage_order.index(Stage.IMPLEMENT)
+                            if ctx:
+                                emit_event(ctx, BEAD_NEXT, bead_next_payload(
+                                    next_bead_id=next_bead["id"],
+                                    bead_iteration=loop_counters["bead_iteration"],
+                                    max_beads=max_beads,
+                                ))
                             continue
                         else:
                             if next_bead:
@@ -1224,6 +1748,26 @@ def run_pipeline(
                     complete_iteration(status, current_stage.value, **iter_extras)
                     update_stage(status, current_stage.value, **stage_extras)
                     save_status(status, actual_status_path)
+                    if ctx:
+                        emit_event(ctx, TEST_SUITE_FAILED, test_suite_failed_payload(
+                            iteration=iter_num,
+                            failure_count=len(new_failures),
+                            failures=new_failures,
+                        ))
+                        _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                            stage=current_stage.value, iteration=iter_num,
+                            duration_ms=iter_extras.get("duration_ms", 0),
+                            cost_usd=iter_extras.get("cost_usd", 0.0),
+                            turns=iter_extras.get("turns", 0),
+                            outcome=iter_extras["outcome"],
+                            token_usage=iter_extras.get("token_usage"),
+                        ))
+                        if _sc_event:
+                            _action = _check_control_response(ctx, _sc_event)
+                            if _action == "pause":
+                                _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                            elif _action == "abort":
+                                raise PipelineInterrupted("Aborted via control webhook")
                     if Stage.IMPLEMENT not in stage_order:
                         _log("Tests failed but IMPLEMENT stage is disabled — treating as pass", "warn")
                     else:
@@ -1233,16 +1777,61 @@ def run_pipeline(
                         prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                         _log(f"Tests failed — looping back to IMPLEMENT fix mode (attempt {loop_counters['implement_test']})", "warn")
                         if check_loop_limit("implement_test", loop_counters["implement_test"], settings_path, mloops=mloops):
+                            if ctx:
+                                emit_event(ctx, TEST_FIX_ATTEMPT, test_fix_attempt_payload(
+                                    attempt=loop_counters["implement_test"],
+                                    limit=_get_loop_limit("implement_test", settings_path, mloops),
+                                    failures_summary=str(new_failures[:3]),
+                                ))
+                                _lt_event = emit_event(ctx, LOOP_TRIGGERED, loop_triggered_payload(
+                                    loop_key="implement_test",
+                                    iteration=loop_counters["implement_test"],
+                                    from_stage=Stage.TEST.value,
+                                    to_stage=Stage.IMPLEMENT.value,
+                                    trigger="test_failure",
+                                ))
+                                if _lt_event:
+                                    _action = _check_control_response(ctx, _lt_event)
+                                    if _action == "pause":
+                                        _handle_pause(ctx, "implement_test loop.triggered")
+                                    elif _action == "abort":
+                                        raise PipelineInterrupted("Aborted via control webhook")
                             _next_trigger[Stage.IMPLEMENT.value] = "test_failure"
                             stage_idx = stage_order.index(Stage.IMPLEMENT)
                             continue
                         else:
                             _log(f"Test fix limit exhausted after {loop_counters['implement_test']} attempts — finishing", "warn")
+                            if ctx:
+                                emit_event(ctx, LOOP_EXHAUSTED, loop_exhausted_payload(
+                                    loop_key="implement_test",
+                                    iteration=loop_counters["implement_test"],
+                                    limit=_get_loop_limit("implement_test", settings_path, mloops),
+                                ))
                 else:
                     iter_extras["outcome"] = "success"
                     complete_iteration(status, current_stage.value, **iter_extras)
                     update_stage(status, current_stage.value, **stage_extras)
                     save_status(status, actual_status_path)
+                    if ctx:
+                        emit_event(ctx, TEST_SUITE_PASSED, test_suite_passed_payload(
+                            iteration=iter_num,
+                            coverage_pct=result.get("coverage_pct"),
+                            proof_artifacts=result.get("proof_artifacts"),
+                        ))
+                        _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                            stage=current_stage.value, iteration=iter_num,
+                            duration_ms=iter_extras.get("duration_ms", 0),
+                            cost_usd=iter_extras.get("cost_usd", 0.0),
+                            turns=iter_extras.get("turns", 0),
+                            outcome=iter_extras["outcome"],
+                            token_usage=iter_extras.get("token_usage"),
+                        ))
+                        if _sc_event:
+                            _action = _check_control_response(ctx, _sc_event)
+                            if _action == "pause":
+                                _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                            elif _action == "abort":
+                                raise PipelineInterrupted("Aborted via control webhook")
                     _log("Tests passed", "ok")
 
             # Handle review results — simplified (flat counter, no per-bead logic)
@@ -1250,10 +1839,35 @@ def run_pipeline(
                 outcome = result.get("outcome", "approve")
                 _log(f"Review outcome: {outcome}")
                 next_stage, status = handle_pr_review(outcome, status)
+                _all_issues = result.get("issues", [])
+                _critical_count = sum(
+                    1 for i in _all_issues if i.get("severity") in ("critical", "major")
+                )
+                if ctx:
+                    emit_event(ctx, REVIEW_VERDICT, review_verdict_payload(
+                        outcome=outcome,
+                        issue_count=len(_all_issues),
+                        critical_count=_critical_count,
+                    ))
                 iter_extras["outcome"] = outcome
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 save_status(status, actual_status_path)
+                if ctx:
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
                 if next_stage is None:
                     if outcome == "reject":
                         _log("PR rejected — stopping", "err")
@@ -1285,11 +1899,36 @@ def run_pipeline(
                             prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                             _log(f"Changes requested — looping back to IMPLEMENT fix mode (attempt {loop_counters['pr_changes']})", "warn")
                             if check_loop_limit("pr_changes", loop_counters["pr_changes"], settings_path, mloops=mloops):
+                                if ctx:
+                                    emit_event(ctx, REVIEW_FIX_ATTEMPT, review_fix_attempt_payload(
+                                        attempt=loop_counters["pr_changes"],
+                                        limit=_get_loop_limit("pr_changes", settings_path, mloops),
+                                        critical_issues=critical_issues,
+                                    ))
+                                    _lt_event = emit_event(ctx, LOOP_TRIGGERED, loop_triggered_payload(
+                                        loop_key="pr_changes",
+                                        iteration=loop_counters["pr_changes"],
+                                        from_stage=Stage.REVIEW.value,
+                                        to_stage=Stage.IMPLEMENT.value,
+                                        trigger="review_changes",
+                                    ))
+                                    if _lt_event:
+                                        _action = _check_control_response(ctx, _lt_event)
+                                        if _action == "pause":
+                                            _handle_pause(ctx, "pr_changes loop.triggered")
+                                        elif _action == "abort":
+                                            raise PipelineInterrupted("Aborted via control webhook")
                                 _next_trigger[Stage.IMPLEMENT.value] = "review_changes"
                                 stage_idx = stage_order.index(Stage.IMPLEMENT)
                                 continue
                             else:
                                 _log(f"Review fix limit exhausted after {loop_counters['pr_changes']} attempts — finishing", "warn")
+                                if ctx:
+                                    emit_event(ctx, LOOP_EXHAUSTED, loop_exhausted_payload(
+                                        loop_key="pr_changes",
+                                        iteration=loop_counters["pr_changes"],
+                                        limit=_get_loop_limit("pr_changes", settings_path, mloops),
+                                    ))
 
                 elif next_stage == Stage.PLAN:
                     if Stage.PLAN not in stage_order:
@@ -1299,9 +1938,29 @@ def run_pipeline(
                         loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
                         _log(f"Restart planning requested (iteration {loop_counters[loop_key]})", "warn")
                         if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
+                            if ctx:
+                                emit_event(ctx, LOOP_EXHAUSTED, loop_exhausted_payload(
+                                    loop_key=loop_key,
+                                    iteration=loop_counters[loop_key],
+                                    limit=_get_loop_limit(loop_key, settings_path, mloops),
+                                ))
                             raise LoopExhaustedError(
                                 f"Loop {loop_key} exhausted after {loop_counters[loop_key]} iterations"
                             )
+                        if ctx:
+                            _lt_event = emit_event(ctx, LOOP_TRIGGERED, loop_triggered_payload(
+                                loop_key=loop_key,
+                                iteration=loop_counters[loop_key],
+                                from_stage=Stage.REVIEW.value,
+                                to_stage=Stage.PLAN.value,
+                                trigger="restart_planning",
+                            ))
+                            if _lt_event:
+                                _action = _check_control_response(ctx, _lt_event)
+                                if _action == "pause":
+                                    _handle_pause(ctx, "restart_planning loop.triggered")
+                                elif _action == "abort":
+                                    raise PipelineInterrupted("Aborted via control webhook")
                         _next_trigger[Stage.PLAN.value] = "restart_planning"
                         stage_idx = stage_order.index(Stage.PLAN)
                         continue
@@ -1312,6 +1971,31 @@ def run_pipeline(
                 complete_iteration(status, current_stage.value, **iter_extras)
                 update_stage(status, current_stage.value, **stage_extras)
                 save_status(status, actual_status_path)
+                if ctx:
+                    _sc_event = emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(
+                        stage=current_stage.value, iteration=iter_num,
+                        duration_ms=iter_extras.get("duration_ms", 0),
+                        cost_usd=iter_extras.get("cost_usd", 0.0),
+                        turns=iter_extras.get("turns", 0),
+                        outcome=iter_extras["outcome"],
+                        token_usage=iter_extras.get("token_usage"),
+                    ))
+                    if _sc_event:
+                        _action = _check_control_response(ctx, _sc_event)
+                        if _action == "pause":
+                            _handle_pause(ctx, f"{current_stage.value} stage.completed")
+                        elif _action == "abort":
+                            raise PipelineInterrupted("Aborted via control webhook")
+                # PR stage: emit git.pr_created if result has pr_url
+                if ctx and current_stage == Stage.PR and isinstance(result, dict):
+                    _pr_url = result.get("pr_url")
+                    _pr_number = result.get("pr_number")
+                    if _pr_url and _pr_number is not None:
+                        emit_event(ctx, GIT_PR_CREATED, git_pr_created_payload(
+                            pr_url=_pr_url,
+                            pr_number=_pr_number,
+                            title=work_request.title,
+                        ))
 
             stage_idx += 1
 
@@ -1370,28 +2054,64 @@ def run_pipeline(
             _log(f"Totals: {' | '.join(summary_parts)}")
 
         _run_learn_stage(status, prompt_builder, settings_path, run_dir,
-                         "success", "", msize, logs_dir)
+                         "success", "", msize, logs_dir, ctx=ctx)
+
+        if ctx:
+            _stages_done = [s for s, d in status.get("stages", {}).items() if d.get("status") == "completed"]
+            emit_event(ctx, RUN_COMPLETED, run_completed_payload(
+                duration_ms=int(total_elapsed * 1000),
+                total_cost_usd=total_cost,
+                total_turns=total_turns,
+                total_tokens=total_tokens,
+                stages_completed=_stages_done,
+            ))
 
         return status
     except PipelineInterrupted:
+        if ctx:
+            emit_event(ctx, RUN_INTERRUPTED, run_interrupted_payload(
+                interrupted_stage=status.get("stage", ""),
+                elapsed_ms=int((time.time() - pipeline_t0) * 1000),
+            ))
         raise  # Do NOT run learn on user interruption
     except LoopExhaustedError as e:
         _run_learn_stage(status, prompt_builder, settings_path, run_dir,
-                         "loop_exhausted", str(e), msize, logs_dir)
+                         "loop_exhausted", str(e), msize, logs_dir, ctx=ctx)
+        if ctx:
+            emit_event(ctx, RUN_FAILED, run_failed_payload(
+                error=str(e),
+                failed_stage=status.get("stage"),
+                error_type="loop_exhausted",
+            ))
         raise
     except PipelineError as e:
         # Skip LEARN when preflight fails — environment is broken, claude CLI unavailable
         if status.get("stage") != "preflight":
             _run_learn_stage(status, prompt_builder, settings_path, run_dir,
-                             "failure", str(e), msize, logs_dir)
+                             "failure", str(e), msize, logs_dir, ctx=ctx)
+        if ctx:
+            emit_event(ctx, RUN_FAILED, run_failed_payload(
+                error=str(e),
+                failed_stage=status.get("stage"),
+                error_type="pipeline_error",
+            ))
         raise
     except Exception as e:
         _run_learn_stage(status, prompt_builder, settings_path, run_dir,
-                         "failure", str(e), msize, logs_dir)
+                         "failure", str(e), msize, logs_dir, ctx=ctx)
+        if ctx:
+            emit_event(ctx, RUN_FAILED, run_failed_payload(
+                error=str(e),
+                failed_stage=status.get("stage"),
+                error_type=type(e).__name__,
+            ))
         raise
     finally:
+        if ctx is not None:
+            ctx.close()
         _restore_signal_handlers()
         _remove_pid(status_path)
         _close_orchestrator_log()
         os.environ.pop("WORCA_PLAN_FILE", None)
         os.environ.pop("WORCA_RUN_ID", None)
+        os.environ.pop("WORCA_EVENTS_PATH", None)
