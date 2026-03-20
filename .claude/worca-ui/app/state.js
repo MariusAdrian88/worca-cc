@@ -7,6 +7,7 @@ const LOG_CAP = 5000;
 export function createStore(initial = {}) {
   let state = {
     activeRunId: initial.activeRunId ?? null,
+    projectName: initial.projectName ?? '',
     runs: initial.runs ?? {},
     logLines: initial.logLines ?? [],
     preferences: {
@@ -36,6 +37,7 @@ export function createStore(initial = {}) {
       };
       if (
         next.activeRunId === state.activeRunId &&
+        next.projectName === state.projectName &&
         next.runs === state.runs &&
         next.logLines === state.logLines &&
         next.preferences.theme === state.preferences.theme &&

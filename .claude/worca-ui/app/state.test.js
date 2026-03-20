@@ -6,9 +6,24 @@ describe('state store', () => {
     const store = createStore();
     const s = store.getState();
     expect(s.activeRunId).toBe(null);
+    expect(s.projectName).toBe('');
     expect(s.runs).toEqual({});
     expect(s.logLines).toEqual([]);
     expect(s.preferences).toEqual({ theme: 'light', sidebarCollapsed: false, notifications: null });
+  });
+
+  it('accepts projectName initial override', () => {
+    const store = createStore({ projectName: 'my-project' });
+    expect(store.getState().projectName).toBe('my-project');
+  });
+
+  it('setState updates projectName and notifies subscribers', () => {
+    const store = createStore();
+    const fn = vi.fn();
+    store.subscribe(fn);
+    store.setState({ projectName: 'new-project' });
+    expect(store.getState().projectName).toBe('new-project');
+    expect(fn).toHaveBeenCalledOnce();
   });
 
   it('accepts initial overrides', () => {

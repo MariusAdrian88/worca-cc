@@ -128,7 +128,8 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar.collapsed .sidebar-section-header,
 .sidebar.collapsed .sidebar-item span,
 .sidebar.collapsed .conn-label,
-.sidebar.collapsed .logo-text {
+.sidebar.collapsed .logo-text,
+.sidebar.collapsed .project-name {
   display: none;
 }
 
@@ -143,6 +144,19 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--fg);
+}
+
+.project-name {
+  display: block;
+  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* --- 6. Sidebar Sections --- */
