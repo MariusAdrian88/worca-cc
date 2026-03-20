@@ -843,13 +843,9 @@ def run_pipeline(
             set_milestone(status, "plan_approved", True)
             save_status(status, actual_status_path)
 
-            # Start at COORDINATE (skip PLAN)
-            if Stage.COORDINATE in stage_order:
-                stage_idx = stage_order.index(Stage.COORDINATE)
-            elif Stage.PLAN in stage_order:
-                stage_idx = stage_order.index(Stage.PLAN) + 1
-            else:
-                stage_idx = 0
+            # Start from the beginning (includes PREFLIGHT) — PLAN will be
+            # skipped in the main loop because it's already marked completed.
+            stage_idx = 0
         else:
             stage_idx = 0
 
@@ -858,6 +854,13 @@ def run_pipeline(
 
         while stage_idx < len(stage_order):
             current_stage = stage_order[stage_idx]
+
+            # Skip stages pre-marked as skipped (e.g. PLAN when plan_file provided)
+            existing_stage = status.get("stages", {}).get(current_stage.value, {})
+            if existing_stage.get("skipped"):
+                _log(f"{current_stage.value.upper()} already completed — skipping")
+                stage_idx += 1
+                continue
 
             # Update current stage tracker
             status["stage"] = current_stage.value
