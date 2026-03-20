@@ -36,13 +36,14 @@ describe('runDetailView learn stage injection', () => {
   it('preserves existing learn stage when already present', () => {
     const run = {
       stages: {
+        preflight: { status: 'completed' },
         plan: { status: 'completed' },
         learn: { status: 'completed', iterations: [{ number: 0 }] },
       },
     };
     const html = renderToString(runDetailView(run));
     expect(html).toContain('LEARN');
-    // Should NOT have skipped status since learn already exists with completed
+    // Should NOT have skipped status since both preflight and learn already exist with completed
     expect(html).not.toContain('status-skipped');
   });
 
@@ -51,5 +52,6 @@ describe('runDetailView learn stage injection', () => {
     const run = { stages };
     renderToString(runDetailView(run));
     expect(stages.learn).toBeUndefined();
+    expect(stages.preflight).toBeUndefined();
   });
 });

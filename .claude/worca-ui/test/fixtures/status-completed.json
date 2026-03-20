@@ -8,6 +8,31 @@
   },
   "pr_url": "https://github.com/example/repo/pull/42",
   "stages": {
+    "preflight": {
+      "status": "completed",
+      "started_at": "2026-03-08T09:59:50Z",
+      "completed_at": "2026-03-08T10:00:00Z",
+      "iteration": 1,
+      "iterations": [
+        {
+          "number": 1,
+          "status": "completed",
+          "started_at": "2026-03-08T09:59:50Z",
+          "completed_at": "2026-03-08T10:00:00Z",
+          "duration_ms": 10000,
+          "duration_session_ms": 0,
+          "duration_api_ms": 0,
+          "outcome": "success",
+          "output": {
+            "summary": "All checks passed",
+            "checks": [
+              { "name": "git_clean", "status": "pass", "message": "Working tree is clean" },
+              { "name": "branch_exists", "status": "pass", "message": "Branch feature/user-auth exists" }
+            ]
+          }
+        }
+      ]
+    },
     "plan": {
       "status": "completed",
       "started_at": "2026-03-08T10:00:00Z",

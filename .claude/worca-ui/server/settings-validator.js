@@ -1,6 +1,6 @@
 // server/settings-validator.js
 const VALID_AGENTS = ['planner', 'coordinator', 'implementer', 'tester', 'guardian', 'learner'];
-const VALID_STAGES = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr', 'learn'];
+const VALID_STAGES = ['preflight', 'plan', 'coordinate', 'implement', 'test', 'review', 'pr', 'learn'];
 const VALID_MODELS = ['opus', 'sonnet', 'haiku'];
 const VALID_LOOPS = ['implement_test', 'pr_changes', 'restart_planning'];
 const VALID_MILESTONES = ['plan_approval', 'pr_approval', 'deploy_approval'];
@@ -50,11 +50,20 @@ export function validateSettingsPayload(body) {
             details.push(`Unknown stage name: "${name}"`);
             continue;
           }
-          if (cfg.agent !== undefined && !VALID_AGENTS.includes(cfg.agent)) {
-            details.push(`Invalid agent "${cfg.agent}" for stage "${name}"`);
-          }
           if (cfg.enabled !== undefined && typeof cfg.enabled !== 'boolean') {
             details.push(`enabled for stage "${name}" must be a boolean`);
+          }
+          if (name === 'preflight') {
+            if (cfg.script !== undefined && (typeof cfg.script !== 'string' || cfg.script.length === 0)) {
+              details.push('preflight.script must be a non-empty string');
+            }
+            if (cfg.require !== undefined && !Array.isArray(cfg.require)) {
+              details.push('preflight.require must be an array');
+            }
+          } else {
+            if (cfg.agent !== undefined && !VALID_AGENTS.includes(cfg.agent)) {
+              details.push(`Invalid agent "${cfg.agent}" for stage "${name}"`);
+            }
           }
         }
       }

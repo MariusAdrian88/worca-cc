@@ -84,6 +84,15 @@ export async function loadSettings() {
         }
       }
     }
+    // Ensure preflight defaults exist (script-based stage, not in STAGE_ORDER)
+    if (!settingsData.worca.stages.preflight) {
+      settingsData.worca.stages.preflight = { enabled: true, script: '.claude/scripts/preflight_checks.py', require: [] };
+    } else {
+      const pf = settingsData.worca.stages.preflight;
+      if (pf.enabled === undefined) pf.enabled = true;
+      if (!pf.script) pf.script = '.claude/scripts/preflight_checks.py';
+      if (!pf.require) pf.require = [];
+    }
     if (!settingsData.worca.plan_path_template) {
       settingsData.worca.plan_path_template = 'docs/plans/{timestamp}-{title_slug}.md';
     }
@@ -195,6 +204,18 @@ function readStagesFromDom() {
   return stages;
 }
 
+function readPreflightFromDom() {
+  const enabledEl = document.getElementById('preflight-enabled');
+  const scriptEl = document.getElementById('preflight-script');
+  const requireEl = document.getElementById('preflight-require');
+  const requireVal = (requireEl?.value || '').trim();
+  return {
+    enabled: enabledEl?.checked ?? true,
+    script: scriptEl?.value?.trim() || '.claude/scripts/preflight_checks.py',
+    require: requireVal ? requireVal.split(',').map(s => s.trim()).filter(Boolean) : [],
+  };
+}
+
 function readGovernanceFromDom() {
   const guards = {};
   for (const rule of GUARD_RULES) {
@@ -289,8 +310,29 @@ function pipelineTab(worca, rerender) {
   const loops = worca.loops || {};
   const stages = worca.stages || DEFAULT_STAGES;
 
+  const preflight = stages.preflight || { enabled: true, script: '.claude/scripts/preflight_checks.py', require: [] };
+
   return html`
     <div class="settings-tab-content">
+      <h3 class="settings-section-title">Preflight</h3>
+      <div class="settings-grid">
+        <div class="settings-field">
+          <div class="settings-switch-row">
+            <sl-switch id="preflight-enabled" ?checked=${preflight.enabled !== false} size="small">Enable Preflight Checks</sl-switch>
+            <span class="settings-switch-desc">Run pre-flight validation before the pipeline starts</span>
+          </div>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">Script Path</label>
+          <sl-input id="preflight-script" value="${preflight.script || '.claude/scripts/preflight_checks.py'}" size="small" placeholder=".claude/scripts/preflight_checks.py"></sl-input>
+        </div>
+        <div class="settings-field">
+          <label class="settings-label">Required Checks</label>
+          <sl-input id="preflight-require" value="${(preflight.require || []).join(', ')}" size="small" placeholder="e.g. git_clean, branch_exists"></sl-input>
+          <span class="settings-field-hint">Comma-separated list of checks that must pass</span>
+        </div>
+      </div>
+
       <h3 class="settings-section-title">Stage Configuration</h3>
       <div class="pipeline-flow">
         ${STAGE_ORDER.map((stage, i) => {
@@ -369,6 +411,7 @@ function pipelineTab(worca, rerender) {
         <sl-button variant="primary" size="small" @click=${() => {
           const { loops, plan_path_template, defaults } = readPipelineFromDom();
           const stages = readStagesFromDom();
+          stages.preflight = readPreflightFromDom();
           saveSettings({ worca: { ...settingsData.worca, loops, stages, plan_path_template, defaults }, permissions: settingsData.permissions }, rerender);
         }}>
           ${unsafeHTML(iconSvg(Save, 14))}

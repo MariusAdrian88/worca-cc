@@ -400,7 +400,10 @@ export function runDetailView(run, settings = {}, options = {}) {
   const pr = run.pr_url || null;
   const endTime = run.completed_at || _lastStageEnd(run.stages);
   const rawStages = run.stages || {};
-  const stages = rawStages.learn ? rawStages : { ...rawStages, learn: { status: 'skipped' } };
+  // Ensure preflight and learn exist (may be absent in old runs)
+  let stages = rawStages;
+  if (!rawStages.preflight) stages = { preflight: { status: 'skipped' }, ...stages };
+  if (!rawStages.learn) stages = { ...stages, learn: { status: 'skipped' } };
   const stageUi = settings.stageUi || {};
   const agents = settings.agents || {};
 
