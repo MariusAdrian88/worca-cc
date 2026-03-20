@@ -219,6 +219,109 @@ export function validateSettingsPayload(body) {
         }
       }
     }
+
+    // events
+    if (w.events !== undefined) {
+      if (typeof w.events !== 'object' || w.events === null || Array.isArray(w.events)) {
+        details.push('events must be an object');
+      } else {
+        const ev = w.events;
+        if (ev.enabled !== undefined && typeof ev.enabled !== 'boolean') {
+          details.push('events.enabled must be a boolean');
+        }
+        if (ev.agent_telemetry !== undefined && typeof ev.agent_telemetry !== 'boolean') {
+          details.push('events.agent_telemetry must be a boolean');
+        }
+        if (ev.hook_events !== undefined && typeof ev.hook_events !== 'boolean') {
+          details.push('events.hook_events must be a boolean');
+        }
+        if (ev.rate_limit_ms !== undefined) {
+          if (!Number.isInteger(ev.rate_limit_ms) || ev.rate_limit_ms < 0) {
+            details.push('events.rate_limit_ms must be a non-negative integer');
+          }
+        }
+      }
+    }
+
+    // budget
+    if (w.budget !== undefined) {
+      if (typeof w.budget !== 'object' || w.budget === null || Array.isArray(w.budget)) {
+        details.push('budget must be an object');
+      } else {
+        const b = w.budget;
+        if (b.max_cost_usd !== undefined) {
+          if (typeof b.max_cost_usd !== 'number' || !Number.isFinite(b.max_cost_usd) || b.max_cost_usd <= 0) {
+            details.push('budget.max_cost_usd must be a positive finite number');
+          }
+        }
+        if (b.warning_pct !== undefined) {
+          if (typeof b.warning_pct !== 'number' || !Number.isFinite(b.warning_pct) || b.warning_pct < 0 || b.warning_pct > 100) {
+            details.push('budget.warning_pct must be a number between 0 and 100');
+          }
+        }
+      }
+    }
+
+    // webhooks
+    if (w.webhooks !== undefined) {
+      if (!Array.isArray(w.webhooks)) {
+        details.push('webhooks must be an array');
+      } else {
+        for (let i = 0; i < w.webhooks.length; i++) {
+          const wh = w.webhooks[i];
+          const pfx = `webhooks[${i}]`;
+          if (typeof wh !== 'object' || wh === null || Array.isArray(wh)) {
+            details.push(`${pfx} must be an object`);
+            continue;
+          }
+          // url — required
+          if (wh.url === undefined || typeof wh.url !== 'string' || wh.url.trim().length === 0) {
+            details.push(`${pfx}.url must be a non-empty string`);
+          } else {
+            try {
+              const parsed = new URL(wh.url);
+              if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+                details.push(`${pfx}.url must use http or https protocol`);
+              }
+            } catch {
+              details.push(`${pfx}.url is not a valid URL`);
+            }
+          }
+          if (wh.secret !== undefined && typeof wh.secret !== 'string') {
+            details.push(`${pfx}.secret must be a string`);
+          }
+          if (wh.events !== undefined) {
+            if (!Array.isArray(wh.events)) {
+              details.push(`${pfx}.events must be an array`);
+            } else {
+              for (let j = 0; j < wh.events.length; j++) {
+                if (typeof wh.events[j] !== 'string' || wh.events[j].length === 0) {
+                  details.push(`${pfx}.events[${j}] must be a non-empty string`);
+                }
+              }
+            }
+          }
+          if (wh.timeout_ms !== undefined) {
+            if (!Number.isInteger(wh.timeout_ms) || wh.timeout_ms < 1) {
+              details.push(`${pfx}.timeout_ms must be a positive integer`);
+            }
+          }
+          if (wh.max_retries !== undefined) {
+            if (!Number.isInteger(wh.max_retries) || wh.max_retries < 0 || wh.max_retries > 10) {
+              details.push(`${pfx}.max_retries must be an integer between 0 and 10`);
+            }
+          }
+          if (wh.rate_limit_ms !== undefined) {
+            if (!Number.isInteger(wh.rate_limit_ms) || wh.rate_limit_ms < 0) {
+              details.push(`${pfx}.rate_limit_ms must be a non-negative integer`);
+            }
+          }
+          if (wh.control !== undefined && typeof wh.control !== 'boolean') {
+            details.push(`${pfx}.control must be a boolean`);
+          }
+        }
+      }
+    }
   }
 
   // permissions

@@ -233,3 +233,239 @@ describe('validateSettingsPayload — pricing', () => {
     expect(result.valid).toBe(true);
   });
 });
+
+describe('validateSettingsPayload — worca.events', () => {
+  it('accepts valid events config', () => {
+    const result = validateSettingsPayload({
+      worca: { events: { enabled: true, agent_telemetry: false, hook_events: true, rate_limit_ms: 1000 } }
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects non-object events', () => {
+    const result = validateSettingsPayload({ worca: { events: 'bad' } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events must be an object'));
+  });
+
+  it('rejects non-boolean enabled', () => {
+    const result = validateSettingsPayload({ worca: { events: { enabled: 'yes' } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events.enabled'));
+  });
+
+  it('rejects non-boolean agent_telemetry', () => {
+    const result = validateSettingsPayload({ worca: { events: { agent_telemetry: 1 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events.agent_telemetry'));
+  });
+
+  it('rejects non-boolean hook_events', () => {
+    const result = validateSettingsPayload({ worca: { events: { hook_events: 0 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events.hook_events'));
+  });
+
+  it('rejects non-integer rate_limit_ms', () => {
+    const result = validateSettingsPayload({ worca: { events: { rate_limit_ms: 1.5 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('rate_limit_ms'));
+  });
+
+  it('rejects negative rate_limit_ms', () => {
+    const result = validateSettingsPayload({ worca: { events: { rate_limit_ms: -1 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('rate_limit_ms'));
+  });
+
+  it('accepts rate_limit_ms of 0', () => {
+    const result = validateSettingsPayload({ worca: { events: { rate_limit_ms: 0 } } });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts partial events config (only enabled)', () => {
+    const result = validateSettingsPayload({ worca: { events: { enabled: false } } });
+    expect(result.valid).toBe(true);
+  });
+});
+
+describe('validateSettingsPayload — worca.budget', () => {
+  it('accepts valid budget config', () => {
+    const result = validateSettingsPayload({
+      worca: { budget: { max_cost_usd: 10.0, warning_pct: 80 } }
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects non-object budget', () => {
+    const result = validateSettingsPayload({ worca: { budget: 'bad' } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('budget must be an object'));
+  });
+
+  it('rejects max_cost_usd of zero', () => {
+    const result = validateSettingsPayload({ worca: { budget: { max_cost_usd: 0 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('max_cost_usd'));
+  });
+
+  it('rejects negative max_cost_usd', () => {
+    const result = validateSettingsPayload({ worca: { budget: { max_cost_usd: -1 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('max_cost_usd'));
+  });
+
+  it('rejects non-number max_cost_usd', () => {
+    const result = validateSettingsPayload({ worca: { budget: { max_cost_usd: 'ten' } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('max_cost_usd'));
+  });
+
+  it('rejects warning_pct below 0', () => {
+    const result = validateSettingsPayload({ worca: { budget: { warning_pct: -1 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('warning_pct'));
+  });
+
+  it('rejects warning_pct above 100', () => {
+    const result = validateSettingsPayload({ worca: { budget: { warning_pct: 101 } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('warning_pct'));
+  });
+
+  it('accepts warning_pct at boundaries (0 and 100)', () => {
+    expect(validateSettingsPayload({ worca: { budget: { warning_pct: 0 } } }).valid).toBe(true);
+    expect(validateSettingsPayload({ worca: { budget: { warning_pct: 100 } } }).valid).toBe(true);
+  });
+
+  it('rejects non-number warning_pct', () => {
+    const result = validateSettingsPayload({ worca: { budget: { warning_pct: '80' } } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('warning_pct'));
+  });
+
+  it('accepts empty budget object', () => {
+    const result = validateSettingsPayload({ worca: { budget: {} } });
+    expect(result.valid).toBe(true);
+  });
+});
+
+describe('validateSettingsPayload — worca.webhooks', () => {
+  it('accepts a valid webhook entry with all fields', () => {
+    const result = validateSettingsPayload({
+      worca: { webhooks: [{ url: 'https://example.com/hook', secret: 'mysecret', events: ['pipeline.run.*'], timeout_ms: 5000, max_retries: 3, rate_limit_ms: 1000, control: false }] }
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts minimal webhook entry with only url', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com/hook' }] } });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts an empty webhooks array', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [] } });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects non-array webhooks', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: {} } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('webhooks must be an array'));
+  });
+
+  it('rejects webhook missing url', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ secret: 'x' }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('url'));
+  });
+
+  it('rejects webhook with non-string url', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 123 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('url'));
+  });
+
+  it('rejects webhook with non-http/https url protocol', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'ftp://example.com/hook' }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('url'));
+  });
+
+  it('rejects webhook with invalid URL format', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'not-a-url' }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('url'));
+  });
+
+  it('rejects webhook with non-string secret', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', secret: 123 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('secret'));
+  });
+
+  it('rejects webhook with non-array events', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', events: 'pipeline.*' }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events'));
+  });
+
+  it('rejects webhook with non-string event pattern', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', events: [123] }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('events'));
+  });
+
+  it('rejects webhook with non-positive timeout_ms', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', timeout_ms: 0 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('timeout_ms'));
+  });
+
+  it('rejects webhook with non-integer max_retries', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', max_retries: 1.5 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('max_retries'));
+  });
+
+  it('rejects webhook with max_retries above 10', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', max_retries: 11 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('max_retries'));
+  });
+
+  it('rejects webhook with negative rate_limit_ms', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', rate_limit_ms: -1 }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('rate_limit_ms'));
+  });
+
+  it('rejects webhook with non-boolean control', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', control: 'yes' }] } });
+    expect(result.valid).toBe(false);
+    expect(result.details).toContainEqual(expect.stringContaining('control'));
+  });
+
+  it('includes webhook index in error message', () => {
+    const result = validateSettingsPayload({
+      worca: { webhooks: [{ url: 'https://example.com/hook' }, { url: 'not-valid' }] }
+    });
+    expect(result.valid).toBe(false);
+    expect(result.details.some(d => d.includes('[1]'))).toBe(true);
+  });
+
+  it('accepts http (not just https) urls', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'http://example.com/hook' }] } });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts max_retries of 0', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', max_retries: 0 }] } });
+    expect(result.valid).toBe(true);
+  });
+
+  it('accepts rate_limit_ms of 0', () => {
+    const result = validateSettingsPayload({ worca: { webhooks: [{ url: 'https://example.com', rate_limit_ms: 0 }] } });
+    expect(result.valid).toBe(true);
+  });
+});

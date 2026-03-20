@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { join, dirname, basename } from 'node:path';
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
+import { createHmac, randomUUID } from 'node:crypto';
 import { validateSettingsPayload } from './settings-validator.js';
 import { startPipeline, stopPipeline, restartStage, getRunningPid } from './process-manager.js';
 import { discoverRuns } from './watcher.js';
@@ -427,6 +428,65 @@ export function createApp(options = {}) {
     }
 
     res.json({ ok: true, tokenData });
+  });
+
+  // POST /api/webhooks/test — send a pipeline.test.ping to a webhook URL
+  app.post('/api/webhooks/test', async (req, res) => {
+    const { url, secret, timeout_ms } = req.body || {};
+
+    const trimmedUrl = typeof url === 'string' ? url.trim() : '';
+    if (!trimmedUrl) {
+      return res.status(400).json({ ok: false, error: 'url is required' });
+    }
+
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(trimmedUrl);
+    } catch {
+      return res.status(400).json({ ok: false, error: 'url is not a valid URL' });
+    }
+
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      return res.status(400).json({ ok: false, error: 'url must use http or https protocol' });
+    }
+
+    const event = {
+      schema_version: '1',
+      event_id: randomUUID(),
+      event_type: 'pipeline.test.ping',
+      timestamp: new Date().toISOString(),
+      run_id: null,
+      pipeline: null,
+      payload: { test: true },
+    };
+
+    const body = JSON.stringify(event);
+    const headers = { 'Content-Type': 'application/json' };
+
+    if (secret && typeof secret === 'string' && secret.length > 0) {
+      const hmac = createHmac('sha256', secret);
+      hmac.update(body);
+      headers['X-Worca-Signature'] = 'sha256=' + hmac.digest('hex');
+    }
+
+    const timeoutMs = (typeof timeout_ms === 'number' && timeout_ms > 0)
+      ? Math.min(timeout_ms, 30000)
+      : 10000;
+
+    const startMs = Date.now();
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let response;
+      try {
+        response = await fetch(trimmedUrl, { method: 'POST', headers, body, signal: controller.signal });
+      } finally {
+        clearTimeout(timer);
+      }
+      res.json({ ok: true, status_code: response.status, response_ms: Date.now() - startMs });
+    } catch (err) {
+      res.json({ ok: false, error: err.message, response_ms: Date.now() - startMs });
+    }
   });
 
   // GET /api/project-info

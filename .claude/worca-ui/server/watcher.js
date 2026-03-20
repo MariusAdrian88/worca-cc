@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 
@@ -114,4 +114,83 @@ export function discoverRuns(worcaDir) {
   }
 
   return runs;
+}
+
+/**
+ * Watch {runDir}/events.jsonl for new lines (byte-offset tracking).
+ * Handles file creation if the file doesn't exist yet.
+ * Calls callback(event) for each parsed JSON line; skips malformed lines.
+ *
+ * @param {string} runDir - Run directory that may contain events.jsonl
+ * @param {(event: object) => void} callback
+ * @returns {{ close: () => void }}
+ */
+export function watchEvents(runDir, callback) {
+  const eventsPath = join(runDir, 'events.jsonl');
+  let byteOffset = 0;
+  let fileWatcher = null;
+  let dirWatcher = null;
+  let closed = false;
+
+  function processNewContent() {
+    if (closed) return;
+    try {
+      if (!existsSync(eventsPath)) return;
+      const buf = readFileSync(eventsPath);
+      if (buf.length <= byteOffset) return;
+      const newContent = buf.slice(byteOffset).toString('utf8');
+      byteOffset = buf.length;
+      for (const line of newContent.split('\n')) {
+        if (!line.trim()) continue;
+        try { callback(JSON.parse(line)); } catch { /* skip malformed */ }
+      }
+    } catch { /* ignore read errors */ }
+  }
+
+  function startFileWatcher() {
+    if (closed || fileWatcher) return;
+    try {
+      fileWatcher = watch(eventsPath, (eventType) => {
+        if (eventType === 'change') {
+          processNewContent();
+        } else if (eventType === 'rename') {
+          // File deleted or recreated — reset and retry
+          if (fileWatcher) { try { fileWatcher.close(); } catch { /* ignore */ } fileWatcher = null; }
+          setTimeout(() => {
+            if (!closed && existsSync(eventsPath)) {
+              startFileWatcher();
+              processNewContent();
+            }
+          }, 100);
+        }
+      });
+    } catch { /* ignore — file may have been deleted */ }
+  }
+
+  if (existsSync(eventsPath)) {
+    // Start from current end of file (tail only new content)
+    try { byteOffset = readFileSync(eventsPath).length; } catch { /* ignore */ }
+    startFileWatcher();
+  }
+
+  // Watch the run directory so we detect events.jsonl being created
+  if (existsSync(runDir)) {
+    try {
+      dirWatcher = watch(runDir, { recursive: false }, (_eventType, filename) => {
+        if (filename === 'events.jsonl' && existsSync(eventsPath) && !fileWatcher) {
+          byteOffset = 0; // Newly created — read from the beginning
+          startFileWatcher();
+          processNewContent();
+        }
+      });
+    } catch { /* ignore */ }
+  }
+
+  return {
+    close() {
+      closed = true;
+      if (fileWatcher) { try { fileWatcher.close(); } catch { /* ignore */ } fileWatcher = null; }
+      if (dirWatcher) { try { dirWatcher.close(); } catch { /* ignore */ } dirWatcher = null; }
+    },
+  };
 }

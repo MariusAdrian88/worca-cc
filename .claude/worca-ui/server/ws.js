@@ -7,7 +7,7 @@ import { watch, existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path';
 import { stopPipeline as pmStopPipeline, startPipeline as pmStartPipeline } from './process-manager.js';
 import { isRequest, makeOk, makeError } from '../app/protocol.js';
-import { discoverRuns } from './watcher.js';
+import { discoverRuns, watchEvents } from './watcher.js';
 import { listIssues, listIssuesByLabel, listUnlinkedIssues, listDistinctRunLabels, countIssuesByRunLabel, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
 import { readLastLines, resolveLogPath, resolveIterationLogPath, countLines, readLinesFrom, listLogFiles, listIterationFiles } from './log-tailer.js';
 import { readSettings } from './settings-reader.js';
@@ -40,6 +40,25 @@ let REFRESH_TIMER = null;
 const REFRESH_DEBOUNCE_MS = 75;
 
 /**
+ * Convert a glob pattern (with * and **) to a RegExp for matching event type strings.
+ * - `*`  matches any sequence of non-dot characters
+ * - `**` matches any sequence of characters (including dots)
+ *
+ * @param {string} pattern
+ * @param {string} str
+ * @returns {boolean}
+ */
+function matchesGlob(pattern, str) {
+  const regexStr = pattern
+    .split('**')
+    .map(part =>
+      part.split('*').map(s => s.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('[^.]*')
+    )
+    .join('.*');
+  return new RegExp(`^${regexStr}$`).test(str);
+}
+
+/**
  * Attach a WebSocket server to an existing HTTP server.
  *
  * @param {import('node:http').Server} httpServer
@@ -49,19 +68,92 @@ export function attachWsServer(httpServer, config) {
   const { worcaDir, settingsPath, prefsPath } = config;
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
-  /** @type {WeakMap<import('ws').WebSocket, { runId: string | null, logStage: string | null }>} */
+  /** @type {WeakMap<import('ws').WebSocket, { runId: string | null, logStage: string | null, eventsRunId: string | null }>} */
   const subs = new WeakMap();
 
   /** @type {Map<string, import('node:fs').FSWatcher>} */
   const logWatchers = new Map();
 
+  /** @type {Map<string, { close: () => void }>} */
+  const eventWatchers = new Map();
+
   function ensureSubs(ws) {
     let s = subs.get(ws);
     if (!s) {
-      s = { runId: null, logStage: null };
+      s = { runId: null, logStage: null, eventsRunId: null };
       subs.set(ws, s);
     }
     return s;
+  }
+
+  /**
+   * Resolve the filesystem directory for a given run ID.
+   * Checks runs/ first, then results/ (archived), then defaults to runs/.
+   */
+  function resolveRunDirById(runId) {
+    const candidates = [
+      join(worcaDir, 'runs', runId),
+      join(worcaDir, 'results', runId),
+    ];
+    for (const c of candidates) {
+      if (existsSync(c)) return c;
+    }
+    return join(worcaDir, 'runs', runId); // default for not-yet-created
+  }
+
+  /**
+   * Broadcast a pipeline-event to all clients subscribed to the given run.
+   */
+  function broadcastPipelineEvent(runId, event) {
+    const msg = JSON.stringify({
+      id: `evt-${Date.now()}`,
+      ok: true,
+      type: 'pipeline-event',
+      payload: event,
+    });
+    for (const ws of wss.clients) {
+      if (ws.readyState !== ws.OPEN) continue;
+      const s = subs.get(ws);
+      if (s && s.eventsRunId === runId) {
+        ws.send(msg);
+      }
+    }
+  }
+
+  /**
+   * Close the event watcher for a run if no clients are subscribed.
+   */
+  function maybeCloseEventWatcher(runId) {
+    for (const ws of wss.clients) {
+      const s = subs.get(ws);
+      if (s?.eventsRunId === runId) return; // still in use
+    }
+    const w = eventWatchers.get(runId);
+    if (w) { try { w.close(); } catch { /* ignore */ } eventWatchers.delete(runId); }
+  }
+
+  /**
+   * Read and filter events from a run's events.jsonl file.
+   */
+  function readEventsFromFile(runId, { since_event_id, event_types, limit = 100 } = {}) {
+    const eventsPath = join(resolveRunDirById(runId), 'events.jsonl');
+    if (!existsSync(eventsPath)) return [];
+    try {
+      const content = readFileSync(eventsPath, 'utf8');
+      let events = [];
+      for (const line of content.split('\n')) {
+        if (!line.trim()) continue;
+        try { events.push(JSON.parse(line)); } catch { /* skip malformed */ }
+      }
+      if (since_event_id) {
+        const idx = events.findIndex(e => e.event_id === since_event_id);
+        if (idx >= 0) events = events.slice(idx + 1);
+      }
+      if (event_types && event_types.length > 0) {
+        events = events.filter(e => event_types.some(p => matchesGlob(p, e.event_type)));
+      }
+      return events.slice(0, limit);
+    } catch { return []; }
   }
 
   function broadcast(type, payload) {
@@ -395,7 +487,10 @@ export function attachWsServer(httpServer, config) {
     });
 
     ws.on('close', () => {
+      const s = subs.get(ws);
+      const eventsRunId = s?.eventsRunId;
       subs.delete(ws);
+      if (eventsRunId) maybeCloseEventWatcher(eventsRunId);
     });
   });
 
@@ -406,6 +501,8 @@ export function attachWsServer(httpServer, config) {
     if (beadsWatcher) beadsWatcher.close();
     for (const w of logWatchers.values()) w.close();
     logWatchers.clear();
+    for (const w of eventWatchers.values()) { try { w.close(); } catch { /* ignore */ } }
+    eventWatchers.clear();
   });
 
   function _sendArchivedLogs(ws, archivedLogDir, stage, iteration) {
@@ -836,6 +933,46 @@ export function attachWsServer(httpServer, config) {
       } catch (e) {
         ws.send(JSON.stringify(makeError(req, 'start_failed', e.message)));
       }
+      return;
+    }
+
+    // get-events
+    if (req.type === 'get-events') {
+      const { runId, since_event_id, event_types, limit } = req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        return;
+      }
+      const events = readEventsFromFile(runId, { since_event_id, event_types, limit });
+      ws.send(JSON.stringify(makeOk(req, { events })));
+      return;
+    }
+
+    // subscribe-events
+    if (req.type === 'subscribe-events') {
+      const { runId } = req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        return;
+      }
+      const s = ensureSubs(ws);
+      s.eventsRunId = runId;
+      if (!eventWatchers.has(runId)) {
+        const runDir = resolveRunDirById(runId);
+        const w = watchEvents(runDir, (event) => broadcastPipelineEvent(runId, event));
+        eventWatchers.set(runId, w);
+      }
+      ws.send(JSON.stringify(makeOk(req, { subscribed: true })));
+      return;
+    }
+
+    // unsubscribe-events
+    if (req.type === 'unsubscribe-events') {
+      const s = ensureSubs(ws);
+      const prevRunId = s.eventsRunId;
+      s.eventsRunId = null;
+      if (prevRunId) maybeCloseEventWatcher(prevRunId);
+      ws.send(JSON.stringify(makeOk(req, { unsubscribed: true })));
       return;
     }
 
