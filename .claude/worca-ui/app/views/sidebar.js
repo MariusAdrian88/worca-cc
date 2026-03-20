@@ -3,7 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { iconSvg, Activity, Archive, Settings, Plus, List, Coins } from '../utils/icons.js';
 
 export function sidebarView(state, route, connectionState, { onNavigate }) {
-  const { runs, preferences } = state;
+  const { runs, preferences, projectName } = state;
   const runList = Object.values(runs);
   const activeCount = runList.filter(r => r.active).length;
   const historyCount = runList.filter(r => !r.active).length;
@@ -21,6 +21,7 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
     <aside class="sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}">
       <div class="sidebar-logo" @click=${() => onNavigate('dashboard')} style="cursor:pointer">
         <span class="logo-text">WORCA</span>
+        ${projectName ? html`<span class="project-name">${projectName}</span>` : ''}
       </div>
 
       <div class="sidebar-new-run">

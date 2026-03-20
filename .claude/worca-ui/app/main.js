@@ -18,6 +18,7 @@ import { createNotificationManager } from './notifications.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
 import { tokenCostsView } from './views/token-costs.js';
 import { learningsSectionView } from './views/learnings-panel.js';
+import { formatTitle } from './utils/title.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
 import '@shoelace-style/shoelace/dist/components/details/details.js';
@@ -202,6 +203,7 @@ ws.on('beads-update', (payload) => {
     if (route.runId && route.section !== 'beads') fetchRunBeads(route.runId);
     // Re-fetch bead counts for run list
     fetchBeadsCounts();
+
     // Re-fetch beads for currently viewed run in beads section
     if (route.section === 'beads' && route.runId) fetchBeadsRunIssues(route.runId);
   }
@@ -265,6 +267,8 @@ ws.onConnection((state) => {
     }).catch(() => {});
 
     fetchBeadsCounts();
+
+    fetchProjectInfo();
 
     // Subscribe to active run if selected
     if (route.runId) {
@@ -567,6 +571,18 @@ function fetchCostsData() {
         costsTokenData = data.tokenData || {};
         costsFetched = true;
         rerender();
+      }
+    })
+    .catch(() => {});
+}
+
+function fetchProjectInfo() {
+  fetch('/api/project-info')
+    .then(r => r.json())
+    .then(data => {
+      if (data.name !== undefined) {
+        store.setState({ projectName: data.name });
+        document.title = formatTitle(data.name);
       }
     })
     .catch(() => {});
@@ -944,6 +960,7 @@ function attachStickyHeaderListener() {
 notificationManager.setRerender(rerender);
 store.subscribe(() => rerender());
 applyTheme(store.getState().preferences.theme);
+fetchProjectInfo();
 if (route.section === 'settings') {
   loadSettings().then(() => rerender());
 }

@@ -1,7 +1,7 @@
 // server/app.js
 import express from 'express';
 import { fileURLToPath } from 'node:url';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { readFileSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import { validateSettingsPayload } from './settings-validator.js';
@@ -427,6 +427,11 @@ export function createApp(options = {}) {
     }
 
     res.json({ ok: true, tokenData });
+  });
+
+  // GET /api/project-info
+  app.get('/api/project-info', (_req, res) => {
+    res.json({ name: projectRoot ? basename(projectRoot) : '' });
   });
 
   app.use(express.static(appDir));
