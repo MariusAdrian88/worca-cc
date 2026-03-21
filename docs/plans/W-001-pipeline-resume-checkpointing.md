@@ -452,11 +452,36 @@ In `dashboard.js`:
 
 **Deliverable:** Full visual lifecycle in the browser with icons, colors, and control buttons.
 
+### Phase 5: Browser-Based Testing (Playwright)
+
+**New dev dependency:**
+- `@playwright/test` added to `worca-ui/package.json`
+
+**New files:**
+- `.claude/worca-ui/test/browser/playwright.config.js` — Playwright config (Chromium only, localhost server)
+- `.claude/worca-ui/test/browser/fixtures.js` — shared test fixtures (server startup, mock .worca directory, status.json seeding)
+- `.claude/worca-ui/test/browser/status-icons.spec.js` — visual: status icons and colors
+- `.claude/worca-ui/test/browser/control-buttons.spec.js` — interaction: pause/resume/stop buttons
+- `.claude/worca-ui/test/browser/run-lifecycle.spec.js` — integration: full pause→resume→complete flow
+- `.claude/worca-ui/test/browser/dashboard.spec.js` — visual: dashboard grouping and count badges
+- `.claude/worca-ui/test/browser/sidebar.spec.js` — visual: sidebar status icons
+- `.claude/worca-ui/test/browser/stage-timeline.spec.js` — visual: stage timeline states
+- `.claude/worca-ui/test/browser/websocket-updates.spec.js` — integration: real-time status changes via WS
+
+**Scripts added to `package.json`:**
+```json
+"test:browser": "npx playwright test --project=chromium",
+"test:browser:headed": "npx playwright test --project=chromium --headed",
+"test:browser:debug": "npx playwright test --project=chromium --debug"
+```
+
+**Deliverable:** Full browser test suite covering visual states, user interactions, and real-time WebSocket updates.
+
 ---
 
 ## 10. Testing Strategy
 
-### Unit Tests (Python)
+### 10.1 Unit Tests (Python)
 
 | Test | What It Verifies |
 |------|-----------------|
@@ -473,7 +498,7 @@ In `dashboard.js`:
 | `test_hook_dispatch` | Shell hooks receive event JSON on stdin |
 | `test_hook_failure_non_blocking` | Failed hook doesn't halt the pipeline |
 
-### Integration Tests (Node.js)
+### 10.2 Server Integration Tests (Node.js / Vitest)
 
 | Test | What It Verifies |
 |------|-----------------|
@@ -481,6 +506,119 @@ In `dashboard.js`:
 | `test_resume_endpoint` | POST /api/runs/:id/resume spawns pipeline process |
 | `test_stop_endpoint` | POST /api/runs/:id/stop sends SIGTERM |
 | `test_ws_pipeline_paused` | WebSocket broadcasts pipeline-paused on status change |
+
+### 10.3 Browser Tests (Playwright / Chromium)
+
+End-to-end browser tests run against a real worca-ui server with a mock `.worca/` directory seeded with test status.json files. Tests use Playwright's Chromium browser.
+
+#### Test Infrastructure
+
+**Fixtures (`test/browser/fixtures.js`):**
+- `startServer()` — boots the Express + WS server on a random port with a temp `.worca/` dir
+- `seedRun(runId, statusOverrides)` — writes a status.json with configurable `pipeline_status`, stages, and iterations
+- `writeControlFile(runId, action)` — simulates external control file writes
+- `waitForWsMessage(page, eventType)` — helper to await specific WebSocket messages in the browser
+
+**Playwright config:**
+- Single project: Chromium only (matching the Playwright MCP setup)
+- Base URL: `http://127.0.0.1:{random_port}`
+- Web server: auto-start via `startServer()` fixture
+- Screenshots on failure: saved to `test/browser/screenshots/`
+- Timeout: 30s per test (accounts for server startup + rendering)
+
+#### Visual Tests — Status Icons & Colors
+
+**`status-icons.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `running icon is blue spinner` | Seed run with `pipeline_status: "running"` → navigate to run list | Run card has `.status-running` class, icon is Loader SVG with `.icon-spin` |
+| `paused icon is amber pause` | Seed run with `pipeline_status: "paused"` → navigate to run list | Run card has `.status-paused` class, icon is Pause SVG, color is `#f59e0b` |
+| `failed icon is red alert` | Seed run with `pipeline_status: "failed"` → navigate to run list | Run card has `.status-failed` class, icon is CircleAlert SVG, color is `#ef4444` |
+| `completed icon is green check` | Seed run with `pipeline_status: "completed"` → navigate to run list | Run card has `.status-completed` class, icon is CircleCheck SVG, color is `#22c55e` |
+| `resuming icon is blue spinner` | Seed run with `pipeline_status: "resuming"` → navigate to run list | Run card has `.status-resuming` class, icon is RotateCw SVG with `.icon-spin` |
+| `skipped icon is gray circle` | Seed run with stage `status: "skipped"` → navigate to run detail | Stage has `.status-skipped` class, icon is CircleSlash SVG |
+| `run card has colored left border` | Seed runs in each state → navigate to run list | Each card's `border-left-color` matches its status color |
+
+#### Visual Tests — Dashboard & Sidebar
+
+**`dashboard.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `groups active runs by state` | Seed 2 running + 1 paused + 1 failed → navigate to dashboard | Running runs appear first, then paused, then failed |
+| `shows count badges` | Seed multiple runs → navigate to dashboard | Count badges show "2 running, 1 paused" (or similar) |
+| `quick-action buttons on cards` | Seed 1 running + 1 paused → navigate to dashboard | Running card has Pause button, paused card has Resume button |
+
+**`sidebar.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `sidebar shows status icons` | Seed runs in various states → check sidebar | Each run entry has the correct status icon and color |
+| `sidebar updates on state change` | Seed running run → trigger WS `pipeline-paused` update | Sidebar icon changes from Loader to Pause without page reload |
+
+#### Visual Tests — Stage Timeline
+
+**`stage-timeline.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `completed stages show green check` | Seed run with 3 completed stages → navigate to run detail | First 3 timeline nodes have CircleCheck icons in green |
+| `current stage shows blue spinner` | Seed run with in_progress stage → navigate to run detail | Active stage node has Loader icon with spin animation |
+| `failed stage shows red alert` | Seed run with failed stage → navigate to run detail | Failed stage node has CircleAlert icon in red |
+| `paused stage shows amber pause` | Seed run paused during IMPLEMENT → navigate to run detail | IMPLEMENT node shows Pause icon in amber |
+| `pending stages show gray circles` | Seed run mid-pipeline → navigate to run detail | Future stages have gray Circle icons |
+
+#### Interaction Tests — Control Buttons
+
+**`control-buttons.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `pause button visible when running` | Seed running run → navigate to run detail | Pause button is visible, Resume and Stop-while-paused are not |
+| `resume button visible when paused` | Seed paused run → navigate to run detail | Resume button is visible, Pause is not |
+| `resume button visible when failed` | Seed failed run → navigate to run detail | Resume button is visible |
+| `stop button visible when running` | Seed running run → navigate to run detail | Stop button is visible |
+| `stop button visible when paused` | Seed paused run → navigate to run detail | Stop button is visible |
+| `pause click sends API request` | Seed running run → click Pause → intercept network | `POST /api/runs/:id/pause` is called |
+| `resume click sends API request` | Seed paused run → click Resume → intercept network | `POST /api/runs/:id/resume` is called |
+| `stop click shows confirmation` | Seed running run → click Stop | Shoelace confirmation dialog appears |
+| `stop confirm sends API request` | Click Stop → confirm dialog → intercept network | `POST /api/runs/:id/stop` is called |
+| `stop cancel does nothing` | Click Stop → cancel dialog → check network | No API call made |
+| `buttons disabled during pending request` | Click Pause → check button state | Button shows loading state, is disabled until response |
+
+#### Integration Tests — WebSocket Real-Time Updates
+
+**`websocket-updates.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `status badge updates on pipeline-paused` | Seed running run → navigate → mutate status.json to paused | Badge changes from RUNNING (blue) to PAUSED (amber) without reload |
+| `status badge updates on pipeline-resumed` | Seed paused run → navigate → mutate status.json to running | Badge changes from PAUSED to RUNNING without reload |
+| `status badge updates on pipeline-completed` | Seed running run → navigate → mutate status.json to completed | Badge changes from RUNNING to COMPLETED (green) without reload |
+| `status badge updates on pipeline-failed` | Seed running run → navigate → mutate status.json to failed | Badge changes from RUNNING to FAILED (red) without reload |
+| `control buttons update on state change` | Seed running run → navigate → mutate to paused | Pause button disappears, Resume button appears |
+| `stage timeline updates live` | Seed run at PLAN stage → mutate to COORDINATE in_progress | Timeline updates: PLAN gets check, COORDINATE gets spinner |
+| `dashboard reorders on state change` | Seed 2 running → navigate → pause one | Paused run moves to paused group |
+
+#### Integration Tests — Full Lifecycle Flow
+
+**`run-lifecycle.spec.js`:**
+
+| Test | Steps | Assertion |
+|------|-------|-----------|
+| `pause then resume flow` | Seed running → click Pause → verify paused state → click Resume → verify running state | All transitions reflected in badges, buttons, timeline |
+| `stop then resume flow` | Seed running → click Stop → confirm → verify failed state → click Resume → verify running | Status shows FAILED with reason "stopped", then recovers |
+| `resume from failed with dirty iteration` | Seed failed run with in_progress iteration → click Resume | UI shows RESUMING briefly, then RUNNING, dirty iteration is not displayed |
+| `multiple runs different states` | Seed 3 runs (running, paused, completed) → navigate dashboard | All three display correct icons, colors, and buttons simultaneously |
+
+#### Screenshot Baselines (Optional)
+
+For visual regression, Playwright can capture and compare screenshots:
+- `test/browser/screenshots/` — baseline screenshots per test
+- Use `expect(page).toHaveScreenshot()` for pixel-level comparison
+- Particularly useful for: status icon colors, button styling, dashboard layout
+- Run with `--update-snapshots` to refresh baselines after intentional changes
 
 ---
 
