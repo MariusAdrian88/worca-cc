@@ -66,6 +66,25 @@ Agent config in `.claude/settings.json` under the `worca` namespace. Key section
 - `worca.circuit_breaker` — error classification and halt thresholds
 - `worca.governance` — hook guards and dispatch rules
 
+## Code Hosting
+
+This project uses **GitHub** with the `gh` CLI. PR creation command:
+
+```bash
+gh pr create --title "..." --body "..."
+```
+
+The guardian agent uses this when creating PRs. Adapt this section for GitLab (`glab`), Bitbucket, or other hosting platforms.
+
+## Development Approach
+
+This project follows **TDD (Test-Driven Development)**:
+1. Write a failing test first
+2. Write minimal code to pass
+3. Refactor
+
+Implementer agents read this section to determine the testing methodology.
+
 ## Testing
 
 ```bash

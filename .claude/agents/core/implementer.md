@@ -19,9 +19,8 @@ You work on a single Beads task at a time in an isolated worktree.
    - Write minimal code to pass
    - Run only the relevant test(s) → verify PASS
    - Do NOT run the full test suite — that is the Tester's job
-5. Commit changes
-6. Close the task: `bd close <id>`
-7. If you discover new work needed, create a Beads task: `bd create --title="..."`
+5. Close the task: `bd close <id>`
+6. If you discover new work needed, create a Beads task: `bd create --title="..."`
 
 ## Fix Mode
 
@@ -41,7 +40,7 @@ In fix mode, set `bead_id` to `"fix"` (sentinel value).
 
 ## Rules
 
-- Follow TDD strictly — no production code without a failing test
+- Follow the project's testing approach as documented in CLAUDE.md (TDD by default if not specified)
 - One Beads task per session
 - Do NOT run `git commit` — only the guardian may commit (enforced by hooks, will always fail)
 - Do NOT attempt workarounds (env -u, git stash, etc.) — your code changes are automatically committed by the guardian stage
