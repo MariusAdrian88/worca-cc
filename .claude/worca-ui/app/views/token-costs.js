@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Coins, Clock, Cpu, Zap, Timer, RefreshCw } from '../utils/icons.js';
+import { iconSvg, Coins, Clock, Cpu, Zap, Timer } from '../utils/icons.js';
 import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
 
 function _sumCosts(runs) {
@@ -40,15 +40,6 @@ function _runCost(run) {
   return total;
 }
 
-function _runTurns(run) {
-  let total = 0;
-  for (const stage of Object.values(run.stages || {})) {
-    for (const iter of stage.iterations || []) {
-      total += iter.turns || 0;
-    }
-  }
-  return total;
-}
 
 function _runDuration(run) {
   if (run.started_at) {
@@ -58,15 +49,6 @@ function _runDuration(run) {
   return 0;
 }
 
-function _runApiDuration(run) {
-  let total = 0;
-  for (const stage of Object.values(run.stages || {})) {
-    for (const iter of stage.iterations || []) {
-      total += iter.duration_api_ms || 0;
-    }
-  }
-  return total;
-}
 
 function _lastStageEnd(stages) {
   if (!stages) return null;
@@ -190,7 +172,7 @@ function costBreakdownBar(stages) {
 
 function runRow(run, tokenData, expandedRun, { onToggleRun }) {
   const cost = _runCost(run);
-  const turns = _runTurns(run);
+
   const dur = _runDuration(run);
   const title = run.work_request?.title || 'Untitled';
   const firstLine = title.split('\n')[0];
@@ -206,9 +188,9 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
         <span class="cost-run-title">${displayTitle}</span>
         <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : (run.active ? 'running\u2026' : 'interrupted')}</span>
         <span class="cost-run-cost">${unsafeHTML(iconSvg(Coins, 12))} ${_formatCost(cost)}</span>
-        <span class="cost-run-turns">${unsafeHTML(iconSvg(RefreshCw, 12))} ${turns} turns</span>
+
         <span class="cost-run-duration">${unsafeHTML(iconSvg(Timer, 12))} ${dur > 0 ? formatDuration(dur) : '-'}</span>
-        <span class="cost-run-api-duration">${(() => { const apiMs = _runApiDuration(run); return apiMs > 0 ? html`${unsafeHTML(iconSvg(Cpu, 12))} API ${formatDuration(apiMs)}` : html`-`; })()}</span>
+
         <span class="cost-run-chevron">${isExpanded ? '\u25BC' : '\u25B6'}</span>
       </div>
       ${isExpanded ? html`
