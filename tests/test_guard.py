@@ -429,3 +429,136 @@ class TestBlockBashFileWrites:
         os.environ.pop("WORCA_AGENT", None)
         code, reason = check_guard("Bash", {"command": "cat > /project/app.py << 'EOF'\ncode\nEOF"})
         assert code == 0
+
+
+# --- Safe command bypass (bd commands with triggering content) ---
+
+class TestSafeCommandBypass:
+    """bd commands must never be blocked by content-scanning guards."""
+
+    def test_bd_create_with_pytest_in_title(self):
+        """Issue A: 'pytest' in bd title must not trigger test-command guard."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="Write pytest cases for overlay" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_npm_test_in_description(self):
+        """Issue A: 'npm test' in bd args must not trigger test-command guard."""
+        os.environ["WORCA_AGENT"] = "planner"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="Add npm test script" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_cp_in_title(self):
+        """Issue B/7f: 'cp' in bd title must not trigger file-write guard."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="cp overlay files to target" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_redirect_in_title(self):
+        """Issue B/7a: '>' in bd title must not trigger redirect guard."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="version>=2.0 migration" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_git_commit_in_title(self):
+        """Issue C: 'git commit' in bd title must not trigger commit guard."""
+        os.environ["WORCA_AGENT"] = "implementer"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="Restrict git commit to guardian" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_python_write_in_description(self):
+        """Issue B/7e: 'python3 .write()' in bd args must not trigger."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="Script uses file.write()" --description="python3 writes output" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_bd_create_with_rm_rf_in_title(self):
+        """Consistency: 'rm -rf' in bd title must not trigger."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'bd create --title="Block rm -rf in guard hook" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+
+# --- cd prefix handling ---
+
+class TestCdPrefixHandling:
+    """Commands prefixed with 'cd /project &&' by hooks must work correctly."""
+
+    def test_cd_prefix_bd_create_not_blocked(self):
+        """The cd prefix broke the old startswith('bd ') exemption."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": 'cd /Volumes/project && bd create --title="Write pytest tests" --type=task'
+            })
+            assert code == 0
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_cd_prefix_real_pytest_still_blocked(self):
+        """cd prefix on a real test command must still be blocked."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": "cd /Volumes/project && pytest tests/ -v"
+            })
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_cd_prefix_real_cp_still_blocked(self):
+        """cd prefix on a real cp command must still be blocked for read-only agents."""
+        os.environ["WORCA_AGENT"] = "coordinator"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": "cd /Volumes/project && cp src.py dst.py"
+            })
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]
+
+    def test_cd_prefix_real_git_commit_still_blocked(self):
+        """cd prefix on a real git commit must still be blocked for non-guardian."""
+        os.environ["WORCA_AGENT"] = "implementer"
+        try:
+            code, _ = check_guard("Bash", {
+                "command": "cd /Volumes/project && git commit -m 'fix'"
+            })
+            assert code == 2
+        finally:
+            del os.environ["WORCA_AGENT"]

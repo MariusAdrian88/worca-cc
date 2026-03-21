@@ -9,8 +9,36 @@ import sys
 import os
 
 
+def _extract_actual_command(command: str) -> str:
+    """Extract the actual command, stripping any cd prefix added by hooks.
+
+    The pre_tool_use hook prepends 'cd /project/root && ' to every Bash
+    command when WORCA_PROJECT_ROOT is set.  Detection functions need to
+    inspect the real command, not the cd wrapper.
+    """
+    if "&&" in command:
+        return command.split("&&", 1)[1].strip()
+    return command.strip()
+
+
+_SAFE_COMMAND_PREFIXES = ("bd ", "bd\t")
+
+
+def _is_safe_command(command: str) -> bool:
+    """Check if command is a safe CLI tool that should bypass all detection.
+
+    Safe commands are tools like bd (beads issue tracker) whose arguments
+    contain natural language that must not be pattern-matched as shell
+    operations.
+    """
+    actual = _extract_actual_command(command)
+    return any(actual.startswith(p) for p in _SAFE_COMMAND_PREFIXES)
+
+
 def _is_rm_rf(command: str) -> bool:
     """Check if a command contains rm with both -r and -f flags."""
+    if _is_safe_command(command):
+        return False
     # Tokenize roughly to find rm invocations
     # Match patterns: rm -rf, rm -fr, rm -r -f, rm -f -r, etc.
     # We look for "rm" followed by flags that include both r and f
@@ -46,6 +74,8 @@ def _is_rm_rf(command: str) -> bool:
 
 def _is_force_push(command: str) -> bool:
     """Check if command is a git push with --force or -f."""
+    if _is_safe_command(command):
+        return False
     tokens = command.split()
     if "git" not in tokens:
         return False
@@ -65,11 +95,15 @@ def _is_force_push(command: str) -> bool:
 
 def _is_git_commit(command: str) -> bool:
     """Check if command contains git commit."""
+    if _is_safe_command(command):
+        return False
     return "git commit" in command
 
 
 def _is_test_command(command: str) -> bool:
     """Check if command runs tests."""
+    if _is_safe_command(command):
+        return False
     test_patterns = [
         "pytest", "python -m pytest", "npm test", "npm run test",
         "yarn test", "cargo test", "go test",
@@ -84,12 +118,13 @@ def _is_file_write_via_bash(command: str) -> bool:
     Catches patterns like: cat > file, echo > file, tee file,
     python3 -c "open(f,'w')", heredocs writing files, sed -i, etc.
     """
-    # Shell redirection: > or >> to a file (but allow bd commands and read-only redirects)
+    if _is_safe_command(command):
+        return False
+
+    # Shell redirection: > or >> to a file
     # Match: cat > file, echo > file, printf > file, etc.
     if re.search(r'(?<!\|)\s*>\s*[^\s|&;]', command):
-        # Allow: bd commands that may redirect internally
-        if not command.strip().startswith("bd "):
-            return True
+        return True
 
     # Heredoc writes: << 'EOF' or <<EOF combined with > or cat >
     if re.search(r'<<\s*[\'"]?\w+[\'"]?', command) and ">" in command:
