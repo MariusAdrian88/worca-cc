@@ -204,7 +204,7 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
     <div class="cost-run-row ${isExpanded ? 'expanded' : ''}">
       <div class="cost-run-summary" @click=${() => onToggleRun(run.id)}>
         <span class="cost-run-title">${displayTitle}</span>
-        <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : 'running\u2026'}</span>
+        <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : (run.active ? 'running\u2026' : 'interrupted')}</span>
         <span class="cost-run-cost">${unsafeHTML(iconSvg(Coins, 12))} ${_formatCost(cost)}</span>
         <span class="cost-run-turns">${unsafeHTML(iconSvg(RefreshCw, 12))} ${turns} turns</span>
         <span class="cost-run-duration">${unsafeHTML(iconSvg(Timer, 12))} ${dur > 0 ? formatDuration(dur) : '-'}</span>
