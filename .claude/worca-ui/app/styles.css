@@ -2921,7 +2921,7 @@ sl-details.learnings-panel::part(content) {
 
 .cost-run-summary {
   display: grid;
-  grid-template-columns: 1fr 130px 80px 80px 80px 24px;
+  grid-template-columns: 1fr 130px 80px 80px 80px 80px 24px;
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
@@ -2962,6 +2962,13 @@ sl-details.learnings-panel::part(content) {
   color: var(--muted);
   font-size: 0.78rem;
   text-align: right;
+}
+
+.cost-run-api-duration {
+  color: var(--muted);
+  font-size: 0.78rem;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .cost-run-chevron {

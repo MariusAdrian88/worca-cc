@@ -208,7 +208,7 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
         <span class="cost-run-cost">${unsafeHTML(iconSvg(Coins, 12))} ${_formatCost(cost)}</span>
         <span class="cost-run-turns">${unsafeHTML(iconSvg(RefreshCw, 12))} ${turns} turns</span>
         <span class="cost-run-duration">${unsafeHTML(iconSvg(Timer, 12))} ${dur > 0 ? formatDuration(dur) : '-'}</span>
-        ${(() => { const apiMs = _runApiDuration(run); return apiMs > 0 ? html`<span class="cost-run-api-duration">${unsafeHTML(iconSvg(Cpu, 12))} API ${formatDuration(apiMs)}</span>` : nothing; })()}
+        <span class="cost-run-api-duration">${(() => { const apiMs = _runApiDuration(run); return apiMs > 0 ? html`${unsafeHTML(iconSvg(Cpu, 12))} API ${formatDuration(apiMs)}` : html`-`; })()}</span>
         <span class="cost-run-chevron">${isExpanded ? '\u25BC' : '\u25B6'}</span>
       </div>
       ${isExpanded ? html`
