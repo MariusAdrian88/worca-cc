@@ -143,6 +143,16 @@ ws.on('run-snapshot', (payload) => {
   if (payload && payload.id) {
     const prevRun = store.getState().runs[payload.id] ?? null;
     notificationManager.handleRunUpdate(payload.id, payload, prevRun);
+    // Invalidate prompt cache for stages whose iteration count changed
+    if (prevRun && promptCache[payload.id]) {
+      for (const [key, stage] of Object.entries(payload.stages || {})) {
+        const prevCount = prevRun.stages?.[key]?.iterations?.length || 0;
+        const newCount = stage.iterations?.length || 0;
+        if (newCount > prevCount) {
+          delete promptCache[payload.id][key];
+        }
+      }
+    }
     store.setRun(payload.id, payload);
     if (route.runId === payload.id) {
       autoResetLogFilterOnStageChange(prevRun, payload);

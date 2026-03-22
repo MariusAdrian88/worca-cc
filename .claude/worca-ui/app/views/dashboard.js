@@ -37,9 +37,9 @@ export function dashboardView(state, { onSelectRun, onNavigate, onPause, onResum
   const total = runs.length;
   const totalCost = _computeTotalCost(runs);
 
-  const runningGroup = sortByStartDesc(_activeGroup(runs, ['running', 'resuming']));
-  const pausedGroup = sortByStartDesc(_activeGroup(runs, ['paused']));
-  const failedGroup = sortByStartDesc(_activeGroup(runs, ['failed']));
+  const runningGroup = sortByStartDesc(_activeGroup(active, ['running', 'resuming']));
+  const pausedGroup = sortByStartDesc(_activeGroup(active, ['paused']));
+  const failedGroup = sortByStartDesc(_activeGroup(active, ['failed']));
 
   return html`
     <div class="dashboard">
