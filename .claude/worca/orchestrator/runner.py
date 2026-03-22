@@ -919,10 +919,18 @@ def handle_pr_review(outcome: str, status: dict) -> tuple:
         return (None, status)
 
 
-def _query_ready_bead() -> dict | None:
-    """Query bd ready and return the first available bead, or None."""
+def _query_ready_bead(allowed_ids: list[str] | None = None) -> dict | None:
+    """Query bd ready and return the first available bead, or None.
+
+    Args:
+        allowed_ids: If provided, only return beads whose ID is in this list.
+                     This prevents picking up stale beads from prior runs.
+    """
     try:
         items = bd_ready()
+        if allowed_ids is not None:
+            allowed_set = set(allowed_ids)
+            items = [b for b in items if b["id"] in allowed_set]
         if items:
             return items[0]
     except Exception:
@@ -1038,6 +1046,13 @@ def run_pipeline(
             if not run_dir and status.get("run_id"):
                 run_dir = os.path.join(worca_dir, "runs", status["run_id"])
                 actual_status_path = os.path.join(run_dir, "status.json")
+
+            # Clear stale control.json left over from a previous stop/pause that
+            # killed the process before it could consume the file.  Without this,
+            # the first iteration of the resumed pipeline would read the old
+            # command and immediately stop/pause again.
+            if status.get("run_id"):
+                delete_control(status["run_id"], base=worca_dir)
         else:
             _log("Pipeline already completed", "ok")
             return existing  # all done
@@ -1329,7 +1344,8 @@ def run_pipeline(
                 impl_trigger = _next_trigger.get(Stage.IMPLEMENT.value, "initial")
                 if impl_trigger in ("initial", "next_bead"):
                     # Phase 1: implement all beads sequentially
-                    bead = _query_ready_bead()
+                    run_bead_ids = prompt_builder.get_context("beads_ids")
+                    bead = _query_ready_bead(allowed_ids=run_bead_ids)
                     if bead:
                         bead_id = bead["id"]
                         _claim_bead(bead_id)
@@ -1826,8 +1842,8 @@ def run_pipeline(
                     loop_counters["bead_iteration"] = loop_counters.get("bead_iteration", 0) + 1
                     status["loop_counters"] = dict(loop_counters)
 
-                    # Check for more beads
-                    next_bead = _query_ready_bead()
+                    # Check for more beads (scoped to this run)
+                    next_bead = _query_ready_bead(allowed_ids=run_bead_ids)
                     if next_bead and Stage.IMPLEMENT in stage_order:
                         if loop_counters["bead_iteration"] < max_beads:
                             _log(f"Next bead available — looping back to IMPLEMENT (bead {loop_counters['bead_iteration']})", "ok")

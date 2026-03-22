@@ -1,12 +1,14 @@
-"""Tests for pipeline lifecycle state management (signal handler, atexit, finally)."""
+"""Tests for pipeline lifecycle state management (signal handler, atexit, finally, resume, beads)."""
 
 import json
 import os
 import signal
+from unittest.mock import patch
 
 import pytest
 
 import worca.orchestrator.runner as runner
+from worca.orchestrator.control import write_control, control_path
 from worca.state.status import save_status, load_status
 
 
@@ -151,3 +153,104 @@ def test_finally_block_clears_signal_refs():
 
     assert runner._signal_status is None
     assert runner._signal_status_path is None
+
+
+# --- Resume: stale control.json cleanup ---
+
+
+def test_resume_deletes_stale_control_file(tmp_path):
+    """On resume, any leftover control.json from a previous stop is deleted
+    before the main loop starts, preventing an immediate re-stop."""
+    worca_dir = str(tmp_path)
+    run_id = "20260322-120000"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    # Write a stale stop control file (simulates process killed before consuming it)
+    write_control(run_id, "stop", source="cli", base=worca_dir)
+    ctrl_path = control_path(run_id, base=worca_dir)
+    assert os.path.exists(ctrl_path)
+
+    # delete_control should remove it
+    from worca.orchestrator.control import delete_control
+    delete_control(run_id, base=worca_dir)
+    assert not os.path.exists(ctrl_path)
+
+
+def test_resume_deletes_stale_pause_control_file(tmp_path):
+    """On resume, a leftover pause control.json is also cleaned up."""
+    worca_dir = str(tmp_path)
+    run_id = "20260322-130000"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    write_control(run_id, "pause", source="ui", base=worca_dir)
+    ctrl_path = control_path(run_id, base=worca_dir)
+    assert os.path.exists(ctrl_path)
+
+    from worca.orchestrator.control import delete_control
+    delete_control(run_id, base=worca_dir)
+    assert not os.path.exists(ctrl_path)
+
+
+def test_resume_noop_when_no_control_file(tmp_path):
+    """delete_control is a no-op when no control file exists."""
+    worca_dir = str(tmp_path)
+    run_id = "20260322-140000"
+    run_dir = tmp_path / "runs" / run_id
+    run_dir.mkdir(parents=True)
+
+    from worca.orchestrator.control import delete_control
+    # Should not raise
+    delete_control(run_id, base=worca_dir)
+
+
+# --- Bead assignment: _query_ready_bead filtering ---
+
+
+def test_query_ready_bead_filters_by_allowed_ids():
+    """_query_ready_bead only returns beads from the allowed_ids list."""
+    fake_beads = [
+        {"id": "old-bead-001", "title": "Stale from prior run", "priority": "2", "type": "task"},
+        {"id": "run-bead-001", "title": "Current run task", "priority": "2", "type": "task"},
+        {"id": "run-bead-002", "title": "Another current task", "priority": "2", "type": "task"},
+    ]
+    with patch("worca.orchestrator.runner.bd_ready", return_value=fake_beads):
+        # Without filter — returns first bead (which is stale)
+        result = runner._query_ready_bead()
+        assert result["id"] == "old-bead-001"
+
+        # With filter — skips stale bead, returns first matching
+        result = runner._query_ready_bead(allowed_ids=["run-bead-001", "run-bead-002"])
+        assert result["id"] == "run-bead-001"
+
+
+def test_query_ready_bead_returns_none_when_no_match():
+    """_query_ready_bead returns None when no beads match the allowed_ids."""
+    fake_beads = [
+        {"id": "old-bead-001", "title": "Stale", "priority": "2", "type": "task"},
+    ]
+    with patch("worca.orchestrator.runner.bd_ready", return_value=fake_beads):
+        result = runner._query_ready_bead(allowed_ids=["run-bead-001"])
+        assert result is None
+
+
+def test_query_ready_bead_no_filter_returns_first():
+    """_query_ready_bead with allowed_ids=None returns the first available bead."""
+    fake_beads = [
+        {"id": "bead-A", "title": "Task A", "priority": "2", "type": "task"},
+        {"id": "bead-B", "title": "Task B", "priority": "2", "type": "task"},
+    ]
+    with patch("worca.orchestrator.runner.bd_ready", return_value=fake_beads):
+        result = runner._query_ready_bead(allowed_ids=None)
+        assert result["id"] == "bead-A"
+
+
+def test_query_ready_bead_empty_allowed_ids_returns_none():
+    """_query_ready_bead with an empty allowed_ids list returns None."""
+    fake_beads = [
+        {"id": "bead-A", "title": "Task A", "priority": "2", "type": "task"},
+    ]
+    with patch("worca.orchestrator.runner.bd_ready", return_value=fake_beads):
+        result = runner._query_ready_bead(allowed_ids=[])
+        assert result is None
