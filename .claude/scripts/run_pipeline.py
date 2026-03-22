@@ -86,12 +86,30 @@ def build_work_request(args):
 def main():
     parser = create_parser()
     args = parser.parse_args()
-    work_request = build_work_request(args)
 
-    # Resolve plan: explicit --plan wins, then auto-detected from issue body
-    plan_file = args.plan or work_request.plan_path
+    if args.resume:
+        # Resume: load work_request from existing status.json instead of building from args
+        status_file = os.path.join(args.status_dir, "status.json")
+        if os.path.exists(status_file):
+            existing = load_status(status_file)
+            wr = existing.get("work_request", {})
+            work_request = normalize(
+                wr.get("source_type", "prompt"),
+                wr.get("description", "") or wr.get("title", "Resumed pipeline"),
+            )
+            work_request.title = wr.get("title", "Resumed pipeline")
+        else:
+            print(f"error: cannot resume — status file not found: {status_file}", file=sys.stderr)
+            raise SystemExit(2)
+        plan_file = args.plan
+        print(f"Resuming pipeline: {work_request.title}")
+    else:
+        work_request = build_work_request(args)
 
-    print(f"Starting pipeline: {work_request.title}")
+        # Resolve plan: explicit --plan wins, then auto-detected from issue body
+        plan_file = args.plan or work_request.plan_path
+
+        print(f"Starting pipeline: {work_request.title}")
     if plan_file and args.plan:
         print(f"  Pre-made plan: {plan_file} (skipping PLAN stage)")
     elif plan_file:
@@ -106,12 +124,18 @@ def main():
         print(f"  Skipping preflight checks")
 
     try:
+        # For resume, always use default .worca/status.json so runner derives
+        # worca_dir correctly and finds the run via active_run pointer.
+        if args.resume:
+            effective_status_path = ".worca/status.json"
+        else:
+            effective_status_path = os.path.join(args.status_dir, "status.json")
         status = run_pipeline(
             work_request,
             plan_file=plan_file,
             resume=args.resume,
             settings_path=args.settings,
-            status_path=os.path.join(args.status_dir, "status.json"),
+            status_path=effective_status_path,
             msize=args.msize,
             mloops=args.mloops,
             branch=args.branch,
