@@ -132,15 +132,15 @@ def test_pipeline_constant_values_unique():
 def test_total_pipeline_constants():
     """There must be exactly 50 pipeline.* outbound constants.
 
-    Original 48 - 2 learn events (now use generic stage events) + 2 pause/resume = 48.
+    48 original + 2 dedicated learn events (pipeline.learn.completed/failed) = 50.
     """
     import worca.events.types as T
     pipeline_vals = [
         v for k, v in vars(T).items()
         if k.isupper() and isinstance(v, str) and v.startswith("pipeline.")
     ]
-    assert len(pipeline_vals) == 48, (
-        f"Expected 48 pipeline.* constants, found {len(pipeline_vals)}"
+    assert len(pipeline_vals) == 50, (
+        f"Expected 50 pipeline.* constants, found {len(pipeline_vals)}"
     )
 
 

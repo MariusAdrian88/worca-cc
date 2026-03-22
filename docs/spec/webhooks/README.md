@@ -23,7 +23,7 @@
 
 ### 1.1 What Are Worca Pipeline Events?
 
-Worca emits **50 structured events** as it runs your AI-powered software development pipeline. These events cover every meaningful moment — from when a pipeline run starts to when individual test cases fail, code is committed, and beads (work items) complete. Events are emitted in real time, ordered by timestamp, and written to an append-only JSONL file at `.worca/runs/{run_id}/events.jsonl`.
+Worca emits **52 structured events** as it runs your AI-powered software development pipeline. These events cover every meaningful moment — from when a pipeline run starts to when individual test cases fail, code is committed, and beads (work items) complete. Events are emitted in real time, ordered by timestamp, and written to an append-only JSONL file at `.worca/runs/{run_id}/events.jsonl`.
 
 Event categories:
 
@@ -41,7 +41,8 @@ Event categories:
 | Milestones & loops | 3 |
 | Hook & governance | 3 |
 | Preflight | 2 |
-| **Total** | **50** |
+| Learn stage | 2 |
+| **Total** | **52** |
 
 ### 1.2 How Webhook Delivery Works
 
@@ -854,7 +855,9 @@ Emitted when a subagent dispatch is denied by governance rules.
 
 ### 4.13 Learn Stage
 
-The learn stage uses the same generic stage lifecycle events as all other stages (see [Section 4.2](#42-stage-lifecycle)), with `stage="learn"` in every payload.
+The learn stage emits both generic stage lifecycle events (see [Section 4.2](#42-stage-lifecycle)) with `stage="learn"` and two dedicated learn events with richer payloads.
+
+#### Generic stage events
 
 | Event | Meaning |
 |---|---|
@@ -862,7 +865,27 @@ The learn stage uses the same generic stage lifecycle events as all other stages
 | `pipeline.stage.completed` with `stage="learn"` | Learnings were saved to `learnings.json`. |
 | `pipeline.stage.failed` with `stage="learn"` | Learn stage encountered an error (non-fatal). |
 
-To subscribe to learn stage events specifically, use `"pipeline.stage.*"` and filter client-side on `payload.stage == "learn"`.
+#### Dedicated learn events
+
+##### `pipeline.learn.completed`
+
+Emitted when the learn stage completes successfully and saves learnings.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `termination_type` | string | Yes | How the pipeline terminated before learn ran (`success`, `failure`, `loop_exhausted`). |
+| `duration_ms` | integer | Yes | Time spent in the learn stage in milliseconds. |
+| `learnings_path` | string \| null | No | Path to the `learnings.json` file, or null if not saved. |
+
+##### `pipeline.learn.failed`
+
+Emitted when the learn stage encounters an error. Learn failures are non-fatal — they do not affect the pipeline's final status.
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `error` | string | Yes | Error message from the learn stage. |
+| `duration_ms` | integer | Yes | Time spent in the learn stage before failure in milliseconds. |
+| `error_type` | string | No | Python exception class name. |
 
 ---
 

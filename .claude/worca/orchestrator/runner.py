@@ -66,6 +66,8 @@ from worca.events.types import (
     git_branch_created_payload, git_pr_created_payload,
     PREFLIGHT_COMPLETED, PREFLIGHT_SKIPPED,
     preflight_completed_payload, preflight_skipped_payload,
+    LEARN_COMPLETED, LEARN_FAILED,
+    learn_completed_payload, learn_failed_payload,
 )
 
 
@@ -563,6 +565,11 @@ def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
                 stage="learn", iteration=1, duration_ms=duration_ms,
                 cost_usd=0.0, turns=0, outcome="success",
             ))
+            emit_event(ctx, LEARN_COMPLETED, learn_completed_payload(
+                termination_type=termination_type,
+                duration_ms=duration_ms,
+                learnings_path=learnings_path,
+            ))
     except Exception as e:
         _log(f"Learn stage failed (non-fatal): {e}", "warn")
         if ctx:
@@ -571,6 +578,11 @@ def _run_learn_stage(status, prompt_builder, settings_path, run_dir,
                 emit_event(ctx, STAGE_FAILED, stage_failed_payload(
                     stage="learn", iteration=1, error=str(e),
                     error_type=type(e).__name__, elapsed_ms=elapsed_ms,
+                ))
+                emit_event(ctx, LEARN_FAILED, learn_failed_payload(
+                    error=str(e),
+                    duration_ms=elapsed_ms,
+                    error_type=type(e).__name__,
                 ))
             except Exception:
                 pass
@@ -972,7 +984,7 @@ def run_pipeline(
     _branch_just_created = False
     if resume and existing and _is_same_work_request(existing.get("work_request", {}), work_request):
         # Explicit resume requested and same work request found
-        from worca.orchestrator.resume import find_resume_point, check_git_divergence
+        from worca.orchestrator.resume import find_resume_point, check_git_divergence, restore_loop_counters
         resume_stage = find_resume_point(existing)
         if resume_stage is not None:
             # Git divergence guard: warn if HEAD changed since pipeline start
@@ -1100,14 +1112,24 @@ def run_pipeline(
             "_run_dir": run_dir,
             "_logs_dir": logs_dir,
         }
-        loop_counters = {}
+        if resume_stage:
+            loop_counters = restore_loop_counters(status)
+        else:
+            loop_counters = {}
         max_beads = 0
 
         # Initialize PromptBuilder for context threading across stages
+        prompt_context_path = os.path.join(run_dir, "prompt_context.json") if run_dir else None
         prompt_builder = PromptBuilder(
             work_request.title,
             work_request.description,
         )
+        if resume_stage and prompt_context_path:
+            prompt_builder.load_context(prompt_context_path)
+
+        # Transition pipeline to running state
+        status["pipeline_status"] = "running"
+        save_status(status, actual_status_path)
 
         stage_order = get_enabled_stages(settings_path)
 
@@ -1766,6 +1788,7 @@ def run_pipeline(
                     prompt_builder.update_context("all_tests_added", all_tests)
 
                     loop_counters["bead_iteration"] = loop_counters.get("bead_iteration", 0) + 1
+                    status["loop_counters"] = dict(loop_counters)
 
                     # Check for more beads
                     next_bead = _query_ready_bead()
@@ -1837,6 +1860,7 @@ def run_pipeline(
                     else:
                         # Flat test-fix counter (not per-bead)
                         loop_counters["implement_test"] = loop_counters.get("implement_test", 0) + 1
+                        status["loop_counters"] = dict(loop_counters)
                         bead_prompt_iter = prompt_builder.get_context("bead_prompt_iteration") or 0
                         prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                         _log(f"Tests failed — looping back to IMPLEMENT fix mode (attempt {loop_counters['implement_test']})", "warn")
@@ -1959,6 +1983,7 @@ def run_pipeline(
                         else:
                             # Flat review-fix counter (not per-bead)
                             loop_counters["pr_changes"] = loop_counters.get("pr_changes", 0) + 1
+                            status["loop_counters"] = dict(loop_counters)
                             bead_prompt_iter = prompt_builder.get_context("bead_prompt_iteration") or 0
                             prompt_builder.update_context("bead_prompt_iteration", bead_prompt_iter + 1)
                             _log(f"Changes requested — looping back to IMPLEMENT fix mode (attempt {loop_counters['pr_changes']})", "warn")
@@ -2000,6 +2025,7 @@ def run_pipeline(
                     else:
                         loop_key = "restart_planning"
                         loop_counters[loop_key] = loop_counters.get(loop_key, 0) + 1
+                        status["loop_counters"] = dict(loop_counters)
                         _log(f"Restart planning requested (iteration {loop_counters[loop_key]})", "warn")
                         if not check_loop_limit(loop_key, loop_counters[loop_key], settings_path, mloops=mloops):
                             if ctx:
@@ -2061,6 +2087,12 @@ def run_pipeline(
                             title=work_request.title,
                         ))
 
+            # Persist context and loop counters after each completed stage
+            status["loop_counters"] = dict(loop_counters)
+            save_status(status, actual_status_path)
+            if prompt_context_path:
+                prompt_builder.save_context(prompt_context_path)
+
             stage_idx += 1
 
         total_elapsed = time.time() - pipeline_t0
@@ -2089,6 +2121,7 @@ def run_pipeline(
         total_turns = run_token.get("num_turns", 0)
 
         # Mark pipeline as completed with timestamp
+        status["pipeline_status"] = "completed"
         status["completed_at"] = datetime.now(timezone.utc).isoformat()
         save_status(status, actual_status_path)
 
@@ -2139,6 +2172,9 @@ def run_pipeline(
             ))
         raise  # Do NOT run learn on user interruption
     except LoopExhaustedError as e:
+        status["pipeline_status"] = "failed"
+        status["stop_reason"] = "loop_exhausted"
+        save_status(status, actual_status_path)
         _run_learn_stage(status, prompt_builder, settings_path, run_dir,
                          "loop_exhausted", str(e), msize, logs_dir, ctx=ctx)
         if ctx:
@@ -2149,6 +2185,9 @@ def run_pipeline(
             ))
         raise
     except PipelineError as e:
+        status["pipeline_status"] = "failed"
+        status["stop_reason"] = "pipeline_error"
+        save_status(status, actual_status_path)
         # Skip LEARN when preflight fails — environment is broken, claude CLI unavailable
         if status.get("stage") != "preflight":
             _run_learn_stage(status, prompt_builder, settings_path, run_dir,
@@ -2161,6 +2200,9 @@ def run_pipeline(
             ))
         raise
     except Exception as e:
+        status["pipeline_status"] = "failed"
+        status["stop_reason"] = type(e).__name__
+        save_status(status, actual_status_path)
         _run_learn_stage(status, prompt_builder, settings_path, run_dir,
                          "failure", str(e), msize, logs_dir, ctx=ctx)
         if ctx:
@@ -2173,6 +2215,15 @@ def run_pipeline(
     finally:
         if ctx is not None:
             ctx.close()
+        # Persist PromptBuilder context and loop counters as safety net
+        try:
+            if prompt_context_path and prompt_builder:
+                prompt_builder.save_context(prompt_context_path)
+            if status and loop_counters:
+                status["loop_counters"] = dict(loop_counters)
+                save_status(status, actual_status_path)
+        except Exception:
+            pass  # Don't mask the real error
         _restore_signal_handlers()
         _remove_pid(status_path)
         _close_orchestrator_log()

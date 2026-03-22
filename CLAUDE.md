@@ -91,9 +91,12 @@ Implementer agents read this section to determine the testing methodology.
 pytest tests/                              # All Python tests
 pytest tests/test_<module>.py              # Single module
 npx vitest run .claude/worca-ui/server/    # UI server tests
+cd .claude/worca-ui && npx playwright test --workers=1  # Browser e2e tests (must run serially)
 ```
 
 Test naming: `tests/test_<module>.py` mirrors source module names. Pre-existing failures in unrelated tests should be ignored — only verify tests relevant to your changes.
+
+**Playwright note:** Browser e2e tests must run with `--workers=1` (serial). Parallel workers cause flaky failures due to browser context contamination between isolated test servers.
 
 ## Governance
 

@@ -1,12 +1,9 @@
 """
 worca.events.types — event type constants and payload builder helpers.
 
-All 50 event type strings are defined as module-level constants grouped by
+All 52 event type strings are defined as module-level constants grouped by
 category. One typed payload builder function exists per event type, ensuring
 consistent dict structure at every call site.
-
-Note: The learn stage uses the generic STAGE_STARTED/COMPLETED/FAILED events
-with stage="learn" in the payload, so no learn-specific event types are needed.
 
 No external runtime dependencies (stdlib only).
 """
@@ -118,6 +115,12 @@ PREFLIGHT_COMPLETED = "pipeline.preflight.completed"
 PREFLIGHT_SKIPPED   = "pipeline.preflight.skipped"
 
 # ---------------------------------------------------------------------------
+# Learn stage events (2 events)
+# ---------------------------------------------------------------------------
+
+LEARN_COMPLETED = "pipeline.learn.completed"
+LEARN_FAILED    = "pipeline.learn.failed"
+
 # ---------------------------------------------------------------------------
 # Control events — inbound responses (4 events)
 # ---------------------------------------------------------------------------
@@ -714,6 +717,22 @@ def preflight_skipped_payload(reason: str) -> dict:
 # ---------------------------------------------------------------------------
 # Learn stage payload builders
 # ---------------------------------------------------------------------------
+
+def learn_completed_payload(termination_type: str, duration_ms: int,
+                            learnings_path: str = None) -> dict:
+    p: dict = {"termination_type": termination_type, "duration_ms": duration_ms}
+    if learnings_path is not None:
+        p["learnings_path"] = learnings_path
+    return p
+
+
+def learn_failed_payload(error: str, duration_ms: int,
+                         error_type: str = None) -> dict:
+    p: dict = {"error": error, "duration_ms": duration_ms}
+    if error_type is not None:
+        p["error_type"] = error_type
+    return p
+
 
 # ---------------------------------------------------------------------------
 # Control (inbound) payload builders
