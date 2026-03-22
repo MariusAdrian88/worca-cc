@@ -2165,6 +2165,9 @@ def run_pipeline(
 
         return status
     except PipelineInterrupted:
+        status["pipeline_status"] = "failed"
+        status["stop_reason"] = "stopped"
+        save_status(status, actual_status_path)
         if ctx:
             emit_event(ctx, RUN_INTERRUPTED, run_interrupted_payload(
                 interrupted_stage=status.get("stage", ""),

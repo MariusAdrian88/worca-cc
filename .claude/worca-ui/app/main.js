@@ -12,7 +12,7 @@ import { newRunView, submitNewRun, getNewRunSubmitState } from './views/new-run.
 import { logViewerView, writeLogLine, clearTerminal, mountTerminal, disposeTerminal, searchTerminal } from './views/log-viewer.js';
 import { liveOutputView, writeLiveLogLine, writeLiveIterationSeparator, clearLiveTerminal, mountLiveTerminal, disposeLiveTerminal, updateActiveStage, getActiveStage } from './views/live-output.js';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, ArrowLeft, Square, Play, Loader, AlertTriangle, Database, Zap, Trash2 } from './utils/icons.js';
+import { iconSvg, ArrowLeft, Square, Play, Loader, AlertTriangle, Database, Zap, Trash2, Pause } from './utils/icons.js';
 import { statusIcon } from './utils/status-badge.js';
 import { createNotificationManager } from './notifications.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
@@ -49,7 +49,7 @@ let logFilter = '*';
 let logSearch = '';
 let settings = {};
 let logIterationFilter = null; // null = all iterations, number = specific
-let pipelineAction = null; // null | 'stopping' | 'resuming'
+let pipelineAction = null; // null | 'stopping' | 'resuming' | 'pausing'
 let controlPending = null; // null | { action: 'pause'|'resume'|'stop', runId: string }
 let actionError = null; // null | string (error message, auto-clears)
 let stopConfirmOpen = false;
@@ -491,6 +491,26 @@ function handleResumePipeline() {
   });
 }
 
+async function handlePausePipeline() {
+  const activeRun = Object.values(store.getState().runs).find(r => r.active);
+  const runId = activeRun?.id || 'current';
+  pipelineAction = 'pausing';
+  actionError = null;
+  rerender();
+  try {
+    const res = await fetch(`/api/runs/${runId}/pause`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) {
+      pipelineAction = null;
+      showActionError(data.error || 'Failed to pause pipeline');
+    }
+    // Status update via file watcher / WS broadcast will clear pipelineAction
+  } catch (err) {
+    pipelineAction = null;
+    showActionError(err?.message || 'Failed to pause pipeline');
+  }
+}
+
 async function handlePauseRun(runId) {
   controlPending = { action: 'pause', runId };
   rerender();
@@ -515,21 +535,6 @@ async function handleResumeRun(runId) {
     if (!data.ok) showActionError(data.error || 'Failed to resume run');
   } catch (err) {
     showActionError(err?.message || 'Failed to resume run');
-  } finally {
-    controlPending = null;
-    rerender();
-  }
-}
-
-async function handleStopRun(runId) {
-  controlPending = { action: 'stop', runId };
-  rerender();
-  try {
-    const res = await fetch(`/api/runs/${runId}/stop`, { method: 'POST' });
-    const data = await res.json();
-    if (!data.ok) showActionError(data.error || 'Failed to stop run');
-  } catch (err) {
-    showActionError(err?.message || 'Failed to stop run');
   } finally {
     controlPending = null;
     rerender();
@@ -792,12 +797,12 @@ function contentHeaderView() {
     title = firstLine.length > 80 ? firstLine.slice(0, 80) + '\u2026' : firstLine;
     showBack = true;
     if (run) {
-      const rs = run.runState || (run.active ? 'running' : 'terminal');
-      const variant = rs === 'running' ? 'warning' : rs === 'interrupted' ? 'neutral' : 'success';
-      const status = rs === 'running' ? 'in_progress' : rs === 'interrupted' ? 'interrupted' : 'completed';
-      const label = rs === 'running' ? 'Running' : rs === 'interrupted' ? 'Interrupted' : 'Completed';
+      const ps = run.pipeline_status || (run.active ? 'running' : 'completed');
+      const variantMap = { running: 'warning', resuming: 'warning', paused: 'warning', completed: 'success', failed: 'danger' };
+      const variant = variantMap[ps] || 'neutral';
+      const label = ps.charAt(0).toUpperCase() + ps.slice(1);
       badge = html`<sl-badge variant="${variant}" pill>
-        ${unsafeHTML(statusIcon(status, 12))}
+        ${unsafeHTML(statusIcon(ps, 12))}
         ${label}
       </sl-badge>`;
 
@@ -807,23 +812,37 @@ function contentHeaderView() {
             ${unsafeHTML(iconSvg(Loader, 14, 'icon-spin'))}
             Stopping\u2026
           </button>`;
+      } else if (pipelineAction === 'pausing') {
+        actionButton = html`
+          <button class="action-btn action-btn--amber" disabled>
+            ${unsafeHTML(iconSvg(Loader, 14, 'icon-spin'))}
+            Pausing\u2026
+          </button>`;
       } else if (pipelineAction === 'resuming') {
         actionButton = html`
           <button class="action-btn action-btn--primary" disabled>
             ${unsafeHTML(iconSvg(Loader, 14, 'icon-spin'))}
             Resuming\u2026
           </button>`;
-      } else if (rs === 'running') {
+      } else if (ps === 'running') {
         actionButton = html`
+          <button class="action-btn action-btn--amber" @click=${handlePausePipeline}>
+            ${unsafeHTML(iconSvg(Pause, 14))}
+            Pause
+          </button>
           <button class="action-btn action-btn--danger" @click=${handleStopPipeline}>
             ${unsafeHTML(iconSvg(Square, 14))}
-            Stop Pipeline
+            Stop
           </button>`;
-      } else if (rs === 'interrupted') {
+      } else if (ps === 'paused' || ps === 'failed') {
         actionButton = html`
           <button class="action-btn action-btn--primary" @click=${handleResumePipeline}>
             ${unsafeHTML(iconSvg(Play, 14))}
-            Resume Pipeline
+            Resume
+          </button>
+          <button class="action-btn action-btn--danger" @click=${handleStopPipeline}>
+            ${unsafeHTML(iconSvg(Square, 14))}
+            Stop
           </button>`;
       }
     }
@@ -928,7 +947,7 @@ function mainContentView() {
     return html`
       <div class="run-detail-layout">
         <div class="run-detail-layout__stages">
-          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange, onPause: handlePauseRun, onResume: handleResumeRun, onStop: handleStopRun, controlPending: controlPending?.runId === route.runId ? controlPending.action : null })}
+          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange })}
         </div>
         <div class="run-detail-layout__logs">
           ${liveOutputView(getActiveStage(), isRunning)}
@@ -1050,7 +1069,7 @@ function rerender() {
         <sl-button slot="footer" variant="danger" @click=${() => {
           document.getElementById('stop-confirm-dialog')?.hide();
           handleConfirmStop();
-        }}>Stop Pipeline</sl-button>
+        }}>Stop</sl-button>
       </sl-dialog>
     ` : ''}
     ${restartStageConfirmOpen ? html`

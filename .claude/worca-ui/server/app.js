@@ -342,6 +342,22 @@ export function createApp(options = {}) {
       res.json({ ok: true, stopped: true, runId, pid: result.pid });
     } catch (err) {
       if (err.code === 'not_running') {
+        // Pipeline may be paused (no process) — update status.json directly
+        const statusPath = join(worcaDir, 'runs', runId, 'status.json');
+        if (existsSync(statusPath)) {
+          try {
+            const st = JSON.parse(readFileSync(statusPath, 'utf8'));
+            if (st.pipeline_status === 'paused' || st.pipeline_status === 'running') {
+              st.pipeline_status = 'failed';
+              st.stop_reason = 'stopped';
+              writeFileSync(statusPath, JSON.stringify(st, null, 2) + '\n', 'utf8');
+              if (app.locals.broadcast) {
+                app.locals.broadcast('run-stopped', { runId, pid: null });
+              }
+              return res.json({ ok: true, stopped: true, runId, pid: null });
+            }
+          } catch { /* fall through to 404 */ }
+        }
         return res.status(404).json({ ok: false, error: err.message });
       }
       res.status(500).json({ ok: false, error: err.message });
