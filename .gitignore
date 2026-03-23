@@ -20,6 +20,9 @@ test-results/
 .claude/worca-ui/test-results/
 .pytest_cache/
 
+# Pipeline runtime artifacts
+MASTER_PLAN.md
+
 # Runtime / tooling
 .claude/worktrees/
 .playwright-mcp/
