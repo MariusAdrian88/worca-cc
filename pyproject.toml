@@ -1,6 +1,6 @@
 [project]
 name = "worca-cc"
-version = "0.1.0"
+version = "0.5.0"
 description = "Autonomous software development pipeline combining orchestration with governance enforcement"
 requires-python = ">=3.8"
 
