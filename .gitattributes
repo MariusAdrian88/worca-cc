@@ -14,7 +14,9 @@
 .venv/              export-ignore
 .worca/             export-ignore
 .worktrees/         export-ignore
-docs/               export-ignore
+docs/plans/         export-ignore
+docs/spec/          export-ignore
+docs/IDEAS.md       export-ignore
 modules/            export-ignore
 logs/               export-ignore
 node_modules/       export-ignore
