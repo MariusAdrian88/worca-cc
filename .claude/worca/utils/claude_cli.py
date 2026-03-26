@@ -10,10 +10,15 @@ import os
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 from typing import Optional, Callable
 
 from worca.utils.env import get_env
+
+# Linux ARG_MAX is typically 2 MiB but total argv+envp must fit.
+# Use a conservative 128 KiB threshold for the prompt argument.
+_ARG_INLINE_LIMIT = 128 * 1024  # bytes
 
 # Track the currently running subprocess so it can be terminated on signal.
 _current_proc = None
@@ -63,12 +68,6 @@ def build_command(
         prompt is passed inline. The caller must delete the temp file after
         the subprocess finishes.
     """
-    import tempfile
-
-    # Linux ARG_MAX is typically 2 MiB but total argv+envp must fit.
-    # Use a conservative 128 KiB threshold for the prompt argument.
-    _ARG_INLINE_LIMIT = 128 * 1024  # bytes
-
     prompt_file = None
     if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
         fd, prompt_file = tempfile.mkstemp(prefix="worca_prompt_", suffix=".md")

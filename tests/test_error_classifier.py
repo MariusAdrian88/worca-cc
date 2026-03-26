@@ -208,11 +208,11 @@ class TestClassifyError:
             cli_prompt = cmd[idx + 1]
             # If offloaded, the CLI prompt is short and references a temp file
             if "Read the file at" in cli_prompt:
-                # Extract path from the prompt
-                for part in cli_prompt.split():
-                    if part.startswith("/tmp/") or part.startswith("/var/"):
-                        prompt_file_seen = part
-                        break
+                # Extract path: it appears after "Read the file at " and before " and"
+                import re
+                m = re.search(r"Read the file at (\S+)", cli_prompt)
+                if m:
+                    prompt_file_seen = m.group(1)
             return mock_result
 
         with patch("subprocess.run", side_effect=check_run):

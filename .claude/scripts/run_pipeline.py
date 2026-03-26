@@ -92,6 +92,16 @@ def main():
 
     # --prompt-file: read prompt from file and delete it
     if args.prompt_file:
+        if args.prompt:
+            print("error: --prompt and --prompt-file are mutually exclusive", file=sys.stderr)
+            raise SystemExit(2)
+        # Validate path is inside the system temp directory
+        import tempfile
+        real_path = os.path.realpath(args.prompt_file)
+        temp_dir = os.path.realpath(tempfile.gettempdir())
+        if not real_path.startswith(temp_dir + os.sep):
+            print(f"error: --prompt-file must be inside {temp_dir}", file=sys.stderr)
+            raise SystemExit(2)
         try:
             with open(args.prompt_file) as f:
                 args.prompt = f.read()

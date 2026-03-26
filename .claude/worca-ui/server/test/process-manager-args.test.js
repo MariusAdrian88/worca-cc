@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -275,5 +275,158 @@ describe('startPipeline arg building', () => {
     const args = getArgs();
     expect(args).toContain('--resume');
     expect(args).not.toContain('--status-dir');
+  });
+});
+
+// --- Large prompt offloading ---
+
+const ARG_INLINE_LIMIT = 128 * 1024;
+
+describe('large prompt offloading', () => {
+  let tmpDir, worcaDir;
+
+  beforeEach(() => {
+    spawnCalls = [];
+    fakeChild.on.mockReset();
+    fakeChild.unref.mockReset();
+
+    tmpDir = mkdtempSync(join(tmpdir(), 'pm-args-test-'));
+    worcaDir = join(tmpDir, '.worca');
+    mkdirSync(worcaDir, { recursive: true });
+
+    const scriptDir = join(tmpDir, '.claude', 'scripts');
+    mkdirSync(scriptDir, { recursive: true });
+    writeFileSync(join(scriptDir, 'run_pipeline.py'), '# stub');
+  });
+
+  afterEach(() => {
+    rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function getArgs() {
+    expect(spawnCalls.length).toBe(1);
+    return spawnCalls[0][1];
+  }
+
+  it('writePromptFile creates a file with restricted permissions (0o600)', async () => {
+    const largePrompt = 'X'.repeat(ARG_INLINE_LIMIT + 1);
+    startPipeline(worcaDir, {
+      sourceType: 'none',
+      prompt: largePrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    const promptFilePath = args[args.indexOf('--prompt-file') + 1];
+    expect(promptFilePath).toBeTruthy();
+
+    const stat = statSync(promptFilePath);
+    // 0o600 = owner read/write only (octal 33152 on Linux = 0o100600, mode & 0o777 = 0o600)
+    expect(stat.mode & 0o777).toBe(0o600);
+
+    // Verify the file content matches the prompt
+    const content = readFileSync(promptFilePath, 'utf8');
+    expect(content).toBe(largePrompt);
+
+    // Clean up the temp file
+    rmSync(promptFilePath, { force: true });
+  });
+
+  it('uses --prompt-file when prompt exceeds ARG_INLINE_LIMIT', async () => {
+    const largePrompt = 'A'.repeat(ARG_INLINE_LIMIT + 100);
+    startPipeline(worcaDir, {
+      sourceType: 'none',
+      prompt: largePrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    expect(args).toContain('--prompt-file');
+    expect(args).not.toContain('--prompt');
+
+    const promptFilePath = args[args.indexOf('--prompt-file') + 1];
+    expect(promptFilePath).toMatch(/worca_prompt_.*\.md$/);
+    expect(existsSync(promptFilePath)).toBe(true);
+
+    // Clean up
+    rmSync(promptFilePath, { force: true });
+  });
+
+  it('legacy format uses --prompt-file when prompt exceeds ARG_INLINE_LIMIT', async () => {
+    const largePrompt = 'B'.repeat(ARG_INLINE_LIMIT + 100);
+    startPipeline(worcaDir, {
+      inputType: 'prompt',
+      inputValue: largePrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    expect(args).toContain('--prompt-file');
+    expect(args).not.toContain('--prompt');
+
+    const promptFilePath = args[args.indexOf('--prompt-file') + 1];
+    expect(promptFilePath).toMatch(/worca_prompt_.*\.md$/);
+
+    const content = readFileSync(promptFilePath, 'utf8');
+    expect(content).toBe(largePrompt);
+
+    // Clean up
+    rmSync(promptFilePath, { force: true });
+  });
+
+  it('small prompts still use --prompt inline', async () => {
+    const smallPrompt = 'Add user auth';
+    startPipeline(worcaDir, {
+      sourceType: 'none',
+      prompt: smallPrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    expect(args).toContain('--prompt');
+    expect(args).not.toContain('--prompt-file');
+    expect(args[args.indexOf('--prompt') + 1]).toBe(smallPrompt);
+  });
+
+  it('prompt exactly at ARG_INLINE_LIMIT uses --prompt inline', async () => {
+    const exactPrompt = 'C'.repeat(ARG_INLINE_LIMIT);
+    startPipeline(worcaDir, {
+      sourceType: 'none',
+      prompt: exactPrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    expect(args).toContain('--prompt');
+    expect(args).not.toContain('--prompt-file');
+    expect(args[args.indexOf('--prompt') + 1]).toBe(exactPrompt);
+  });
+
+  it('cleans up prompt file on spawn error', async () => {
+    const largePrompt = 'D'.repeat(ARG_INLINE_LIMIT + 100);
+    const promise = startPipeline(worcaDir, {
+      sourceType: 'none',
+      prompt: largePrompt,
+      projectRoot: tmpDir,
+    });
+    await vi.waitFor(() => expect(spawnCalls.length).toBe(1), { timeout: 100 });
+
+    const args = getArgs();
+    const promptFilePath = args[args.indexOf('--prompt-file') + 1];
+    expect(existsSync(promptFilePath)).toBe(true);
+
+    // Find and trigger the 'error' event handler registered on fakeChild
+    const errorCall = fakeChild.on.mock.calls.find(([event]) => event === 'error');
+    expect(errorCall).toBeTruthy();
+    const errorHandler = errorCall[1];
+    errorHandler(new Error('spawn ENOENT'));
+
+    await expect(promise).rejects.toThrow('Failed to start pipeline');
+    expect(existsSync(promptFilePath)).toBe(false);
   });
 });

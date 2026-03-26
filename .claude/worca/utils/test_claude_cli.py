@@ -510,6 +510,75 @@ class TestRunAgent:
         assert call_args[idx + 1] == "stream-json"
         assert "--verbose" in call_args
 
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_on_success(self, mock_popen_cls, mock_env):
+        """run_agent with large prompt cleans up temp file on success."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "system", "subtype": "init", "model": "opus"},
+            {"type": "result", "subtype": "success", "result": "ok",
+             "total_cost_usd": 0.01, "num_turns": 1, "duration_ms": 1000},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events)
+
+        result = run_agent(prompt=large_prompt, agent="agent.md")
+        assert result["type"] == "result"
+
+        # The temp file should have been created and then deleted
+        # Verify by checking that Popen was called with a short redirect prompt
+        call_args = mock_popen_cls.call_args[0][0]
+        prompt_arg = call_args[call_args.index("-p") + 1]
+        assert "Read the file at" in prompt_arg
+        # Extract the temp file path from the prompt argument
+        # Format: "Read the file at /tmp/worca_prompt_XXXX.md and follow..."
+        tmp_path = prompt_arg.split("Read the file at ")[1].split(" and follow")[0]
+        assert not os.path.exists(tmp_path), "Temp prompt file should be deleted after success"
+
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_on_failure(self, mock_popen_cls, mock_env):
+        """run_agent with large prompt cleans up temp file on subprocess failure."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "result", "subtype": "error", "is_error": True,
+             "result": "something went wrong"},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events, returncode=1)
+
+        with pytest.raises(RuntimeError, match="exit code 1"):
+            run_agent(prompt=large_prompt, agent="agent.md")
+
+        # The temp file should still have been cleaned up despite the error
+        call_args = mock_popen_cls.call_args[0][0]
+        prompt_arg = call_args[call_args.index("-p") + 1]
+        tmp_path = prompt_arg.split("Read the file at ")[1].split(" and follow")[0]
+        assert not os.path.exists(tmp_path), "Temp prompt file should be deleted after failure"
+
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_handles_oserror_silently(self, mock_popen_cls, mock_env):
+        """If os.unlink raises OSError during cleanup, no exception propagates."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "system", "subtype": "init", "model": "opus"},
+            {"type": "result", "subtype": "success", "result": "ok",
+             "total_cost_usd": 0.01, "num_turns": 1, "duration_ms": 1000},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events)
+
+        with mock.patch("os.unlink", side_effect=OSError("disk error")):
+            # Should not raise despite os.unlink failing
+            result = run_agent(prompt=large_prompt, agent="agent.md")
+            assert result["type"] == "result"
+            assert result["result"] == "ok"
+
 
 # ---------------------------------------------------------------------------
 # terminate_current

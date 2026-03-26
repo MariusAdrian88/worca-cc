@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from worca.orchestrator.work_request import normalize, WorkRequest
+from worca.utils.claude_cli import _ARG_INLINE_LIMIT
 
 
 def _slugify(title: str) -> str:
@@ -57,9 +58,6 @@ def _create_worktree(base_dir: str, slug: str, branch: str) -> str:
         if result.returncode != 0:
             raise RuntimeError(f"Failed to create worktree: {result.stderr}")
     return worktree_path
-
-
-_ARG_INLINE_LIMIT = 128 * 1024  # bytes – same threshold as claude_cli.py
 
 
 def _run_pipeline_in_worktree(
@@ -99,8 +97,9 @@ def _run_pipeline_in_worktree(
             env=env,
         )
     finally:
-        # Safety net: run_pipeline.py deletes the file after reading,
-        # but clean up here too in case it didn't get that far.
+        # Safety net: run_pipeline.py deletes the file after reading, but
+        # if it crashes before that point this ensures cleanup.  The second
+        # unlink is a no-op (OSError caught) — intentional double-delete.
         if prompt_file:
             try:
                 os.unlink(prompt_file)

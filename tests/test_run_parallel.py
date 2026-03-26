@@ -6,6 +6,7 @@ import sys
 from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".claude", "scripts"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".claude"))
 
 # Import the helper functions directly from the script module
 import importlib.util
@@ -18,7 +19,9 @@ spec.loader.exec_module(run_parallel)
 
 _slugify = run_parallel._slugify
 _run_pipeline_in_worktree = run_parallel._run_pipeline_in_worktree
-_ARG_INLINE_LIMIT = run_parallel._ARG_INLINE_LIMIT
+
+# _ARG_INLINE_LIMIT is now imported from claude_cli by run_parallel
+from worca.utils.claude_cli import _ARG_INLINE_LIMIT
 
 
 # --- _slugify ---

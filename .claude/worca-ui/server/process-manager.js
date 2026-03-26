@@ -2,17 +2,17 @@
  * Pipeline process lifecycle management.
  * Handles starting, stopping, and restarting pipeline processes.
  */
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
 
-/** Byte threshold matching claude_cli.py _ARG_INLINE_LIMIT */
+/** Byte threshold — must match claude_cli.py _ARG_INLINE_LIMIT */
 const ARG_INLINE_LIMIT = 128 * 1024;
 
 /**
- * Write content to a temp file and return its path.
+ * Write content to a temp file with restricted permissions (0o600) and return its path.
  * Used to avoid E2BIG when passing large prompts as CLI arguments.
  * @param {string} content
  * @returns {string} path to the temp file
@@ -20,8 +20,22 @@ const ARG_INLINE_LIMIT = 128 * 1024;
 function writePromptFile(content) {
   const name = `worca_prompt_${randomBytes(8).toString('hex')}.md`;
   const filePath = join(tmpdir(), name);
-  writeFileSync(filePath, content, 'utf8');
+  const fd = openSync(filePath, 'w', 0o600);
+  try {
+    writeSync(fd, content, 0, 'utf8');
+  } finally {
+    closeSync(fd);
+  }
   return filePath;
+}
+
+/**
+ * Try to delete a temp prompt file. Silently ignores errors.
+ * @param {string|null} filePath
+ */
+function cleanupPromptFile(filePath) {
+  if (!filePath) return;
+  try { unlinkSync(filePath); } catch { /* ignore */ }
 }
 
 /**
@@ -113,6 +127,7 @@ export async function startPipeline(worcaDir, opts = {}) {
   }
 
   const args = ['.claude/scripts/run_pipeline.py'];
+  let promptFilePath = null;  // track for cleanup on spawn failure
 
   if (opts.resume) {
     args.push('--resume');
@@ -125,7 +140,8 @@ export async function startPipeline(worcaDir, opts = {}) {
     else if (opts.sourceType === 'spec') args.push('--spec', opts.sourceValue);
     if (opts.prompt) {
       if (Buffer.byteLength(opts.prompt, 'utf8') > ARG_INLINE_LIMIT) {
-        args.push('--prompt-file', writePromptFile(opts.prompt));
+        promptFilePath = writePromptFile(opts.prompt);
+        args.push('--prompt-file', promptFilePath);
       } else {
         args.push('--prompt', opts.prompt);
       }
@@ -136,7 +152,8 @@ export async function startPipeline(worcaDir, opts = {}) {
       : opts.inputType === 'spec' ? '--spec'
       : '--prompt';
     if (flag === '--prompt' && Buffer.byteLength(opts.inputValue, 'utf8') > ARG_INLINE_LIMIT) {
-      args.push('--prompt-file', writePromptFile(opts.inputValue));
+      promptFilePath = writePromptFile(opts.inputValue);
+      args.push('--prompt-file', promptFilePath);
     } else {
       args.push(flag, opts.inputValue);
     }
@@ -180,6 +197,7 @@ export async function startPipeline(worcaDir, opts = {}) {
 
     child.on('error', (spawnErr) => {
       cleanup();
+      cleanupPromptFile(promptFilePath);
       const err = new Error(`Failed to start pipeline: ${spawnErr.message}`);
       err.code = 'spawn_error';
       reject(err);
@@ -188,15 +206,18 @@ export async function startPipeline(worcaDir, opts = {}) {
     child.on('exit', (code, signal) => {
       cleanup();
       if (code !== null && code !== 0) {
+        cleanupPromptFile(promptFilePath);
         const err = new Error(`Pipeline exited immediately with code ${code}`);
         err.code = 'spawn_error';
         reject(err);
       } else if (signal) {
+        cleanupPromptFile(promptFilePath);
         const err = new Error(`Pipeline killed by signal ${signal}`);
         err.code = 'spawn_error';
         reject(err);
       }
       // code === 0 or code === null (still running) — resolve
+      // run_pipeline.py handles prompt file cleanup after reading
       child.unref();
       resolve({ pid: child.pid });
     });

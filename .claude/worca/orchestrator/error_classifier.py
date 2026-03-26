@@ -9,6 +9,7 @@ import time
 import traceback
 from typing import Optional
 
+from worca.utils.claude_cli import _ARG_INLINE_LIMIT
 from worca.utils.settings import load_settings
 
 CATEGORY_TRANSIENT = "infra_transient"
@@ -120,7 +121,6 @@ def classify_error(
     schema_str = json.dumps(_SCHEMA)
 
     # Offload large prompts to a temp file to avoid E2BIG (ARG_MAX).
-    _ARG_INLINE_LIMIT = 128 * 1024  # bytes – same as claude_cli.py
     prompt_file = None
     if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
         fd, prompt_file = tempfile.mkstemp(prefix="worca_classify_", suffix=".md")
