@@ -79,13 +79,25 @@ This stores the source path so that `/worca-sync` can find it automatically in t
 
 **Do NOT copy** `settings.local.json` — it is machine-specific.
 
-### Step 4: Install worca-ui dependencies and build
+### Step 4: Install dependencies and build worca-ui
+
+**MANDATORY — do NOT skip this step.** The UI will not work without it.
 
 ```bash
 cd "$DEST/.claude/worca-ui" && npm install && npm run build
 ```
 
-### Step 5: Initialize beads (if bd CLI is available)
+Verify the build succeeded by checking that `$DEST/.claude/worca-ui/app/main.bundle.js` exists.
+
+### Step 5: Install Python dev dependencies
+
+```bash
+cd "$DEST" && pip install -e ".[dev]"
+```
+
+If `pyproject.toml` does not exist in the target project root, skip this step.
+
+### Step 6: Initialize beads (if bd CLI is available)
 
 ```bash
 cd "$DEST" && bd init
@@ -97,7 +109,7 @@ beads CLI not found. Install it with: npm install -g @beads/bd@0.49.0
 Then run: cd <target-project> && bd init
 ```
 
-### Step 6: Create .worca runtime directory
+### Step 7: Create .worca runtime directory
 
 ```bash
 mkdir -p "$DEST/.worca"
@@ -116,7 +128,7 @@ Also ensure these are gitignored:
 .claude/settings.local.json
 ```
 
-### Step 7: Report results
+### Step 8: Report results
 
 Show a summary:
 
