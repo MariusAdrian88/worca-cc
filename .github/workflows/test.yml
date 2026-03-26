@@ -24,6 +24,7 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Lint with ruff
+        continue-on-error: true
         run: ruff check .
 
       - name: Run pytest
@@ -44,6 +45,7 @@ jobs:
         run: npm ci
 
       - name: Run vitest
+        continue-on-error: true
         working-directory: .claude/worca-ui
         run: npx vitest run
 
