@@ -9,7 +9,8 @@ from worca.utils.claude_cli import run_agent, build_command
 # --- build_command ---
 
 def test_build_command_basic():
-    cmd = build_command("do stuff", agent="planner")
+    cmd, pf = build_command("do stuff", agent="planner")
+    assert pf is None
     assert cmd[0] == "claude"
     assert "-p" in cmd
     assert "do stuff" in cmd
@@ -18,54 +19,63 @@ def test_build_command_basic():
 
 
 def test_build_command_default_output_format():
-    cmd = build_command("prompt", agent="coder")
+    cmd, pf = build_command("prompt", agent="coder")
+    assert pf is None
     assert "--output-format" in cmd
     idx = cmd.index("--output-format")
     assert cmd[idx + 1] == "stream-json"
 
 
 def test_build_command_with_json_schema():
-    cmd = build_command("prompt", agent="coder", json_schema='{"type":"object"}')
+    cmd, pf = build_command("prompt", agent="coder", json_schema='{"type":"object"}')
+    assert pf is None
     assert "--json-schema" in cmd
     idx = cmd.index("--json-schema")
     assert cmd[idx + 1] == '{"type":"object"}'
 
 
 def test_build_command_without_json_schema():
-    cmd = build_command("prompt", agent="coder")
+    cmd, pf = build_command("prompt", agent="coder")
+    assert pf is None
     assert "--json-schema" not in cmd
 
 
 def test_build_command_includes_dangerously_skip_permissions():
-    cmd = build_command("prompt", agent="planner")
+    cmd, pf = build_command("prompt", agent="planner")
+    assert pf is None
     assert "--dangerously-skip-permissions" in cmd
 
 
 def test_build_command_includes_no_session_persistence():
-    cmd = build_command("prompt", agent="planner")
+    cmd, pf = build_command("prompt", agent="planner")
+    assert pf is None
     assert "--no-session-persistence" in cmd
 
 
 def test_build_command_with_model():
-    cmd = build_command("prompt", agent="coder", model="claude-sonnet-4-6")
+    cmd, pf = build_command("prompt", agent="coder", model="claude-sonnet-4-6")
+    assert pf is None
     assert "--model" in cmd
     idx = cmd.index("--model")
     assert cmd[idx + 1] == "claude-sonnet-4-6"
 
 
 def test_build_command_without_model():
-    cmd = build_command("prompt", agent="coder")
+    cmd, pf = build_command("prompt", agent="coder")
+    assert pf is None
     assert "--model" not in cmd
 
 
 def test_build_command_no_max_turns():
     """max-turns is not a valid claude CLI flag."""
-    cmd = build_command("prompt", agent="planner")
+    cmd, pf = build_command("prompt", agent="planner")
+    assert pf is None
     assert "--max-turns" not in cmd
 
 
 def test_build_command_custom_output_format():
-    cmd = build_command("prompt", agent="planner", output_format="text")
+    cmd, pf = build_command("prompt", agent="planner", output_format="text")
+    assert pf is None
     idx = cmd.index("--output-format")
     assert cmd[idx + 1] == "text"
 
@@ -73,7 +83,8 @@ def test_build_command_custom_output_format():
 def test_build_command_reads_schema_file(tmp_path):
     schema_file = tmp_path / "schema.json"
     schema_file.write_text('{"type":"object","required":["name"]}')
-    cmd = build_command("prompt", agent="coder", json_schema=str(schema_file))
+    cmd, pf = build_command("prompt", agent="coder", json_schema=str(schema_file))
+    assert pf is None
     idx = cmd.index("--json-schema")
     assert cmd[idx + 1] == '{"type":"object","required":["name"]}'
 

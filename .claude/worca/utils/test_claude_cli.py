@@ -26,21 +26,24 @@ from worca.utils.claude_cli import (
 
 class TestBuildCommand:
     def test_default_stream_json(self):
-        cmd = build_command("hello", agent="agent.md")
+        cmd, pf = build_command("hello", agent="agent.md")
+        assert pf is None
         assert "--output-format" in cmd
         idx = cmd.index("--output-format")
         assert cmd[idx + 1] == "stream-json"
         assert "--verbose" in cmd
 
     def test_json_format_no_verbose(self):
-        cmd = build_command("hello", agent="agent.md", output_format="json")
+        cmd, pf = build_command("hello", agent="agent.md", output_format="json")
+        assert pf is None
         idx = cmd.index("--output-format")
         assert cmd[idx + 1] == "json"
         assert "--verbose" not in cmd
 
     def test_json_schema_inline(self):
         schema = '{"type":"object"}'
-        cmd = build_command("hello", agent="agent.md", json_schema=schema)
+        cmd, pf = build_command("hello", agent="agent.md", json_schema=schema)
+        assert pf is None
         assert "--json-schema" in cmd
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == schema
@@ -48,18 +51,21 @@ class TestBuildCommand:
     def test_json_schema_file(self, tmp_path):
         schema_file = tmp_path / "schema.json"
         schema_file.write_text('{"type":"object","required":["x"]}')
-        cmd = build_command("hello", agent="agent.md", json_schema=str(schema_file))
+        cmd, pf = build_command("hello", agent="agent.md", json_schema=str(schema_file))
+        assert pf is None
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == '{"type":"object","required":["x"]}'
 
     def test_json_schema_missing_file(self):
         # Non-existent .json file falls back to using the string as-is
-        cmd = build_command("hello", agent="agent.md", json_schema="/no/such/file.json")
+        cmd, pf = build_command("hello", agent="agent.md", json_schema="/no/such/file.json")
+        assert pf is None
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == "/no/such/file.json"
 
     def test_required_flags(self):
-        cmd = build_command("hello", agent="agent.md")
+        cmd, pf = build_command("hello", agent="agent.md")
+        assert pf is None
         assert "-p" in cmd
         assert "--agent" in cmd
         assert "--no-session-persistence" in cmd
@@ -71,6 +77,28 @@ class TestBuildCommand:
         assert "EnterPlanMode" in disallowed
         assert "EnterWorktree" in disallowed
         assert "TodoWrite" in disallowed
+
+    def test_large_prompt_offloaded_to_file(self):
+        large_prompt = "x" * (128 * 1024 + 1)
+        cmd, pf = build_command(large_prompt, agent="agent.md")
+        assert pf is not None
+        try:
+            # Prompt file should exist and contain the full prompt
+            with open(pf) as f:
+                assert f.read() == large_prompt
+            # CLI arg should be a short "read this file" instruction, not the full prompt
+            prompt_arg = cmd[cmd.index("-p") + 1]
+            assert pf in prompt_arg
+            assert len(prompt_arg) < 1024
+        finally:
+            os.unlink(pf)
+
+    def test_small_prompt_stays_inline(self):
+        small_prompt = "x" * 1000
+        cmd, pf = build_command(small_prompt, agent="agent.md")
+        assert pf is None
+        prompt_arg = cmd[cmd.index("-p") + 1]
+        assert prompt_arg == small_prompt
 
 
 # ---------------------------------------------------------------------------

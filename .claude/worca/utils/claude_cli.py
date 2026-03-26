@@ -42,8 +42,12 @@ def build_command(
     json_schema: Optional[str] = None,
     model: Optional[str] = None,
     **kwargs,
-) -> list[str]:
+) -> tuple[list[str], Optional[str]]:
     """Build the claude CLI command list without executing.
+
+    When the prompt exceeds 128 KiB it is written to a temporary file and
+    the CLI argument becomes a short instruction to read that file.  This
+    avoids ``[Errno 7] Argument list too long`` (E2BIG) errors.
 
     Args:
         prompt: The prompt to send to the agent.
@@ -52,11 +56,35 @@ def build_command(
         json_schema: Inline JSON schema string for structured output, or path
                      to a .json file (will be read and inlined).
         model: Model shorthand or full ID (e.g. "sonnet", "opus", "claude-sonnet-4-6").
+
+    Returns:
+        A (cmd, prompt_file) tuple. ``prompt_file`` is the path to a temp
+        file containing the full prompt when offloaded, or None when the
+        prompt is passed inline. The caller must delete the temp file after
+        the subprocess finishes.
     """
+    import tempfile
+
+    # Linux ARG_MAX is typically 2 MiB but total argv+envp must fit.
+    # Use a conservative 128 KiB threshold for the prompt argument.
+    _ARG_INLINE_LIMIT = 128 * 1024  # bytes
+
+    prompt_file = None
+    if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
+        fd, prompt_file = tempfile.mkstemp(prefix="worca_prompt_", suffix=".md")
+        with os.fdopen(fd, "w") as f:
+            f.write(prompt)
+        cli_prompt = (
+            f"Read the file at {prompt_file} and follow ALL instructions in it. "
+            f"That file IS your full prompt — process it exactly as written."
+        )
+    else:
+        cli_prompt = prompt
+
     cmd = [
         "claude",
         "-p",
-        prompt,
+        cli_prompt,
         "--agent",
         agent,
         "--output-format",
@@ -79,7 +107,7 @@ def build_command(
             except FileNotFoundError:
                 pass  # Use the raw string as-is
         cmd.extend(["--json-schema", schema_str])
-    return cmd
+    return cmd, prompt_file
 
 
 def _format_log_line(event: dict) -> Optional[str]:
@@ -239,7 +267,7 @@ def run_agent(
 
     Raises RuntimeError on subprocess failure or missing result.
     """
-    cmd = build_command(
+    cmd, prompt_file = build_command(
         prompt,
         agent=agent,
         output_format=output_format,
@@ -294,6 +322,12 @@ def run_agent(
             _current_proc = None
         if log_file:
             log_file.close()
+        # Clean up the temporary prompt file if one was created
+        if prompt_file:
+            try:
+                os.unlink(prompt_file)
+            except OSError:
+                pass
 
     if proc.returncode < 0:
         raise InterruptedError(f"claude agent killed by signal {-proc.returncode}")

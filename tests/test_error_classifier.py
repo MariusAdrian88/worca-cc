@@ -1,5 +1,6 @@
 """Tests for worca.orchestrator.error_classifier module."""
 import json
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -188,6 +189,57 @@ class TestClassifyError:
             # Should not raise, just use defaults
             result = classify_error("error", "test", [], missing)
         assert "category" in result
+
+    def test_large_prompt_offloaded_to_file(self, tmp_path):
+        """When error_message + history make the prompt > 128 KiB, it's offloaded."""
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({"worca": {}}))
+
+        # Create a large error message that will push prompt over the limit
+        large_error = "E" * (128 * 1024 + 1)
+        output = self._make_claude_output(CATEGORY_TRANSIENT)
+        mock_result = MagicMock(returncode=0, stdout=output, stderr="")
+
+        prompt_file_seen = None
+
+        def check_run(cmd, **kwargs):
+            nonlocal prompt_file_seen
+            idx = cmd.index("-p")
+            cli_prompt = cmd[idx + 1]
+            # If offloaded, the CLI prompt is short and references a temp file
+            if "Read the file at" in cli_prompt:
+                # Extract path from the prompt
+                for part in cli_prompt.split():
+                    if part.startswith("/tmp/") or part.startswith("/var/"):
+                        prompt_file_seen = part
+                        break
+            return mock_result
+
+        with patch("subprocess.run", side_effect=check_run):
+            result = classify_error(large_error, "implement", [], str(settings_file))
+
+        assert result["category"] == CATEGORY_TRANSIENT
+        # The prompt should have been offloaded (short CLI arg referencing a file)
+        assert prompt_file_seen is not None
+        # The temp file should be cleaned up after the call
+        assert not os.path.exists(prompt_file_seen)
+
+    def test_small_prompt_stays_inline(self, tmp_path):
+        """Small prompts should be passed inline, not offloaded."""
+        settings_file = tmp_path / "settings.json"
+        settings_file.write_text(json.dumps({"worca": {}}))
+
+        output = self._make_claude_output(CATEGORY_TRANSIENT)
+        mock_result = MagicMock(returncode=0, stdout=output, stderr="")
+
+        with patch("subprocess.run", return_value=mock_result) as mock_run:
+            classify_error("small error", "implement", [], str(settings_file))
+
+        cmd = mock_run.call_args[0][0]
+        idx = cmd.index("-p")
+        cli_prompt = cmd[idx + 1]
+        assert "Read the file at" not in cli_prompt
+        assert "small error" in cli_prompt
 
 
 # --- init_circuit_breaker_state ---

@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -58,6 +59,9 @@ def _create_worktree(base_dir: str, slug: str, branch: str) -> str:
     return worktree_path
 
 
+_ARG_INLINE_LIMIT = 128 * 1024  # bytes – same threshold as claude_cli.py
+
+
 def _run_pipeline_in_worktree(
     worktree_path: str,
     prompt: str,
@@ -66,24 +70,42 @@ def _run_pipeline_in_worktree(
     settings: str,
 ) -> dict:
     """Run a pipeline in a worktree subprocess. Returns result dict."""
-    cmd = [
-        sys.executable, ".claude/scripts/run_pipeline.py",
-        "--prompt", prompt,
+    prompt_file = None
+    cmd = [sys.executable, ".claude/scripts/run_pipeline.py"]
+
+    if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
+        fd, prompt_file = tempfile.mkstemp(prefix="worca_prompt_", suffix=".md")
+        with os.fdopen(fd, "w") as f:
+            f.write(prompt)
+        cmd.extend(["--prompt-file", prompt_file])
+    else:
+        cmd.extend(["--prompt", prompt])
+
+    cmd.extend([
         "--msize", str(msize),
         "--mloops", str(mloops),
         "--settings", settings,
-    ]
+    ])
 
     env = os.environ.copy()
     env.pop("CLAUDECODE", None)  # prevent nested session detection
 
-    result = subprocess.run(
-        cmd,
-        cwd=worktree_path,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    finally:
+        # Safety net: run_pipeline.py deletes the file after reading,
+        # but clean up here too in case it didn't get that far.
+        if prompt_file:
+            try:
+                os.unlink(prompt_file)
+            except OSError:
+                pass
 
     return {
         "worktree": worktree_path,

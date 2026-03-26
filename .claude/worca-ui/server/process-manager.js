@@ -4,7 +4,25 @@
  */
 import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { spawn, execFileSync } from 'node:child_process';
+
+/** Byte threshold matching claude_cli.py _ARG_INLINE_LIMIT */
+const ARG_INLINE_LIMIT = 128 * 1024;
+
+/**
+ * Write content to a temp file and return its path.
+ * Used to avoid E2BIG when passing large prompts as CLI arguments.
+ * @param {string} content
+ * @returns {string} path to the temp file
+ */
+function writePromptFile(content) {
+  const name = `worca_prompt_${randomBytes(8).toString('hex')}.md`;
+  const filePath = join(tmpdir(), name);
+  writeFileSync(filePath, content, 'utf8');
+  return filePath;
+}
 
 /**
  * Check if a pipeline is currently running.
@@ -105,13 +123,23 @@ export async function startPipeline(worcaDir, opts = {}) {
     // New format: separate source and prompt args
     if (opts.sourceType === 'source') args.push('--source', opts.sourceValue);
     else if (opts.sourceType === 'spec') args.push('--spec', opts.sourceValue);
-    if (opts.prompt) args.push('--prompt', opts.prompt);
+    if (opts.prompt) {
+      if (Buffer.byteLength(opts.prompt, 'utf8') > ARG_INLINE_LIMIT) {
+        args.push('--prompt-file', writePromptFile(opts.prompt));
+      } else {
+        args.push('--prompt', opts.prompt);
+      }
+    }
   } else {
     // Legacy format: inputType/inputValue
     const flag = opts.inputType === 'source' ? '--source'
       : opts.inputType === 'spec' ? '--spec'
       : '--prompt';
-    args.push(flag, opts.inputValue);
+    if (flag === '--prompt' && Buffer.byteLength(opts.inputValue, 'utf8') > ARG_INLINE_LIMIT) {
+      args.push('--prompt-file', writePromptFile(opts.inputValue));
+    } else {
+      args.push(flag, opts.inputValue);
+    }
   }
 
   if (opts.msize && opts.msize > 1) {
