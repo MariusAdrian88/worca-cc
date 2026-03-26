@@ -26,21 +26,24 @@ from worca.utils.claude_cli import (
 
 class TestBuildCommand:
     def test_default_stream_json(self):
-        cmd = build_command("hello", agent="agent.md")
+        cmd, pf = build_command("hello", agent="agent.md")
+        assert pf is None
         assert "--output-format" in cmd
         idx = cmd.index("--output-format")
         assert cmd[idx + 1] == "stream-json"
         assert "--verbose" in cmd
 
     def test_json_format_no_verbose(self):
-        cmd = build_command("hello", agent="agent.md", output_format="json")
+        cmd, pf = build_command("hello", agent="agent.md", output_format="json")
+        assert pf is None
         idx = cmd.index("--output-format")
         assert cmd[idx + 1] == "json"
         assert "--verbose" not in cmd
 
     def test_json_schema_inline(self):
         schema = '{"type":"object"}'
-        cmd = build_command("hello", agent="agent.md", json_schema=schema)
+        cmd, pf = build_command("hello", agent="agent.md", json_schema=schema)
+        assert pf is None
         assert "--json-schema" in cmd
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == schema
@@ -48,18 +51,21 @@ class TestBuildCommand:
     def test_json_schema_file(self, tmp_path):
         schema_file = tmp_path / "schema.json"
         schema_file.write_text('{"type":"object","required":["x"]}')
-        cmd = build_command("hello", agent="agent.md", json_schema=str(schema_file))
+        cmd, pf = build_command("hello", agent="agent.md", json_schema=str(schema_file))
+        assert pf is None
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == '{"type":"object","required":["x"]}'
 
     def test_json_schema_missing_file(self):
         # Non-existent .json file falls back to using the string as-is
-        cmd = build_command("hello", agent="agent.md", json_schema="/no/such/file.json")
+        cmd, pf = build_command("hello", agent="agent.md", json_schema="/no/such/file.json")
+        assert pf is None
         idx = cmd.index("--json-schema")
         assert cmd[idx + 1] == "/no/such/file.json"
 
     def test_required_flags(self):
-        cmd = build_command("hello", agent="agent.md")
+        cmd, pf = build_command("hello", agent="agent.md")
+        assert pf is None
         assert "-p" in cmd
         assert "--agent" in cmd
         assert "--no-session-persistence" in cmd
@@ -71,6 +77,28 @@ class TestBuildCommand:
         assert "EnterPlanMode" in disallowed
         assert "EnterWorktree" in disallowed
         assert "TodoWrite" in disallowed
+
+    def test_large_prompt_offloaded_to_file(self):
+        large_prompt = "x" * (128 * 1024 + 1)
+        cmd, pf = build_command(large_prompt, agent="agent.md")
+        assert pf is not None
+        try:
+            # Prompt file should exist and contain the full prompt
+            with open(pf) as f:
+                assert f.read() == large_prompt
+            # CLI arg should be a short "read this file" instruction, not the full prompt
+            prompt_arg = cmd[cmd.index("-p") + 1]
+            assert pf in prompt_arg
+            assert len(prompt_arg) < 1024
+        finally:
+            os.unlink(pf)
+
+    def test_small_prompt_stays_inline(self):
+        small_prompt = "x" * 1000
+        cmd, pf = build_command(small_prompt, agent="agent.md")
+        assert pf is None
+        prompt_arg = cmd[cmd.index("-p") + 1]
+        assert prompt_arg == small_prompt
 
 
 # ---------------------------------------------------------------------------
@@ -481,6 +509,75 @@ class TestRunAgent:
         idx = call_args.index("--output-format")
         assert call_args[idx + 1] == "stream-json"
         assert "--verbose" in call_args
+
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_on_success(self, mock_popen_cls, mock_env):
+        """run_agent with large prompt cleans up temp file on success."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "system", "subtype": "init", "model": "opus"},
+            {"type": "result", "subtype": "success", "result": "ok",
+             "total_cost_usd": 0.01, "num_turns": 1, "duration_ms": 1000},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events)
+
+        result = run_agent(prompt=large_prompt, agent="agent.md")
+        assert result["type"] == "result"
+
+        # The temp file should have been created and then deleted
+        # Verify by checking that Popen was called with a short redirect prompt
+        call_args = mock_popen_cls.call_args[0][0]
+        prompt_arg = call_args[call_args.index("-p") + 1]
+        assert "Read the file at" in prompt_arg
+        # Extract the temp file path from the prompt argument
+        # Format: "Read the file at /tmp/worca_prompt_XXXX.md and follow..."
+        tmp_path = prompt_arg.split("Read the file at ")[1].split(" and follow")[0]
+        assert not os.path.exists(tmp_path), "Temp prompt file should be deleted after success"
+
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_on_failure(self, mock_popen_cls, mock_env):
+        """run_agent with large prompt cleans up temp file on subprocess failure."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "result", "subtype": "error", "is_error": True,
+             "result": "something went wrong"},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events, returncode=1)
+
+        with pytest.raises(RuntimeError, match="exit code 1"):
+            run_agent(prompt=large_prompt, agent="agent.md")
+
+        # The temp file should still have been cleaned up despite the error
+        call_args = mock_popen_cls.call_args[0][0]
+        prompt_arg = call_args[call_args.index("-p") + 1]
+        tmp_path = prompt_arg.split("Read the file at ")[1].split(" and follow")[0]
+        assert not os.path.exists(tmp_path), "Temp prompt file should be deleted after failure"
+
+    @mock.patch("worca.utils.claude_cli.get_env", return_value={})
+    @mock.patch("subprocess.Popen")
+    def test_large_prompt_cleanup_handles_oserror_silently(self, mock_popen_cls, mock_env):
+        """If os.unlink raises OSError during cleanup, no exception propagates."""
+        from worca.utils.claude_cli import _ARG_INLINE_LIMIT
+
+        large_prompt = "x" * (_ARG_INLINE_LIMIT + 1)
+        events = [
+            {"type": "system", "subtype": "init", "model": "opus"},
+            {"type": "result", "subtype": "success", "result": "ok",
+             "total_cost_usd": 0.01, "num_turns": 1, "duration_ms": 1000},
+        ]
+        mock_popen_cls.return_value = self._mock_popen(events)
+
+        with mock.patch("os.unlink", side_effect=OSError("disk error")):
+            # Should not raise despite os.unlink failing
+            result = run_agent(prompt=large_prompt, agent="agent.md")
+            assert result["type"] == "result"
+            assert result["result"] == "ok"
 
 
 # ---------------------------------------------------------------------------

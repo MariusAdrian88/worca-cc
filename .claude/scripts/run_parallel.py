@@ -20,6 +20,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
@@ -27,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from worca.orchestrator.work_request import normalize, WorkRequest
+from worca.utils.claude_cli import _ARG_INLINE_LIMIT
 
 
 def _slugify(title: str) -> str:
@@ -66,24 +68,43 @@ def _run_pipeline_in_worktree(
     settings: str,
 ) -> dict:
     """Run a pipeline in a worktree subprocess. Returns result dict."""
-    cmd = [
-        sys.executable, ".claude/scripts/run_pipeline.py",
-        "--prompt", prompt,
+    prompt_file = None
+    cmd = [sys.executable, ".claude/scripts/run_pipeline.py"]
+
+    if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
+        fd, prompt_file = tempfile.mkstemp(prefix="worca_prompt_", suffix=".md")
+        with os.fdopen(fd, "w") as f:
+            f.write(prompt)
+        cmd.extend(["--prompt-file", prompt_file])
+    else:
+        cmd.extend(["--prompt", prompt])
+
+    cmd.extend([
         "--msize", str(msize),
         "--mloops", str(mloops),
         "--settings", settings,
-    ]
+    ])
 
     env = os.environ.copy()
     env.pop("CLAUDECODE", None)  # prevent nested session detection
 
-    result = subprocess.run(
-        cmd,
-        cwd=worktree_path,
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    try:
+        result = subprocess.run(
+            cmd,
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    finally:
+        # Safety net: run_pipeline.py deletes the file after reading, but
+        # if it crashes before that point this ensures cleanup.  The second
+        # unlink is a no-op (OSError caught) — intentional double-delete.
+        if prompt_file:
+            try:
+                os.unlink(prompt_file)
+            except OSError:
+                pass
 
     return {
         "worktree": worktree_path,

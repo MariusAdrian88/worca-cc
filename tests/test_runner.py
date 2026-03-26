@@ -651,7 +651,7 @@ def test_bead_limit_derived_from_coordinator(tmp_path):
 
     # Always return a bead — the max_beads counter should be the limit
     call_count = [0]
-    def mock_query_ready():
+    def mock_query_ready(allowed_ids=None):
         call_count[0] += 1
         return {"id": f"beads-{call_count[0]:03d}", "title": f"Bead {call_count[0]}"}
 
@@ -993,7 +993,7 @@ def test_bead_limit_warns_on_stale_beads(tmp_path, capsys):
         return {}, {"type": "result"}
 
     # Mock _query_ready_bead to always return a bead (simulating stale beads)
-    def mock_query_ready():
+    def mock_query_ready(allowed_ids=None):
         return {"id": "beads-stale", "title": "Stale bead"}
 
     with patch("worca.orchestrator.runner.run_stage", side_effect=mock_run_stage):
@@ -1621,7 +1621,7 @@ def _run_bead_pipeline(tmp_path, bead_ids, bd_close_return=True):
             return {"files_changed": [], "tests_added": []}, {"type": "result"}
         return {}, {"type": "result"}
 
-    def mock_query_ready():
+    def mock_query_ready(allowed_ids=None):
         if bead_iter[0] < len(bead_ids):
             idx = bead_iter[0]
             return {"id": bead_ids[idx], "title": f"Bead {idx}"}

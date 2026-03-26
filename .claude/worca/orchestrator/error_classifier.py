@@ -1,12 +1,15 @@
 """Error classification and circuit breaker state management."""
 import hashlib
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import time
 import traceback
 from typing import Optional
 
+from worca.utils.claude_cli import _ARG_INLINE_LIMIT
 from worca.utils.settings import load_settings
 
 CATEGORY_TRANSIENT = "infra_transient"
@@ -117,9 +120,22 @@ def classify_error(
 
     schema_str = json.dumps(_SCHEMA)
 
+    # Offload large prompts to a temp file to avoid E2BIG (ARG_MAX).
+    prompt_file = None
+    if len(prompt.encode("utf-8", errors="replace")) > _ARG_INLINE_LIMIT:
+        fd, prompt_file = tempfile.mkstemp(prefix="worca_classify_", suffix=".md")
+        with os.fdopen(fd, "w") as f:
+            f.write(prompt)
+        cli_prompt = (
+            f"Read the file at {prompt_file} and follow ALL instructions in it. "
+            f"That file IS your full prompt — process it exactly as written."
+        )
+    else:
+        cli_prompt = prompt
+
     cmd = [
         "claude",
-        "-p", prompt,
+        "-p", cli_prompt,
         "--model", model_id,
         "--output-format", "json",
         "--json-schema", schema_str,
@@ -146,6 +162,12 @@ def classify_error(
         fallback = dict(_FALLBACK)
         fallback["classifier_error_detail"] = str(exc)
         return fallback
+    finally:
+        if prompt_file:
+            try:
+                os.unlink(prompt_file)
+            except OSError:
+                pass
 
 
 def init_circuit_breaker_state() -> dict:

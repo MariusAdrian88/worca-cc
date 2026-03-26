@@ -37,6 +37,9 @@ def create_parser():
     parser.add_argument("--branch", help="Use an existing branch instead of creating a new one")
     parser.add_argument("--skip-preflight", action="store_true",
                         help="Skip the PREFLIGHT stage (useful when environment is known-good)")
+    parser.add_argument("--prompt-file",
+                        help="Read prompt from file instead of --prompt (for large prompts "
+                             "that would exceed ARG_MAX). The file is deleted after reading.")
     return parser
 
 
@@ -86,6 +89,29 @@ def build_work_request(args):
 def main():
     parser = create_parser()
     args = parser.parse_args()
+
+    # --prompt-file: read prompt from file and delete it
+    if args.prompt_file:
+        if args.prompt:
+            print("error: --prompt and --prompt-file are mutually exclusive", file=sys.stderr)
+            raise SystemExit(2)
+        # Validate path is inside the system temp directory
+        import tempfile
+        real_path = os.path.realpath(args.prompt_file)
+        temp_dir = os.path.realpath(tempfile.gettempdir())
+        if not real_path.startswith(temp_dir + os.sep):
+            print(f"error: --prompt-file must be inside {temp_dir}", file=sys.stderr)
+            raise SystemExit(2)
+        try:
+            with open(args.prompt_file) as f:
+                args.prompt = f.read()
+        except FileNotFoundError:
+            print(f"error: prompt file not found: {args.prompt_file}", file=sys.stderr)
+            raise SystemExit(2)
+        try:
+            os.unlink(args.prompt_file)
+        except OSError:
+            pass
 
     if args.resume:
         # Resume: load work_request from existing status.json instead of building from args

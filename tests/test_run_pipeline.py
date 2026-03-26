@@ -13,6 +13,11 @@ from run_pipeline import create_parser, build_work_request
 class TestCreateParser:
     """Test that the parser accepts the expected argument combinations."""
 
+    def test_prompt_file_arg(self):
+        parser = create_parser()
+        args = parser.parse_args(["--prompt-file", "/tmp/prompt.md"])
+        assert args.prompt_file == "/tmp/prompt.md"
+
     def test_prompt_only(self):
         parser = create_parser()
         args = parser.parse_args(["--prompt", "Add auth"])
@@ -199,3 +204,46 @@ class TestBuildWorkRequest:
         args = parser.parse_args(["--source", "gh:issue:42", "--plan", "plan.md"])
         wr = build_work_request(args)
         mock_normalize.assert_called_once_with("source", "gh:issue:42")
+
+
+class TestPromptFile:
+    """Test --prompt-file reads content and deletes the file."""
+
+    def test_prompt_file_reads_content(self, tmp_path):
+        pf = tmp_path / "prompt.md"
+        pf.write_text("Large prompt content here")
+        parser = create_parser()
+        args = parser.parse_args(["--prompt-file", str(pf)])
+        # Simulate what main() does before build_work_request
+        with open(args.prompt_file) as f:
+            args.prompt = f.read()
+        assert args.prompt == "Large prompt content here"
+
+    def test_prompt_file_deleted_after_read(self, tmp_path):
+        """Simulate the main() logic: read file then delete it."""
+        pf = tmp_path / "prompt.md"
+        pf.write_text("prompt data")
+        parser = create_parser()
+        args = parser.parse_args(["--prompt-file", str(pf)])
+        with open(args.prompt_file) as f:
+            args.prompt = f.read()
+        os.unlink(args.prompt_file)
+        assert not pf.exists()
+
+    @patch("run_pipeline.normalize")
+    def test_prompt_file_used_as_prompt_in_build(self, mock_normalize, tmp_path):
+        """--prompt-file content should be used as if --prompt was passed."""
+        from worca.orchestrator.work_request import WorkRequest
+        mock_normalize.return_value = WorkRequest(
+            source_type="prompt", title="From file"
+        )
+        pf = tmp_path / "prompt.md"
+        pf.write_text("Build a feature")
+        parser = create_parser()
+        args = parser.parse_args(["--prompt-file", str(pf)])
+        # Simulate main()'s prompt-file handling
+        with open(args.prompt_file) as f:
+            args.prompt = f.read()
+        os.unlink(args.prompt_file)
+        wr = build_work_request(args)
+        mock_normalize.assert_called_once_with("prompt", "Build a feature")
