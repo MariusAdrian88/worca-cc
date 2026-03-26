@@ -20,6 +20,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: 'npm'
+          cache-dependency-path: .claude/worca-ui/package-lock.json
 
       - name: Install dependencies
         working-directory: .claude/worca-ui
@@ -29,9 +31,22 @@ jobs:
         working-directory: .claude/worca-ui
         run: npm run build
 
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('.claude/worca-ui/package-lock.json') }}
+
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: .claude/worca-ui
         run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: .claude/worca-ui
+        run: npx playwright install-deps chromium
 
       - name: Run Playwright tests
         working-directory: .claude/worca-ui

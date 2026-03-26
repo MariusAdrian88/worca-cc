@@ -32,6 +32,13 @@ jobs:
           fi
           echo "VERSION=$TAG_VERSION" >> "$GITHUB_ENV"
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: 'npm'
+          cache-dependency-path: .claude/worca-ui/package-lock.json
+
       - name: Build worca-ui bundle
         working-directory: .claude/worca-ui
         run: |

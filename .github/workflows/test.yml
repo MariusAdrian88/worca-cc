@@ -19,11 +19,19 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
+          cache: 'pip'
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
           node-version: 22
+
+      - name: Cache global npm packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-global-${{ runner.os }}-${{ hashFiles('.github/workflows/test.yml') }}
+          restore-keys: npm-global-${{ runner.os }}-
 
       - name: Install claude and bd CLIs
         run: npm install -g @anthropic-ai/claude-code @beads/bd
@@ -46,6 +54,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: 22
+          cache: 'npm'
+          cache-dependency-path: .claude/worca-ui/package-lock.json
 
       - name: Install dependencies
         working-directory: .claude/worca-ui
