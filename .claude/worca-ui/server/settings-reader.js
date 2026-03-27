@@ -9,9 +9,15 @@ export function readSettings(path) {
       loops: worca.loops || {},
       milestones: worca.milestones || {},
       stageUi: worca.ui?.stages || {},
-      learnEnabled: worca.stages?.learn?.enabled || false
+      learnEnabled: worca.stages?.learn?.enabled || false,
     };
   } catch {
-    return { agents: {}, loops: {}, milestones: {}, stageUi: {}, learnEnabled: false };
+    return {
+      agents: {},
+      loops: {},
+      milestones: {},
+      stageUi: {},
+      learnEnabled: false,
+    };
   }
 }

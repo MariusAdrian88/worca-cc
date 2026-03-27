@@ -1,25 +1,55 @@
 import { html, render } from 'lit-html';
-import { createStore } from './state.js';
-import { createWsClient } from './ws.js';
-import { parseHash, onHashChange, navigate } from './router.js';
-import { applyTheme } from './utils/theme.js';
-import { sidebarView } from './views/sidebar.js';
-import { runDetailView, runBeadsSectionView } from './views/run-detail.js';
-import { runListView } from './views/run-list.js';
-import { dashboardView } from './views/dashboard.js';
-import { settingsView, loadSettings } from './views/settings.js';
-import { newRunView, submitNewRun, getNewRunSubmitState } from './views/new-run.js';
-import { logViewerView, writeLogLine, clearTerminal, mountTerminal, disposeTerminal, searchTerminal } from './views/log-viewer.js';
-import { liveOutputView, writeLiveLogLine, writeLiveIterationSeparator, clearLiveTerminal, mountLiveTerminal, disposeLiveTerminal, updateActiveStage, getActiveStage } from './views/live-output.js';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, ArrowLeft, Square, Play, Loader, AlertTriangle, Database, Zap, Trash2, Pause } from './utils/icons.js';
-import { statusIcon } from './utils/status-badge.js';
 import { createNotificationManager } from './notifications.js';
-import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
-import { tokenCostsView } from './views/token-costs.js';
-import { learningsSectionView } from './views/learnings-panel.js';
-import { webhookInboxView } from './views/webhook-inbox.js';
+import { navigate, onHashChange, parseHash } from './router.js';
+import { createStore } from './state.js';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  Database,
+  iconSvg,
+  Loader,
+  Pause,
+  Play,
+  Square,
+  Trash2,
+} from './utils/icons.js';
+import { statusIcon } from './utils/status-badge.js';
+import { applyTheme } from './utils/theme.js';
 import { formatTitle } from './utils/title.js';
+import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
+import { dashboardView } from './views/dashboard.js';
+import { learningsSectionView } from './views/learnings-panel.js';
+import {
+  clearLiveTerminal,
+  disposeLiveTerminal,
+  getActiveStage,
+  liveOutputView,
+  mountLiveTerminal,
+  updateActiveStage,
+  writeLiveIterationSeparator,
+  writeLiveLogLine,
+} from './views/live-output.js';
+import {
+  clearTerminal,
+  disposeTerminal,
+  logViewerView,
+  mountTerminal,
+  searchTerminal,
+  writeLogLine,
+} from './views/log-viewer.js';
+import {
+  getNewRunSubmitState,
+  newRunView,
+  submitNewRun,
+} from './views/new-run.js';
+import { runBeadsSectionView, runDetailView } from './views/run-detail.js';
+import { runListView } from './views/run-list.js';
+import { loadSettings, settingsView } from './views/settings.js';
+import { sidebarView } from './views/sidebar.js';
+import { tokenCostsView } from './views/token-costs.js';
+import { webhookInboxView } from './views/webhook-inbox.js';
+import { createWsClient } from './ws.js';
 
 // Register Shoelace components (tree-shaken — only imports what we use)
 import '@shoelace-style/shoelace/dist/components/details/details.js';
@@ -41,7 +71,11 @@ import '@shoelace-style/shoelace/dist/components/textarea/textarea.js';
 
 const store = createStore();
 const ws = createWsClient();
-const notificationManager = createNotificationManager({ store, ws, getSettings: () => settings });
+const notificationManager = createNotificationManager({
+  store,
+  ws,
+  getSettings: () => settings,
+});
 let route = parseHash(location.hash);
 let connectionState = ws.getState();
 let autoScroll = true;
@@ -50,13 +84,13 @@ let logSearch = '';
 let settings = {};
 let logIterationFilter = null; // null = all iterations, number = specific
 let pipelineAction = null; // null | 'stopping' | 'resuming' | 'pausing'
-let controlPending = null; // null | { action: 'pause'|'resume'|'stop', runId: string }
+let _controlPending = null; // null | { action: 'pause'|'resume'|'stop', runId: string }
 let actionError = null; // null | string (error message, auto-clears)
 let stopConfirmOpen = false;
 let restartStageConfirmOpen = false;
 let restartStageKey = null;
 const promptCache = {}; // { [runId]: { [stage]: { agentInstructions, userPrompt, agent } } }
-let promptCachePending = new Set(); // tracks in-flight fetches
+const promptCachePending = new Set(); // tracks in-flight fetches
 let beadsStatusFilter = 'all';
 let beadsPriorityFilter = 'all';
 let beadsStarting = null; // null | issueId
@@ -81,10 +115,12 @@ function handleStageTabChange(stageKey, iterationNumber) {
 
 function fetchRunBeads(runId) {
   if (!runId) return;
-  ws.send('list-beads-by-run', { runId }).then(payload => {
-    runBeads.set(runId, payload.issues || []);
-    rerender();
-  }).catch(() => {});
+  ws.send('list-beads-by-run', { runId })
+    .then((payload) => {
+      runBeads.set(runId, payload.issues || []);
+      rerender();
+    })
+    .catch(() => {});
 }
 
 function fetchAgentPrompts(runId, stages) {
@@ -95,13 +131,15 @@ function fetchAgentPrompts(runId, stages) {
     const cacheKey = `${runId}:${key}`;
     if (promptCache[runId][key] || promptCachePending.has(cacheKey)) continue;
     promptCachePending.add(cacheKey);
-    ws.send('get-agent-prompt', { runId, stage: key }).then(data => {
-      promptCache[runId][key] = data;
-      promptCachePending.delete(cacheKey);
-      rerender();
-    }).catch(() => {
-      promptCachePending.delete(cacheKey);
-    });
+    ws.send('get-agent-prompt', { runId, stage: key })
+      .then((data) => {
+        promptCache[runId][key] = data;
+        promptCachePending.delete(cacheKey);
+        rerender();
+      })
+      .catch(() => {
+        promptCachePending.delete(cacheKey);
+      });
   }
 }
 
@@ -132,7 +170,7 @@ function autoResetLogFilterOnStageChange(prevRun, newRun) {
 
 ws.on('runs-list', (payload) => {
   const runs = {};
-  for (const run of (payload.runs || [])) {
+  for (const run of payload.runs || []) {
     runs[run.id] = run;
   }
   if (payload.settings) settings = payload.settings;
@@ -140,7 +178,7 @@ ws.on('runs-list', (payload) => {
 });
 
 ws.on('run-snapshot', (payload) => {
-  if (payload && payload.id) {
+  if (payload?.id) {
     const prevRun = store.getState().runs[payload.id] ?? null;
     notificationManager.handleRunUpdate(payload.id, payload, prevRun);
     // Invalidate prompt cache for stages whose iteration count changed
@@ -166,7 +204,7 @@ ws.on('run-snapshot', (payload) => {
 });
 
 ws.on('run-update', (payload) => {
-  if (payload && payload.id) {
+  if (payload?.id) {
     const prevRun = store.getState().runs[payload.id] ?? null;
     notificationManager.handleRunUpdate(payload.id, payload, prevRun);
     store.setRun(payload.id, payload);
@@ -174,7 +212,10 @@ ws.on('run-update', (payload) => {
       autoResetLogFilterOnStageChange(prevRun, payload);
       updateActiveStage(payload);
     }
-    if (pipelineAction) { pipelineAction = null; rerender(); }
+    if (pipelineAction) {
+      pipelineAction = null;
+      rerender();
+    }
   }
 });
 
@@ -196,7 +237,12 @@ ws.on('log-bulk', (payload) => {
   if (payload && Array.isArray(payload.lines)) {
     for (const line of payload.lines) {
       // NB: timestamp is receive-time, not original write-time (log files lack per-line timestamps)
-      const entry = { stage: payload.stage, iteration: payload.iteration, line, timestamp: new Date().toISOString() };
+      const entry = {
+        stage: payload.stage,
+        iteration: payload.iteration,
+        line,
+        timestamp: new Date().toISOString(),
+      };
       store.appendLog(entry);
       // Log History: only write to the history terminal when a specific stage is selected
       if (logFilter !== '*') writeLogLine(entry);
@@ -214,43 +260,57 @@ ws.on('preferences', (payload) => {
 
 ws.on('beads-update', (payload) => {
   if (payload) {
-    store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
+    store.setState({
+      beads: {
+        issues: payload.issues || [],
+        dbExists: payload.dbExists ?? false,
+        dbPath: payload.dbPath || null,
+        loading: false,
+      },
+    });
     // Re-fetch run-specific beads if viewing a run detail
     if (route.runId && route.section !== 'beads') fetchRunBeads(route.runId);
     // Re-fetch bead counts for run list
     fetchBeadsCounts();
 
     // Re-fetch beads for currently viewed run in beads section
-    if (route.section === 'beads' && route.runId) fetchBeadsRunIssues(route.runId);
+    if (route.section === 'beads' && route.runId)
+      fetchBeadsRunIssues(route.runId);
   }
 });
 
 ws.on('run-started', () => {
-  ws.send('list-runs').then(payload => {
-    const runs = {};
-    for (const run of (payload.runs || [])) runs[run.id] = run;
-    store.setState({ runs });
-    if (payload.settings) settings = payload.settings;
-  }).catch(() => {});
+  ws.send('list-runs')
+    .then((payload) => {
+      const runs = {};
+      for (const run of payload.runs || []) runs[run.id] = run;
+      store.setState({ runs });
+      if (payload.settings) settings = payload.settings;
+    })
+    .catch(() => {});
 });
 
 ws.on('run-stopped', () => {
   pipelineAction = null;
-  ws.send('list-runs').then(payload => {
-    const runs = {};
-    for (const run of (payload.runs || [])) runs[run.id] = run;
-    store.setState({ runs });
-    if (payload.settings) settings = payload.settings;
-  }).catch(() => {});
+  ws.send('list-runs')
+    .then((payload) => {
+      const runs = {};
+      for (const run of payload.runs || []) runs[run.id] = run;
+      store.setState({ runs });
+      if (payload.settings) settings = payload.settings;
+    })
+    .catch(() => {});
 });
 
 ws.on('stage-restarted', () => {
-  ws.send('list-runs').then(payload => {
-    const runs = {};
-    for (const run of (payload.runs || [])) runs[run.id] = run;
-    store.setState({ runs });
-    if (payload.settings) settings = payload.settings;
-  }).catch(() => {});
+  ws.send('list-runs')
+    .then((payload) => {
+      const runs = {};
+      for (const run of payload.runs || []) runs[run.id] = run;
+      store.setState({ runs });
+      if (payload.settings) settings = payload.settings;
+    })
+    .catch(() => {});
 });
 
 ws.on('learn-started', (payload) => {
@@ -264,14 +324,18 @@ ws.on('learn-started', (payload) => {
 ws.on('webhook-inbox-event', (payload) => {
   if (payload) {
     const inbox = store.getState().webhookInbox;
-    store.setState({ webhookInbox: { ...inbox, events: [...inbox.events, payload] } });
+    store.setState({
+      webhookInbox: { ...inbox, events: [...inbox.events, payload] },
+    });
   }
 });
 
 ws.on('webhook-control-changed', (payload) => {
   if (payload) {
     const inbox = store.getState().webhookInbox;
-    store.setState({ webhookInbox: { ...inbox, controlAction: payload.action } });
+    store.setState({
+      webhookInbox: { ...inbox, controlAction: payload.action },
+    });
   }
 });
 
@@ -286,27 +350,47 @@ ws.on('webhook-inbox-cleared', () => {
 ws.onConnection((state) => {
   connectionState = state;
   if (state === 'open') {
-    ws.send('list-runs').then(payload => {
-      const runs = {};
-      for (const run of (payload.runs || [])) {
-        runs[run.id] = run;
-      }
-      store.setState({ runs });
-      if (payload.settings) settings = payload.settings;
-    }).catch(() => {});
+    ws.send('list-runs')
+      .then((payload) => {
+        const runs = {};
+        for (const run of payload.runs || []) {
+          runs[run.id] = run;
+        }
+        store.setState({ runs });
+        if (payload.settings) settings = payload.settings;
+      })
+      .catch(() => {});
 
-    ws.send('get-preferences').then(prefs => {
-      store.setState({ preferences: prefs });
-      applyTheme(prefs.theme || 'light');
-    }).catch(() => {});
+    ws.send('get-preferences')
+      .then((prefs) => {
+        store.setState({ preferences: prefs });
+        applyTheme(prefs.theme || 'light');
+      })
+      .catch(() => {});
 
-    ws.send('list-beads-issues').then(payload => {
-      store.setState({ beads: { issues: payload.issues || [], dbExists: payload.dbExists ?? false, dbPath: payload.dbPath || null, loading: false } });
-    }).catch(() => {});
+    ws.send('list-beads-issues')
+      .then((payload) => {
+        store.setState({
+          beads: {
+            issues: payload.issues || [],
+            dbExists: payload.dbExists ?? false,
+            dbPath: payload.dbPath || null,
+            loading: false,
+          },
+        });
+      })
+      .catch(() => {});
 
-    ws.send('get-webhook-inbox').then(payload => {
-      store.setState({ webhookInbox: { events: payload.events || [], controlAction: payload.controlAction || 'continue' } });
-    }).catch(() => {});
+    ws.send('get-webhook-inbox')
+      .then((payload) => {
+        store.setState({
+          webhookInbox: {
+            events: payload.events || [],
+            controlAction: payload.controlAction || 'continue',
+          },
+        });
+      })
+      .catch(() => {});
 
     fetchBeadsCounts();
 
@@ -316,7 +400,10 @@ ws.onConnection((state) => {
     if (route.runId) {
       if (route.section !== 'beads') {
         ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
-        ws.send('subscribe-log', { stage: logFilter === '*' ? null : logFilter, runId: route.runId }).catch(() => {});
+        ws.send('subscribe-log', {
+          stage: logFilter === '*' ? null : logFilter,
+          runId: route.runId,
+        }).catch(() => {});
       }
       fetchRunBeads(route.runId);
       if (route.section === 'beads') fetchBeadsRunIssues(route.runId);
@@ -348,7 +435,9 @@ onHashChange((newRoute) => {
       logFilter = '*';
       logIterationFilter = null;
       ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
-      ws.send('subscribe-log', { stage: null, runId: route.runId }).catch(() => {});
+      ws.send('subscribe-log', { stage: null, runId: route.runId }).catch(
+        () => {},
+      );
       fetchRunBeads(route.runId);
     }
   }
@@ -474,7 +563,9 @@ async function handleConfirmStop() {
   rerender();
 
   try {
-    const activeRun = Object.values(store.getState().runs).find(r => r.active);
+    const activeRun = Object.values(store.getState().runs).find(
+      (r) => r.active,
+    );
     const runId = activeRun?.id || 'current';
     const res = await fetch(`/api/runs/${runId}`, { method: 'DELETE' });
     const data = await res.json();
@@ -493,16 +584,18 @@ function handleResumePipeline() {
   pipelineAction = 'resuming';
   actionError = null;
   rerender();
-  ws.send('resume-run', { runId: route.runId }).then(() => {
-    // Status update via file watcher will clear pipelineAction
-  }).catch((err) => {
-    pipelineAction = null;
-    showActionError(err?.message || 'Failed to resume pipeline');
-  });
+  ws.send('resume-run', { runId: route.runId })
+    .then(() => {
+      // Status update via file watcher will clear pipelineAction
+    })
+    .catch((err) => {
+      pipelineAction = null;
+      showActionError(err?.message || 'Failed to resume pipeline');
+    });
 }
 
 async function handlePausePipeline() {
-  const activeRun = Object.values(store.getState().runs).find(r => r.active);
+  const activeRun = Object.values(store.getState().runs).find((r) => r.active);
   const runId = activeRun?.id || 'current';
   pipelineAction = 'pausing';
   actionError = null;
@@ -522,7 +615,7 @@ async function handlePausePipeline() {
 }
 
 async function handlePauseRun(runId) {
-  controlPending = { action: 'pause', runId };
+  _controlPending = { action: 'pause', runId };
   rerender();
   try {
     const res = await fetch(`/api/runs/${runId}/pause`, { method: 'POST' });
@@ -531,13 +624,13 @@ async function handlePauseRun(runId) {
   } catch (err) {
     showActionError(err?.message || 'Failed to pause run');
   } finally {
-    controlPending = null;
+    _controlPending = null;
     rerender();
   }
 }
 
 async function handleResumeRun(runId) {
-  controlPending = { action: 'resume', runId };
+  _controlPending = { action: 'resume', runId };
   rerender();
   try {
     const res = await fetch(`/api/runs/${runId}/resume`, { method: 'POST' });
@@ -546,7 +639,7 @@ async function handleResumeRun(runId) {
   } catch (err) {
     showActionError(err?.message || 'Failed to resume run');
   } finally {
-    controlPending = null;
+    _controlPending = null;
     rerender();
   }
 }
@@ -574,9 +667,13 @@ async function handleConfirmRestartStage() {
   rerender();
 
   try {
-    const activeRun = Object.values(store.getState().runs).find(r => !r.active);
+    const activeRun = Object.values(store.getState().runs).find(
+      (r) => !r.active,
+    );
     const runId = activeRun?.id || 'current';
-    const res = await fetch(`/api/runs/${runId}/stages/${stage}/restart`, { method: 'POST' });
+    const res = await fetch(`/api/runs/${runId}/stages/${stage}/restart`, {
+      method: 'POST',
+    });
     const data = await res.json();
     if (data.ok) {
       navigate('active', null);
@@ -593,7 +690,7 @@ function handleBack() {
     // If active section has only one run, going back to list would auto-redirect here again
     // So go to dashboard instead
     const runs = Object.values(store.getState().runs);
-    const activeRuns = runs.filter(r => r.active);
+    const activeRuns = runs.filter((r) => r.active);
     if (route.section === 'active' && activeRuns.length <= 1) {
       navigate('dashboard', null);
     } else {
@@ -637,28 +734,35 @@ function handleDismissBeadsError() {
 }
 
 function fetchBeadsCounts() {
-  ws.send('list-beads-counts').then(payload => {
-    beadsCounts = payload.counts || {};
-    rerender();
-  }).catch(() => {});
+  ws.send('list-beads-counts')
+    .then((payload) => {
+      beadsCounts = payload.counts || {};
+      rerender();
+    })
+    .catch(() => {});
 }
 
 function fetchBeadsRunIssues(runId) {
   beadsRunLoading = true;
   rerender();
-  ws.send('list-beads-by-run', { runId }).then(payload => {
-    beadsRunIssues = payload.issues || [];
-    beadsRunLoading = false;
-    rerender();
-  }).catch(() => { beadsRunLoading = false; rerender(); });
+  ws.send('list-beads-by-run', { runId })
+    .then((payload) => {
+      beadsRunIssues = payload.issues || [];
+      beadsRunLoading = false;
+      rerender();
+    })
+    .catch(() => {
+      beadsRunLoading = false;
+      rerender();
+    });
 }
 
 // --- Costs actions ---
 
 function fetchCostsData() {
   fetch('/api/costs')
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       if (data.ok) {
         costsTokenData = data.tokenData || {};
         costsFetched = true;
@@ -670,8 +774,8 @@ function fetchCostsData() {
 
 function fetchProjectInfo() {
   fetch('/api/project-info')
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       if (data.name !== undefined) {
         store.setState({ projectName: data.name });
         document.title = formatTitle(data.name);
@@ -719,7 +823,9 @@ function handleWebhookClear() {
 function handleWebhookCopyJson(event) {
   try {
     navigator.clipboard.writeText(JSON.stringify(event.envelope, null, 2));
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 }
 
 function handleWebhookDismissDetail() {
@@ -766,7 +872,14 @@ async function doRunLearn() {
           status: 'in_progress',
           pid: data.pid,
           started_at: new Date().toISOString(),
-          iterations: [{ number: 1, status: 'in_progress', started_at: new Date().toISOString(), trigger: 'manual' }],
+          iterations: [
+            {
+              number: 1,
+              status: 'in_progress',
+              started_at: new Date().toISOString(),
+              trigger: 'manual',
+            },
+          ],
         };
         rerender();
       }
@@ -791,7 +904,8 @@ function contentHeaderView() {
     const run = state.runs[route.runId];
     const raw = run?.work_request?.title || route.runId;
     const firstLine = raw.split('\n')[0];
-    title = firstLine.length > 80 ? firstLine.slice(0, 80) + '\u2026' : firstLine;
+    title =
+      firstLine.length > 80 ? `${firstLine.slice(0, 80)}\u2026` : firstLine;
     showBack = true;
   } else if (route.section === 'beads' && !route.runId) {
     title = 'Beads Issues';
@@ -804,11 +918,18 @@ function contentHeaderView() {
     const run = state.runs[route.runId];
     const raw = run?.work_request?.title || 'Pipeline Details';
     const firstLine = raw.split('\n')[0];
-    title = firstLine.length > 80 ? firstLine.slice(0, 80) + '\u2026' : firstLine;
+    title =
+      firstLine.length > 80 ? `${firstLine.slice(0, 80)}\u2026` : firstLine;
     showBack = true;
     if (run) {
       const ps = run.pipeline_status || (run.active ? 'running' : 'completed');
-      const variantMap = { running: 'warning', resuming: 'warning', paused: 'warning', completed: 'success', failed: 'danger' };
+      const variantMap = {
+        running: 'warning',
+        resuming: 'warning',
+        paused: 'warning',
+        completed: 'success',
+        failed: 'danger',
+      };
       const variant = variantMap[ps] || 'neutral';
       const label = ps.charAt(0).toUpperCase() + ps.slice(1);
       badge = html`<sl-badge variant="${variant}" pill>
@@ -867,7 +988,7 @@ function contentHeaderView() {
     showBack = true;
     const nrs = getNewRunSubmitState();
     const runs = Object.values(state.runs);
-    const isRunning = runs.some(r => r.active);
+    const isRunning = runs.some((r) => r.active);
     actionButton = html`
       <button class="action-btn action-btn--primary" ?disabled=${nrs.isSubmitting || isRunning}
         @click=${() => submitNewRun({ rerender, onStarted: () => navigate('active') })}>
@@ -895,16 +1016,24 @@ function contentHeaderView() {
 
   return html`
     <div class="content-header">
-      ${showBack ? html`
+      ${
+        showBack
+          ? html`
         <button class="content-header-back" @click=${handleBack}>
           ${unsafeHTML(iconSvg(ArrowLeft, 18))}
         </button>
-      ` : ''}
+      `
+          : ''
+      }
       ${badge || ''}
       <h1 class="content-header-title">${title}</h1>
-      ${actionButton ? html`<div class="content-header-actions">
+      ${
+        actionButton
+          ? html`<div class="content-header-actions">
         ${actionButton}
-      </div>` : ''}
+      </div>`
+          : ''
+      }
     </div>
   `;
 }
@@ -973,10 +1102,9 @@ function mainContentView() {
             runStages: run?.stages,
           })}
           ${runBeadsSectionView(runBeads.get(route.runId))}
-          ${learningsSectionView(
-            run?.stages?.learn,
-            { onRunLearn: handleRunLearn }
-          )}
+          ${learningsSectionView(run?.stages?.learn, {
+            onRunLearn: handleRunLearn,
+          })}
         </div>
       </div>
     `;
@@ -1013,7 +1141,11 @@ function mainContentView() {
   }
 
   if (route.section === 'settings') {
-    return settingsView(state.preferences, { rerender, onThemeToggle: handleThemeToggle, onSaveNotifications: handleSaveNotifications });
+    return settingsView(state.preferences, {
+      rerender,
+      onThemeToggle: handleThemeToggle,
+      onSaveNotifications: handleSaveNotifications,
+    });
   }
 
   if (route.section === 'history') {
@@ -1021,7 +1153,7 @@ function mainContentView() {
   }
 
   if (route.section === 'active') {
-    const activeRuns = runs.filter(r => r.active);
+    const activeRuns = runs.filter((r) => r.active);
     if (activeRuns.length === 1) {
       navigate('active', activeRuns[0].id);
       return html``;
@@ -1029,17 +1161,22 @@ function mainContentView() {
     return runListView(runs, 'active', { onSelectRun: handleSelectRun });
   }
 
-  return dashboardView(state, { onSelectRun: (runId) => navigate('active', runId), onNavigate: handleNavigate, onPause: handlePauseRun, onResume: handleResumeRun });
+  return dashboardView(state, {
+    onSelectRun: (runId) => navigate('active', runId),
+    onNavigate: handleNavigate,
+    onPause: handlePauseRun,
+    onResume: handleResumeRun,
+  });
 }
 
 function filteredLogState(state) {
   let lines = state.logLines;
   if (logFilter !== '*') {
-    lines = lines.filter(l => l.stage === logFilter);
+    lines = lines.filter((l) => l.stage === logFilter);
   }
   if (logSearch) {
     const term = logSearch.toLowerCase();
-    lines = lines.filter(l => (l.line || '').toLowerCase().includes(term));
+    lines = lines.filter((l) => (l.line || '').toLowerCase().includes(term));
   }
   return { ...state, logLines: lines };
 }
@@ -1049,11 +1186,12 @@ function rerender() {
   const appEl = document.getElementById('app');
   if (!appEl) return;
 
-  render(html`
+  render(
+    html`
     <div class="app-shell">
       ${sidebarView(state, route, connectionState, {
         onNavigate: handleNavigate,
-        onSelectRun: handleSelectRun
+        onSelectRun: handleSelectRun,
       })}
       <main class="main-content">
         ${notificationManager.renderBanner()}
@@ -1061,7 +1199,9 @@ function rerender() {
         ${mainContentView()}
       </main>
     </div>
-    ${actionError ? html`
+    ${
+      actionError
+        ? html`
       <sl-dialog id="action-error-dialog" label="Pipeline Error" @sl-after-hide=${dismissActionError}>
         <div class="error-dialog-body">
           ${unsafeHTML(iconSvg(AlertTriangle, 32, 'error-dialog-icon'))}
@@ -1071,8 +1211,12 @@ function rerender() {
           document.getElementById('action-error-dialog')?.hide();
         }}>OK</sl-button>
       </sl-dialog>
-    ` : ''}
-    ${stopConfirmOpen ? html`
+    `
+        : ''
+    }
+    ${
+      stopConfirmOpen
+        ? html`
       <sl-dialog id="stop-confirm-dialog" label="Stop Pipeline?" @sl-after-hide=${handleCancelStop}>
         <p>Are you sure? The current stage will be interrupted and marked as error.</p>
         <sl-button slot="footer" @click=${() => {
@@ -1083,8 +1227,12 @@ function rerender() {
           handleConfirmStop();
         }}>Stop</sl-button>
       </sl-dialog>
-    ` : ''}
-    ${restartStageConfirmOpen ? html`
+    `
+        : ''
+    }
+    ${
+      restartStageConfirmOpen
+        ? html`
       <sl-dialog id="restart-stage-confirm-dialog" label="Restart Stage?" @sl-after-hide=${handleCancelRestartStage}>
         <p>Restart the "${restartStageKey}" stage? The pipeline will resume from this point.</p>
         <sl-button slot="footer" @click=${() => {
@@ -1095,8 +1243,12 @@ function rerender() {
           handleConfirmRestartStage();
         }}>Restart</sl-button>
       </sl-dialog>
-    ` : ''}
-    ${learnConfirmOpen ? html`
+    `
+        : ''
+    }
+    ${
+      learnConfirmOpen
+        ? html`
       <sl-dialog id="learn-confirm-dialog" label="Re-run Learning Analysis?" @sl-after-hide=${handleCancelLearn}>
         <p>This will replace existing learnings. Continue?</p>
         <sl-button slot="footer" @click=${() => {
@@ -1107,8 +1259,12 @@ function rerender() {
           doRunLearn();
         }}>Re-run</sl-button>
       </sl-dialog>
-    ` : ''}
-  `, appEl);
+    `
+        : ''
+    }
+  `,
+    appEl,
+  );
 
   // Mount xterm terminals after render if in run view
   if (route.runId) {
@@ -1125,12 +1281,19 @@ function attachStickyHeaderListener() {
   if (scrollListenerAttached) return;
   const mainEl = document.querySelector('.main-content');
   if (!mainEl) return;
-  mainEl.addEventListener('scroll', () => {
-    const header = mainEl.querySelector('.content-header');
-    if (header) {
-      header.classList.toggle('content-header--scrolled', mainEl.scrollTop > 10);
-    }
-  }, { passive: true });
+  mainEl.addEventListener(
+    'scroll',
+    () => {
+      const header = mainEl.querySelector('.content-header');
+      if (header) {
+        header.classList.toggle(
+          'content-header--scrolled',
+          mainEl.scrollTop > 10,
+        );
+      }
+    },
+    { passive: true },
+  );
   scrollListenerAttached = true;
 }
 

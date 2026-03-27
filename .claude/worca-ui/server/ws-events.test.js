@@ -4,30 +4,39 @@
  * - get-events, subscribe-events, unsubscribe-events handlers in ws.js
  * - pipeline-event broadcast
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
 import {
-  mkdirSync, writeFileSync, appendFileSync, rmSync, existsSync,
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { attachWsServer } from './ws.js';
 import { watchEvents } from './watcher.js';
+import { attachWsServer } from './ws.js';
 
 function waitMs(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function waitForWsEvent(ws, type, predicate = null, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Timed out waiting for WS event "${type}"`)),
-      timeoutMs
+      timeoutMs,
     );
     function onMessage(data) {
       let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
       if (msg.type === type && (!predicate || predicate(msg))) {
         clearTimeout(timer);
         ws.off('message', onMessage);
@@ -59,12 +68,21 @@ describe('watchEvents', () => {
   const openWatchers = [];
 
   beforeEach(() => {
-    runDir = join(tmpdir(), `worca-we-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    runDir = join(
+      tmpdir(),
+      `worca-we-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     mkdirSync(runDir, { recursive: true });
   });
 
   afterEach(async () => {
-    for (const w of openWatchers) { try { w.close(); } catch { /* ignore */ } }
+    for (const w of openWatchers) {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+    }
     openWatchers.length = 0;
     rmSync(runDir, { recursive: true, force: true });
   });
@@ -80,7 +98,7 @@ describe('watchEvents', () => {
     await waitMs(150);
 
     const event = makeEvent('evt-001', 'pipeline.run.started');
-    appendFileSync(eventsPath, JSON.stringify(event) + '\n');
+    appendFileSync(eventsPath, `${JSON.stringify(event)}\n`);
 
     await waitMs(400);
 
@@ -101,7 +119,7 @@ describe('watchEvents', () => {
 
     // Now create the file with an event
     const event = makeEvent('evt-002', 'pipeline.stage.started');
-    writeFileSync(eventsPath, JSON.stringify(event) + '\n');
+    writeFileSync(eventsPath, `${JSON.stringify(event)}\n`);
 
     await waitMs(600);
 
@@ -121,7 +139,7 @@ describe('watchEvents', () => {
 
     appendFileSync(eventsPath, 'this is not valid json\n');
     const goodEvent = makeEvent('evt-003', 'pipeline.run.completed');
-    appendFileSync(eventsPath, JSON.stringify(goodEvent) + '\n');
+    appendFileSync(eventsPath, `${JSON.stringify(goodEvent)}\n`);
 
     await waitMs(400);
 
@@ -140,14 +158,23 @@ describe('watchEvents', () => {
 
     await waitMs(150);
 
-    appendFileSync(eventsPath, JSON.stringify(makeEvent('e1', 'pipeline.run.started')) + '\n');
-    appendFileSync(eventsPath, JSON.stringify(makeEvent('e2', 'pipeline.stage.started')) + '\n');
-    appendFileSync(eventsPath, JSON.stringify(makeEvent('e3', 'pipeline.stage.completed')) + '\n');
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify(makeEvent('e1', 'pipeline.run.started'))}\n`,
+    );
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify(makeEvent('e2', 'pipeline.stage.started'))}\n`,
+    );
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify(makeEvent('e3', 'pipeline.stage.completed'))}\n`,
+    );
 
     await waitMs(500);
 
     expect(received.length).toBe(3);
-    expect(received.map(e => e.event_id)).toEqual(['e1', 'e2', 'e3']);
+    expect(received.map((e) => e.event_id)).toEqual(['e1', 'e2', 'e3']);
   });
 
   it('close() stops watching and callback is no longer invoked', async () => {
@@ -164,7 +191,11 @@ describe('watchEvents', () => {
 
     await waitMs(50);
 
-    appendFileSync(eventsPath, JSON.stringify(makeEvent('evt-after-close', 'pipeline.run.started')) + '\n');
+    appendFileSync(
+      eventsPath,
+      JSON.stringify(makeEvent('evt-after-close', 'pipeline.run.started')) +
+        '\n',
+    );
 
     await waitMs(400);
 
@@ -182,7 +213,10 @@ describe('get-events WebSocket handler', () => {
   let port;
 
   beforeEach(async () => {
-    worcaDir = join(tmpdir(), `worca-ge-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    worcaDir = join(
+      tmpdir(),
+      `worca-ge-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     mkdirSync(worcaDir, { recursive: true });
     httpServer = createServer();
     attachWsServer(httpServer, {
@@ -190,19 +224,19 @@ describe('get-events WebSocket handler', () => {
       settingsPath: join(worcaDir, 'settings.json'),
       prefsPath: join(worcaDir, 'prefs.json'),
     });
-    await new Promise(resolve => httpServer.listen(0, resolve));
+    await new Promise((resolve) => httpServer.listen(0, resolve));
     port = httpServer.address().port;
   });
 
   afterEach(async () => {
-    await new Promise(resolve => httpServer.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
   function makeEventsFile(runId, events) {
     const runDir = join(worcaDir, 'runs', runId);
     mkdirSync(runDir, { recursive: true });
-    const content = events.map(e => JSON.stringify(e)).join('\n') + '\n';
+    const content = `${events.map((e) => JSON.stringify(e)).join('\n')}\n`;
     writeFileSync(join(runDir, 'events.jsonl'), content);
     return runDir;
   }
@@ -225,7 +259,9 @@ describe('get-events WebSocket handler', () => {
     makeEventsFile(runId, events);
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-all', type: 'get-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({ id: 'req-all', type: 'get-events', payload: { runId } }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
@@ -243,14 +279,20 @@ describe('get-events WebSocket handler', () => {
     makeEventsFile(runId, events);
 
     const ws = await connect();
-    ws.send(JSON.stringify({
-      id: 'req-1', type: 'get-events',
-      payload: { runId, since_event_id: 'evt-a1' },
-    }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-1',
+        type: 'get-events',
+        payload: { runId, since_event_id: 'evt-a1' },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
-    expect(msg.payload.events.map(e => e.event_id)).toEqual(['evt-a2', 'evt-a3']);
+    expect(msg.payload.events.map((e) => e.event_id)).toEqual([
+      'evt-a2',
+      'evt-a3',
+    ]);
     ws.close();
   });
 
@@ -265,14 +307,20 @@ describe('get-events WebSocket handler', () => {
     makeEventsFile(runId, events);
 
     const ws = await connect();
-    ws.send(JSON.stringify({
-      id: 'req-2', type: 'get-events',
-      payload: { runId, event_types: ['pipeline.stage.*'] },
-    }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-2',
+        type: 'get-events',
+        payload: { runId, event_types: ['pipeline.stage.*'] },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
-    expect(msg.payload.events.map(e => e.event_id)).toEqual(['evt-b2', 'evt-b3']);
+    expect(msg.payload.events.map((e) => e.event_id)).toEqual([
+      'evt-b2',
+      'evt-b3',
+    ]);
     ws.close();
   });
 
@@ -287,14 +335,17 @@ describe('get-events WebSocket handler', () => {
     makeEventsFile(runId, events);
 
     const ws = await connect();
-    ws.send(JSON.stringify({
-      id: 'req-glob2', type: 'get-events',
-      payload: { runId, event_types: ['pipeline.**'] },
-    }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-glob2',
+        type: 'get-events',
+        payload: { runId, event_types: ['pipeline.**'] },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
-    const ids = msg.payload.events.map(e => e.event_id);
+    const ids = msg.payload.events.map((e) => e.event_id);
     expect(ids).toContain('p1');
     expect(ids).toContain('p2');
     expect(ids).toContain('p3');
@@ -305,15 +356,18 @@ describe('get-events WebSocket handler', () => {
   it('respects limit parameter', async () => {
     const runId = `run-${Date.now()}`;
     const events = Array.from({ length: 10 }, (_, i) =>
-      makeEvent(`evt-c${i + 1}`, 'pipeline.stage.started', runId)
+      makeEvent(`evt-c${i + 1}`, 'pipeline.stage.started', runId),
     );
     makeEventsFile(runId, events);
 
     const ws = await connect();
-    ws.send(JSON.stringify({
-      id: 'req-3', type: 'get-events',
-      payload: { runId, limit: 3 },
-    }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-3',
+        type: 'get-events',
+        payload: { runId, limit: 3 },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
@@ -328,7 +382,13 @@ describe('get-events WebSocket handler', () => {
     // No events.jsonl
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-empty', type: 'get-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-empty',
+        type: 'get-events',
+        payload: { runId },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(true);
@@ -338,7 +398,9 @@ describe('get-events WebSocket handler', () => {
 
   it('returns error when runId is missing', async () => {
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-no-id', type: 'get-events', payload: {} }));
+    ws.send(
+      JSON.stringify({ id: 'req-no-id', type: 'get-events', payload: {} }),
+    );
 
     const msg = await waitForWsEvent(ws, 'get-events', null, 2000);
     expect(msg.ok).toBe(false);
@@ -357,7 +419,10 @@ describe('subscribe-events / unsubscribe-events', () => {
   let port;
 
   beforeEach(async () => {
-    worcaDir = join(tmpdir(), `worca-se-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    worcaDir = join(
+      tmpdir(),
+      `worca-se-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    );
     mkdirSync(worcaDir, { recursive: true });
     httpServer = createServer();
     attachWsServer(httpServer, {
@@ -365,12 +430,12 @@ describe('subscribe-events / unsubscribe-events', () => {
       settingsPath: join(worcaDir, 'settings.json'),
       prefsPath: join(worcaDir, 'prefs.json'),
     });
-    await new Promise(resolve => httpServer.listen(0, resolve));
+    await new Promise((resolve) => httpServer.listen(0, resolve));
     port = httpServer.address().port;
   });
 
   afterEach(async () => {
-    await new Promise(resolve => httpServer.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
@@ -389,7 +454,13 @@ describe('subscribe-events / unsubscribe-events', () => {
     mkdirSync(runDir, { recursive: true });
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-sub', type: 'subscribe-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-sub',
+        type: 'subscribe-events',
+        payload: { runId },
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'subscribe-events', null, 2000);
     expect(msg.ok).toBe(true);
@@ -399,7 +470,13 @@ describe('subscribe-events / unsubscribe-events', () => {
 
   it('subscribe-events returns error when runId is missing', async () => {
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-no-id', type: 'subscribe-events', payload: {} }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-no-id',
+        type: 'subscribe-events',
+        payload: {},
+      }),
+    );
 
     const msg = await waitForWsEvent(ws, 'subscribe-events', null, 2000);
     expect(msg.ok).toBe(false);
@@ -414,13 +491,19 @@ describe('subscribe-events / unsubscribe-events', () => {
     writeFileSync(eventsPath, '');
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-sub1', type: 'subscribe-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-sub1',
+        type: 'subscribe-events',
+        payload: { runId },
+      }),
+    );
     await waitForWsEvent(ws, 'subscribe-events', null, 1000);
 
     await waitMs(200); // let watcher settle
 
     const event = makeEvent('evt-live1', 'pipeline.stage.started', runId);
-    appendFileSync(eventsPath, JSON.stringify(event) + '\n');
+    appendFileSync(eventsPath, `${JSON.stringify(event)}\n`);
 
     const msg = await waitForWsEvent(ws, 'pipeline-event', null, 3000);
     expect(msg.payload.event_id).toBe('evt-live1');
@@ -436,7 +519,13 @@ describe('subscribe-events / unsubscribe-events', () => {
     writeFileSync(eventsPath, '');
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-sub2', type: 'subscribe-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-sub2',
+        type: 'subscribe-events',
+        payload: { runId },
+      }),
+    );
     await waitForWsEvent(ws, 'subscribe-events', null, 1000);
 
     await waitMs(200);
@@ -450,7 +539,7 @@ describe('subscribe-events / unsubscribe-events', () => {
       pipeline: { branch: 'main', work_request: { title: 'test' } },
       payload: { duration_ms: 1000 },
     };
-    appendFileSync(eventsPath, JSON.stringify(event) + '\n');
+    appendFileSync(eventsPath, `${JSON.stringify(event)}\n`);
 
     const msg = await waitForWsEvent(ws, 'pipeline-event', null, 3000);
     expect(msg.payload.schema_version).toBe('1');
@@ -467,10 +556,22 @@ describe('subscribe-events / unsubscribe-events', () => {
     mkdirSync(runDir, { recursive: true });
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-sub3', type: 'subscribe-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-sub3',
+        type: 'subscribe-events',
+        payload: { runId },
+      }),
+    );
     await waitForWsEvent(ws, 'subscribe-events', null, 1000);
 
-    ws.send(JSON.stringify({ id: 'req-unsub', type: 'unsubscribe-events', payload: {} }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-unsub',
+        type: 'unsubscribe-events',
+        payload: {},
+      }),
+    );
     const unsubMsg = await waitForWsEvent(ws, 'unsubscribe-events', null, 1000);
     expect(unsubMsg.ok).toBe(true);
     expect(unsubMsg.payload.unsubscribed).toBe(true);
@@ -485,12 +586,24 @@ describe('subscribe-events / unsubscribe-events', () => {
     writeFileSync(eventsPath, '');
 
     const ws = await connect();
-    ws.send(JSON.stringify({ id: 'req-sub4', type: 'subscribe-events', payload: { runId } }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-sub4',
+        type: 'subscribe-events',
+        payload: { runId },
+      }),
+    );
     await waitForWsEvent(ws, 'subscribe-events', null, 1000);
 
     await waitMs(200);
 
-    ws.send(JSON.stringify({ id: 'req-unsub2', type: 'unsubscribe-events', payload: {} }));
+    ws.send(
+      JSON.stringify({
+        id: 'req-unsub2',
+        type: 'unsubscribe-events',
+        payload: {},
+      }),
+    );
     await waitForWsEvent(ws, 'unsubscribe-events', null, 1000);
 
     // After unsubscribe, no pipeline-event messages should arrive
@@ -500,7 +613,12 @@ describe('subscribe-events / unsubscribe-events', () => {
       if (m.type === 'pipeline-event') pipelineEvents.push(m);
     });
 
-    appendFileSync(eventsPath, JSON.stringify(makeEvent('evt-after-unsub', 'pipeline.run.started', runId)) + '\n');
+    appendFileSync(
+      eventsPath,
+      `${JSON.stringify(
+        makeEvent('evt-after-unsub', 'pipeline.run.started', runId),
+      )}\n`,
+    );
 
     await waitMs(500);
     expect(pipelineEvents).toHaveLength(0);
@@ -522,8 +640,20 @@ describe('subscribe-events / unsubscribe-events', () => {
     const ws2 = await connect();
 
     // ws1 subscribes to runId1, ws2 subscribes to runId2
-    ws1.send(JSON.stringify({ id: 'sub-a', type: 'subscribe-events', payload: { runId: runId1 } }));
-    ws2.send(JSON.stringify({ id: 'sub-b', type: 'subscribe-events', payload: { runId: runId2 } }));
+    ws1.send(
+      JSON.stringify({
+        id: 'sub-a',
+        type: 'subscribe-events',
+        payload: { runId: runId1 },
+      }),
+    );
+    ws2.send(
+      JSON.stringify({
+        id: 'sub-b',
+        type: 'subscribe-events',
+        payload: { runId: runId2 },
+      }),
+    );
     await Promise.all([
       waitForWsEvent(ws1, 'subscribe-events', null, 1000),
       waitForWsEvent(ws2, 'subscribe-events', null, 1000),
@@ -538,7 +668,11 @@ describe('subscribe-events / unsubscribe-events', () => {
     });
 
     // Only write to runId1's events file
-    appendFileSync(eventsPath1, JSON.stringify(makeEvent('evt-r1', 'pipeline.run.started', runId1)) + '\n');
+    appendFileSync(
+      eventsPath1,
+      JSON.stringify(makeEvent('evt-r1', 'pipeline.run.started', runId1)) +
+        '\n',
+    );
 
     // ws1 should receive the event
     await waitForWsEvent(ws1, 'pipeline-event', null, 3000);

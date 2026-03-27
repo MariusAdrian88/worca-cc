@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 
 // Mock settings-reader so readSettings throws — simulating a missing / corrupt file.
@@ -20,11 +20,15 @@ function waitForWsEvent(ws, type, timeoutMs = 2000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Timed out waiting for WS event "${type}"`)),
-      timeoutMs
+      timeoutMs,
     );
     function onMessage(data) {
       let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
       if (msg.type === type) {
         clearTimeout(timer);
         ws.off('message', onMessage);
@@ -43,7 +47,7 @@ describe('scheduleRefresh – readSettings isolation', () => {
   beforeEach(async () => {
     worcaDir = join(
       tmpdir(),
-      `worca-sr-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `worca-sr-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(worcaDir, { recursive: true });
 
@@ -53,12 +57,12 @@ describe('scheduleRefresh – readSettings isolation', () => {
       settingsPath: join(worcaDir, 'settings.json'),
       prefsPath: join(worcaDir, 'prefs.json'),
     });
-    await new Promise(resolve => httpServer.listen(0, resolve));
+    await new Promise((resolve) => httpServer.listen(0, resolve));
     port = httpServer.address().port;
   });
 
   afterEach(async () => {
-    await new Promise(resolve => httpServer.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
@@ -69,7 +73,7 @@ describe('scheduleRefresh – readSettings isolation', () => {
     writeFileSync(join(worcaDir, 'active_run'), runId);
 
     // Allow watchers to establish
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     const ws = new WebSocket(`ws://localhost:${port}/ws`);
     await new Promise((resolve, reject) => {
@@ -80,7 +84,10 @@ describe('scheduleRefresh – readSettings isolation', () => {
     // Write status.json to trigger scheduleRefresh
     writeFileSync(
       join(runDir, 'status.json'),
-      JSON.stringify({ run_id: runId, stages: { plan: { status: 'running' } } })
+      JSON.stringify({
+        run_id: runId,
+        stages: { plan: { status: 'running' } },
+      }),
     );
 
     // runs-list must be broadcast even though readSettings throws

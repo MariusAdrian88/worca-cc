@@ -1,8 +1,11 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { getTerminalText, copyTerminalToClipboard } from './terminal-clipboard.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  copyTerminalToClipboard,
+  getTerminalText,
+} from './terminal-clipboard.js';
 
 function makeMockTerminal(lines) {
-  const bufferLines = lines.map(text => ({
+  const bufferLines = lines.map((text) => ({
     translateToString: () => text,
   }));
   return {

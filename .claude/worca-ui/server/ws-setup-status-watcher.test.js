@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { attachWsServer } from './ws.js';
 
 function waitMs(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /**
@@ -17,11 +17,15 @@ function waitForWsEvent(ws, type, predicate = null, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Timed out waiting for WS event "${type}"`)),
-      timeoutMs
+      timeoutMs,
     );
     function onMessage(data) {
       let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
       if (msg.type === type && (!predicate || predicate(msg))) {
         clearTimeout(timer);
         ws.off('message', onMessage);
@@ -40,7 +44,7 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
   beforeEach(async () => {
     worcaDir = join(
       tmpdir(),
-      `worca-ssw-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `worca-ssw-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     mkdirSync(worcaDir, { recursive: true });
 
@@ -50,12 +54,12 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
       settingsPath: join(worcaDir, 'settings.json'),
       prefsPath: join(worcaDir, 'prefs.json'),
     });
-    await new Promise(resolve => httpServer.listen(0, resolve));
+    await new Promise((resolve) => httpServer.listen(0, resolve));
     port = httpServer.address().port;
   });
 
   afterEach(async () => {
-    await new Promise(resolve => httpServer.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
@@ -93,17 +97,19 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
       JSON.stringify({
         run_id: runId,
         stages: { plan: { status: 'running' } },
-      })
+      }),
     );
 
     // Expect a runs-list broadcast that contains the new run within 1.5s.
     const msg = await waitForWsEvent(
       ws,
       'runs-list',
-      m => Array.isArray(m.payload?.runs) && m.payload.runs.length > 0,
-      1500
+      (m) => Array.isArray(m.payload?.runs) && m.payload.runs.length > 0,
+      1500,
     );
-    expect(msg.payload.runs.some(r => r.run_id === runId || r.id === runId)).toBe(true);
+    expect(
+      msg.payload.runs.some((r) => r.run_id === runId || r.id === runId),
+    ).toBe(true);
 
     ws.close();
   });
@@ -127,7 +133,7 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
       JSON.stringify({
         run_id: runId,
         stages: { plan: { status: 'running' } },
-      })
+      }),
     );
 
     // Give activeRunWatcher and setupStatusWatcher time to establish
@@ -139,17 +145,12 @@ describe('setupStatusWatcher – retry when run directory not yet created', () =
       JSON.stringify({
         run_id: runId,
         stages: { plan: { status: 'completed' } },
-      })
+      }),
     );
 
     // The watcher callback must handle null filename gracefully and still call scheduleRefresh.
     // Verify a runs-list is broadcast (regardless of null guard path).
-    const msg = await waitForWsEvent(
-      ws,
-      'runs-list',
-      null,
-      3000
-    );
+    const msg = await waitForWsEvent(ws, 'runs-list', null, 3000);
     expect(msg.payload.runs).toBeDefined();
 
     ws.close();

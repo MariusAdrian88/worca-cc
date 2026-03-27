@@ -1,10 +1,19 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const mockPausePipeline = vi.fn().mockReturnValue({ runId: 'run-123', paused: true });
+const mockPausePipeline = vi
+  .fn()
+  .mockReturnValue({ runId: 'run-123', paused: true });
 const mockStartPipeline = vi.fn().mockResolvedValue({ pid: 42000 });
 const mockStopPipeline = vi.fn().mockReturnValue({ pid: 42000, stopped: true });
 
@@ -53,7 +62,9 @@ describe('POST /api/runs/:id/pause', () => {
   it('returns 501 when worcaDir not configured', async () => {
     const { server: s2, base: b2 } = await startServer(undefined);
     try {
-      const res = await fetch(`${b2}/api/runs/run-123/pause`, { method: 'POST' });
+      const res = await fetch(`${b2}/api/runs/run-123/pause`, {
+        method: 'POST',
+      });
       expect(res.status).toBe(501);
       const data = await res.json();
       expect(data.ok).toBe(false);
@@ -63,7 +74,9 @@ describe('POST /api/runs/:id/pause', () => {
   });
 
   it('returns 200 with ok, runId, paused', async () => {
-    const res = await fetch(`${base}/api/runs/run-abc/pause`, { method: 'POST' });
+    const res = await fetch(`${base}/api/runs/run-abc/pause`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -77,8 +90,12 @@ describe('POST /api/runs/:id/pause', () => {
   });
 
   it('returns 500 when pausePipeline throws', async () => {
-    mockPausePipeline.mockImplementation(() => { throw new Error('disk full'); });
-    const res = await fetch(`${base}/api/runs/run-abc/pause`, { method: 'POST' });
+    mockPausePipeline.mockImplementation(() => {
+      throw new Error('disk full');
+    });
+    const res = await fetch(`${base}/api/runs/run-abc/pause`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.ok).toBe(false);
@@ -105,7 +122,9 @@ describe('POST /api/runs/:id/resume', () => {
   it('returns 501 when worcaDir not configured', async () => {
     const { server: s2, base: b2 } = await startServer(undefined);
     try {
-      const res = await fetch(`${b2}/api/runs/run-123/resume`, { method: 'POST' });
+      const res = await fetch(`${b2}/api/runs/run-123/resume`, {
+        method: 'POST',
+      });
       expect(res.status).toBe(501);
       const data = await res.json();
       expect(data.ok).toBe(false);
@@ -115,7 +134,9 @@ describe('POST /api/runs/:id/resume', () => {
   });
 
   it('returns 200 with ok, pid, runId', async () => {
-    const res = await fetch(`${base}/api/runs/run-abc/resume`, { method: 'POST' });
+    const res = await fetch(`${base}/api/runs/run-abc/resume`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -135,7 +156,9 @@ describe('POST /api/runs/:id/resume', () => {
     const err = new Error('Pipeline already running (PID 9999)');
     err.code = 'already_running';
     mockStartPipeline.mockRejectedValue(err);
-    const res = await fetch(`${base}/api/runs/run-abc/resume`, { method: 'POST' });
+    const res = await fetch(`${base}/api/runs/run-abc/resume`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(409);
     const data = await res.json();
     expect(data.ok).toBe(false);
@@ -143,7 +166,9 @@ describe('POST /api/runs/:id/resume', () => {
 
   it('returns 500 on other startPipeline errors', async () => {
     mockStartPipeline.mockRejectedValue(new Error('spawn failed'));
-    const res = await fetch(`${base}/api/runs/run-abc/resume`, { method: 'POST' });
+    const res = await fetch(`${base}/api/runs/run-abc/resume`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.ok).toBe(false);
@@ -170,7 +195,9 @@ describe('POST /api/runs/:id/stop', () => {
   it('returns 501 when worcaDir not configured', async () => {
     const { server: s2, base: b2 } = await startServer(undefined);
     try {
-      const res = await fetch(`${b2}/api/runs/run-123/stop`, { method: 'POST' });
+      const res = await fetch(`${b2}/api/runs/run-123/stop`, {
+        method: 'POST',
+      });
       expect(res.status).toBe(501);
       const data = await res.json();
       expect(data.ok).toBe(false);
@@ -180,7 +207,9 @@ describe('POST /api/runs/:id/stop', () => {
   });
 
   it('returns 200 with ok, stopped, runId, pid', async () => {
-    const res = await fetch(`${base}/api/runs/run-abc/stop`, { method: 'POST' });
+    const res = await fetch(`${base}/api/runs/run-abc/stop`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -206,16 +235,24 @@ describe('POST /api/runs/:id/stop', () => {
   it('returns 404 when no running pipeline found', async () => {
     const err = new Error('No running pipeline found');
     err.code = 'not_running';
-    mockStopPipeline.mockImplementation(() => { throw err; });
-    const res = await fetch(`${base}/api/runs/run-abc/stop`, { method: 'POST' });
+    mockStopPipeline.mockImplementation(() => {
+      throw err;
+    });
+    const res = await fetch(`${base}/api/runs/run-abc/stop`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(404);
     const data = await res.json();
     expect(data.ok).toBe(false);
   });
 
   it('returns 500 on other stopPipeline errors', async () => {
-    mockStopPipeline.mockImplementation(() => { throw new Error('unexpected'); });
-    const res = await fetch(`${base}/api/runs/run-abc/stop`, { method: 'POST' });
+    mockStopPipeline.mockImplementation(() => {
+      throw new Error('unexpected');
+    });
+    const res = await fetch(`${base}/api/runs/run-abc/stop`, {
+      method: 'POST',
+    });
     expect(res.status).toBe(500);
   });
 });
@@ -238,7 +275,11 @@ describe('GET /api/runs/:id/status', () => {
   function writeStatus(runId, statusObj, dir = 'runs') {
     const runDir = join(tmpDir, dir, runId);
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify(statusObj, null, 2), 'utf8');
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify(statusObj, null, 2),
+      'utf8',
+    );
   }
 
   it('returns 501 when worcaDir not configured', async () => {
@@ -276,11 +317,15 @@ describe('GET /api/runs/:id/status', () => {
   });
 
   it('falls back to results/ directory', async () => {
-    writeStatus('run-002', {
-      pipeline_status: 'completed',
-      stage: 'pr',
-      stages: { pr: { status: 'completed', iteration: 1 } },
-    }, 'results');
+    writeStatus(
+      'run-002',
+      {
+        pipeline_status: 'completed',
+        stage: 'pr',
+        stages: { pr: { status: 'completed', iteration: 1 } },
+      },
+      'results',
+    );
     const res = await fetch(`${base}/api/runs/run-002/status`);
     expect(res.status).toBe(200);
     const data = await res.json();

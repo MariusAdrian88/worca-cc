@@ -1,4 +1,13 @@
-import { iconSvg, Circle, Loader, CircleCheck, CircleAlert, Pause, RotateCw, CircleSlash } from './icons.js';
+import {
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  iconSvg,
+  Loader,
+  Pause,
+  RotateCw,
+} from './icons.js';
 
 const CLASS_MAP = {
   pending: 'status-pending',
@@ -11,7 +20,7 @@ const CLASS_MAP = {
   // legacy aliases
   in_progress: 'status-in-progress',
   error: 'status-error',
-  interrupted: 'status-interrupted'
+  interrupted: 'status-interrupted',
 };
 
 const ICON_DATA = {
@@ -25,7 +34,7 @@ const ICON_DATA = {
   // legacy aliases
   in_progress: Loader,
   error: CircleAlert,
-  interrupted: Pause
+  interrupted: Pause,
 };
 
 /**
@@ -43,6 +52,9 @@ export function statusClass(status) {
 export function statusIcon(status, size = 14) {
   const data = ICON_DATA[status];
   if (!data) return '?';
-  const className = (status === 'in_progress' || status === 'running' || status === 'resuming') ? 'icon-spin' : '';
+  const className =
+    status === 'in_progress' || status === 'running' || status === 'resuming'
+      ? 'icon-spin'
+      : '';
   return iconSvg(data, size, className);
 }

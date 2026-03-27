@@ -1,25 +1,31 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { statusIcon, statusClass, resolveStatus } from '../utils/status-badge.js';
-import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
+import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
 import { iconSvg, Pause } from '../utils/icons.js';
+import {
+  resolveStatus,
+  statusClass,
+  statusIcon,
+} from '../utils/status-badge.js';
 
 const BADGE_VARIANT = {
   completed: 'success',
   in_progress: 'warning',
   error: 'danger',
   interrupted: 'warning',
-  pending: 'neutral'
+  pending: 'neutral',
 };
 
 function _statusTooltip(run, status) {
-  const ref = run.status_changed_at ||
-    ((status === 'completed' || status === 'failed') ? run.completed_at : null) ||
+  const ref =
+    run.status_changed_at ||
+    (status === 'completed' || status === 'failed' ? run.completed_at : null) ||
     run.started_at;
   if (!ref) return null;
   const ms = elapsed(ref, null);
   const dur = formatDuration(ms);
-  if (status === 'running' || status === 'resuming') return `Running for ${dur}`;
+  if (status === 'running' || status === 'resuming')
+    return `Running for ${dur}`;
   const label = status.charAt(0).toUpperCase() + status.slice(1);
   return `${label} ${dur} ago`;
 }
@@ -28,7 +34,8 @@ function _lastStageEnd(stages) {
   if (!stages) return null;
   let latest = null;
   for (const s of Object.values(stages)) {
-    if (s.completed_at && (!latest || s.completed_at > latest)) latest = s.completed_at;
+    if (s.completed_at && (!latest || s.completed_at > latest))
+      latest = s.completed_at;
   }
   return latest;
 }
@@ -37,47 +44,64 @@ function _lastStageEnd(stages) {
  * Shared run card component used in both run-list and dashboard active list.
  * Shows title, overall status icon, duration, and stage badges.
  */
-export function runCardView(run, { onClick, beadsCount, onPause, onResume } = {}) {
+export function runCardView(
+  run,
+  { onClick, beadsCount, onPause, onResume } = {},
+) {
   const title = run.work_request?.title || 'Untitled';
   const isActive = run.active;
-  const overallStatus = run.pipeline_status ||
-    (isActive ? 'running' : (run.stage === 'error' ? 'failed' : 'completed'));
+  const overallStatus =
+    run.pipeline_status ||
+    (isActive ? 'running' : run.stage === 'error' ? 'failed' : 'completed');
   const tooltip = _statusTooltip(run, overallStatus);
   const endTime = run.completed_at || _lastStageEnd(run.stages);
-  const duration = run.started_at && endTime
-    ? formatDuration(elapsed(run.started_at, endTime))
-    : run.started_at && isActive
-      ? formatDuration(elapsed(run.started_at, null))
-      : 'N/A';
+  const duration =
+    run.started_at && endTime
+      ? formatDuration(elapsed(run.started_at, endTime))
+      : run.started_at && isActive
+        ? formatDuration(elapsed(run.started_at, null))
+        : 'N/A';
   const branch = run.branch || run.work_request?.branch || '';
   const stages = run.stages ? Object.entries(run.stages) : [];
 
-  const pauseBtn = onPause && (overallStatus === 'running' || overallStatus === 'resuming')
-    ? html`
+  const pauseBtn =
+    onPause && (overallStatus === 'running' || overallStatus === 'resuming')
+      ? html`
         <div class="run-card-actions">
-          <sl-button size="small" variant="warning" outline class="btn-quick-pause" @click=${(e) => { e.stopPropagation(); onPause(run.id); }}>
+          <sl-button size="small" variant="warning" outline class="btn-quick-pause" @click=${(
+            e,
+          ) => {
+            e.stopPropagation();
+            onPause(run.id);
+          }}>
             ${unsafeHTML(iconSvg(Pause, 12))} Pause
           </sl-button>
         </div>
       `
-    : nothing;
+      : nothing;
 
-  const resumeBtn = onResume && (overallStatus === 'paused' || overallStatus === 'failed')
-    ? html`
+  const resumeBtn =
+    onResume && (overallStatus === 'paused' || overallStatus === 'failed')
+      ? html`
         <div class="run-card-actions">
-          <button class="btn-quick-resume" @click=${(e) => { e.stopPropagation(); onResume(run.id); }}>
+          <button class="btn-quick-resume" @click=${(e) => {
+            e.stopPropagation();
+            onResume(run.id);
+          }}>
             Resume
           </button>
         </div>
       `
-    : nothing;
+      : nothing;
 
   return html`
     <div class="run-card ${statusClass(overallStatus)}" @click=${onClick ? () => onClick(run.id) : null}>
       <div class="run-card-top">
-        ${tooltip
-          ? html`<span class="run-card-status" title=${tooltip}>${unsafeHTML(statusIcon(overallStatus, 16))}</span>`
-          : html`<span class="run-card-status">${unsafeHTML(statusIcon(overallStatus, 16))}</span>`}
+        ${
+          tooltip
+            ? html`<span class="run-card-status" title=${tooltip}>${unsafeHTML(statusIcon(overallStatus, 16))}</span>`
+            : html`<span class="run-card-status">${unsafeHTML(statusIcon(overallStatus, 16))}</span>`
+        }
         <span class="run-card-title">${title}</span>
       </div>
       ${branch ? html`<div class="run-card-meta"><span class="run-card-meta-item"><span class="meta-label">Branch:</span> ${branch}</span></div>` : nothing}
@@ -86,7 +110,9 @@ export function runCardView(run, { onClick, beadsCount, onPause, onResume } = {}
         <span class="run-card-meta-item"><span class="meta-label">Finished:</span> ${formatTimestamp(endTime)}</span>
         <span class="run-card-meta-item"><span class="meta-label">Duration:</span> ${duration}</span>
       </div>
-      ${stages.length > 0 ? html`
+      ${
+        stages.length > 0
+          ? html`
         <div class="run-card-stages">
           ${stages.map(([key, stage]) => {
             const status = resolveStatus(stage.status || 'pending', isActive);
@@ -96,11 +122,15 @@ export function runCardView(run, { onClick, beadsCount, onPause, onResume } = {}
           })}
           ${beadsCount > 0 ? html`<sl-badge variant="primary" pill class="run-card-stage-badge">${beadsCount} bead${beadsCount !== 1 ? 's' : ''}</sl-badge>` : nothing}
         </div>
-      ` : beadsCount > 0 ? html`
+      `
+          : beadsCount > 0
+            ? html`
         <div class="run-card-stages">
           <sl-badge variant="primary" pill class="run-card-stage-badge">${beadsCount} bead${beadsCount !== 1 ? 's' : ''}</sl-badge>
         </div>
-      ` : nothing}
+      `
+            : nothing
+      }
       ${pauseBtn}
       ${resumeBtn}
     </div>

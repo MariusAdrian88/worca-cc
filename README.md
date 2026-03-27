@@ -196,6 +196,18 @@ Configure agent models and max turns, pipeline stages, governance rules, pricing
 
 ### Development
 
+After cloning, install the root dev dependencies to enable git hooks:
+
+```bash
+npm install          # installs husky (pre-commit hooks)
+pip install -e ".[dev]"  # installs ruff, pytest, etc.
+```
+
+The pre-commit hook runs automatically on every `git commit` and checks:
+- **ruff** — Python linting
+- **biome** — JavaScript linting and formatting (worca-ui)
+- **esbuild** — UI bundle build
+
 After modifying any source files in `worca-ui/app/`, rebuild the bundle:
 
 ```bash
@@ -275,6 +287,19 @@ Governance hooks run at every tool call — `pre_tool_use` enforces guards and p
 │   ├── app/            # Lit-HTML frontend
 │   └── scripts/        # Build scripts
 └── settings.json       # Configuration
+```
+
+## Linting
+
+```bash
+# Python lint
+ruff check .
+
+# UI lint (JavaScript)
+cd .claude/worca-ui && npm run lint
+
+# Auto-fix lint issues
+cd .claude/worca-ui && npm run lint:fix
 ```
 
 ## Testing

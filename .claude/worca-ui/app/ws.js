@@ -18,13 +18,17 @@ export function createWsClient(options = {}) {
     initialMs: options.backoff?.initialMs ?? 1000,
     maxMs: options.backoff?.maxMs ?? 30000,
     factor: options.backoff?.factor ?? 2,
-    jitterRatio: options.backoff?.jitterRatio ?? 0.2
+    jitterRatio: options.backoff?.jitterRatio ?? 0.2,
   };
 
   const resolveUrl = () => {
     if (options.url && options.url.length > 0) return options.url;
     if (typeof location !== 'undefined') {
-      return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+      return (
+        (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+        location.host +
+        '/ws'
+      );
     }
     return 'ws://localhost/ws';
   };
@@ -49,7 +53,11 @@ export function createWsClient(options = {}) {
 
   function notifyConnection(s) {
     for (const fn of Array.from(connectionHandlers)) {
-      try { fn(s); } catch { /* ignore */ }
+      try {
+        fn(s);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -57,9 +65,15 @@ export function createWsClient(options = {}) {
     if (!shouldReconnect || reconnectTimer) return;
     state = 'reconnecting';
     notifyConnection(state);
-    const base = Math.min(backoff.maxMs, backoff.initialMs * Math.pow(backoff.factor, attempts));
+    const base = Math.min(
+      backoff.maxMs,
+      backoff.initialMs * backoff.factor ** attempts,
+    );
     const jitter = backoff.jitterRatio * base;
-    const delay = Math.max(0, Math.round(base + (Math.random() * 2 - 1) * jitter));
+    const delay = Math.max(
+      0,
+      Math.round(base + (Math.random() * 2 - 1) * jitter),
+    );
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       connect();
@@ -67,7 +81,11 @@ export function createWsClient(options = {}) {
   }
 
   function sendRaw(req) {
-    try { ws?.send(JSON.stringify(req)); } catch { /* ignore */ }
+    try {
+      ws?.send(JSON.stringify(req));
+    } catch {
+      /* ignore */
+    }
   }
 
   function onOpen() {
@@ -82,8 +100,13 @@ export function createWsClient(options = {}) {
 
   function onMessage(ev) {
     let msg;
-    try { msg = JSON.parse(String(ev.data)); } catch { return; }
-    if (!msg || typeof msg.id !== 'string' || typeof msg.type !== 'string') return;
+    try {
+      msg = JSON.parse(String(ev.data));
+    } catch {
+      return;
+    }
+    if (!msg || typeof msg.id !== 'string' || typeof msg.type !== 'string')
+      return;
 
     if (pending.has(msg.id)) {
       const entry = pending.get(msg.id);
@@ -100,7 +123,11 @@ export function createWsClient(options = {}) {
     const set = handlers.get(msg.type);
     if (set && set.size > 0) {
       for (const fn of Array.from(set)) {
-        try { fn(msg.payload); } catch { /* ignore */ }
+        try {
+          fn(msg.payload);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -125,7 +152,9 @@ export function createWsClient(options = {}) {
       notifyConnection(state);
       ws.addEventListener('open', onOpen);
       ws.addEventListener('message', onMessage);
-      ws.addEventListener('error', () => { /* let close handle it */ });
+      ws.addEventListener('error', () => {
+        /* let close handle it */
+      });
       ws.addEventListener('close', onClose);
     } catch {
       scheduleReconnect();
@@ -155,12 +184,16 @@ export function createWsClient(options = {}) {
       if (!handlers.has(type)) handlers.set(type, new Set());
       const set = handlers.get(type);
       set?.add(handler);
-      return () => { set?.delete(handler); };
+      return () => {
+        set?.delete(handler);
+      };
     },
 
     onConnection(handler) {
       connectionHandlers.add(handler);
-      return () => { connectionHandlers.delete(handler); };
+      return () => {
+        connectionHandlers.delete(handler);
+      };
     },
 
     close() {
@@ -169,9 +202,15 @@ export function createWsClient(options = {}) {
         clearTimeout(reconnectTimer);
         reconnectTimer = null;
       }
-      try { ws?.close(); } catch { /* ignore */ }
+      try {
+        ws?.close();
+      } catch {
+        /* ignore */
+      }
     },
 
-    getState() { return state; }
+    getState() {
+      return state;
+    },
   };
 }

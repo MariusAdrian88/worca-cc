@@ -1,7 +1,17 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { statusClass, resolveStatus } from '../utils/status-badge.js';
-import { iconSvg, Circle, Loader, CircleCheck, CircleAlert, Pause, RefreshCw, CircleSlash, RotateCw } from '../utils/icons.js';
+import {
+  Circle,
+  CircleAlert,
+  CircleCheck,
+  CircleSlash,
+  iconSvg,
+  Loader,
+  Pause,
+  RefreshCw,
+  RotateCw,
+} from '../utils/icons.js';
+import { resolveStatus, statusClass } from '../utils/status-badge.js';
 
 const STAGE_ICON = {
   pending: Circle,
@@ -13,11 +23,11 @@ const STAGE_ICON = {
   paused: Pause,
   interrupted: Pause,
   resuming: RotateCw,
-  skipped: CircleSlash
+  skipped: CircleSlash,
 };
 
 function stageLabel(key, stageUi) {
-  if (stageUi && stageUi[key]?.label) return stageUi[key].label;
+  if (stageUi?.[key]?.label) return stageUi[key].label;
   return key.replace(/_/g, ' ').toUpperCase();
 }
 
@@ -25,7 +35,8 @@ export function stageTimelineView(stages, stageUi = {}, isActive = true) {
   if (!stages || typeof stages !== 'object') return html``;
 
   const entries = Object.entries(stages);
-  if (entries.length === 0) return html`<div class="empty-state">No stages</div>`;
+  if (entries.length === 0)
+    return html`<div class="empty-state">No stages</div>`;
 
   return html`
     <div class="stage-timeline">
@@ -33,7 +44,10 @@ export function stageTimelineView(stages, stageUi = {}, isActive = true) {
         const status = resolveStatus(stage.status || 'pending', isActive);
         const iconData = STAGE_ICON[status] || Circle;
         const label = stageLabel(key, stageUi);
-        const isPulse = status === 'in_progress' || status === 'running' || status === 'resuming';
+        const isPulse =
+          status === 'in_progress' ||
+          status === 'running' ||
+          status === 'resuming';
         const iteration = stage.iteration;
         const iconClass = isPulse ? 'icon-spin' : '';
 

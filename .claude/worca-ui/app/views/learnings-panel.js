@@ -1,7 +1,15 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Lightbulb, Loader, AlertTriangle, RefreshCw, ClipboardCopy, Zap } from '../utils/icons.js';
-import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
+import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
+import {
+  AlertTriangle,
+  ClipboardCopy,
+  iconSvg,
+  Lightbulb,
+  Loader,
+  RefreshCw,
+  Zap,
+} from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
 
 /**
@@ -9,16 +17,23 @@ import { scrollOnExpand } from '../utils/scroll.js';
  */
 export function importanceBadge(importance) {
   switch (importance) {
-    case 'critical': return 'danger';
-    case 'high': return 'warning';
-    case 'medium': return 'primary';
-    case 'low': return 'neutral';
-    default: return 'neutral';
+    case 'critical':
+      return 'danger';
+    case 'high':
+      return 'warning';
+    case 'medium':
+      return 'primary';
+    case 'low':
+      return 'neutral';
+    default:
+      return 'neutral';
   }
 }
 
 function timingStripView(startedAt, completedAt) {
-  const dur = startedAt ? formatDuration(elapsed(startedAt, completedAt || null)) : '';
+  const dur = startedAt
+    ? formatDuration(elapsed(startedAt, completedAt || null))
+    : '';
   return html`
     <div class="timing-strip">
       ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> <span class="meta-value">${formatTimestamp(startedAt)}</span></span>` : nothing}
@@ -87,8 +102,10 @@ function summaryStripView(summary) {
 const IMPORTANCE_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
 function sortByImportance(observations) {
-  return [...observations].sort((a, b) =>
-    (IMPORTANCE_ORDER[a.importance] ?? 4) - (IMPORTANCE_ORDER[b.importance] ?? 4)
+  return [...observations].sort(
+    (a, b) =>
+      (IMPORTANCE_ORDER[a.importance] ?? 4) -
+      (IMPORTANCE_ORDER[b.importance] ?? 4),
   );
 }
 
@@ -105,7 +122,8 @@ function observationsTableView(observations) {
         <span class="col-center">Count</span>
         <span class="col-center">${unsafeHTML(iconSvg(Zap, 12))}</span>
       </div>
-      ${sorted.map(obs => html`
+      ${sorted.map(
+        (obs) => html`
         <div class="learnings-table-row">
           <span class="col-center">
             <sl-badge variant="${importanceBadge(obs.importance)}" pill>
@@ -122,7 +140,8 @@ function observationsTableView(observations) {
             </button>
           </sl-tooltip>
         </div>
-      `)}
+      `,
+      )}
     </div>
   `;
 }
@@ -137,7 +156,8 @@ function suggestionsTableView(suggestions) {
         <span>Rationale</span>
         <span class="col-center">${unsafeHTML(iconSvg(Zap, 12))}</span>
       </div>
-      ${suggestions.map(s => html`
+      ${suggestions.map(
+        (s) => html`
         <div class="learnings-table-row learnings-table-row--suggestions">
           <span class="learnings-target">${s.target}</span>
           <span>${s.description}</span>
@@ -148,7 +168,8 @@ function suggestionsTableView(suggestions) {
             </button>
           </sl-tooltip>
         </div>
-      `)}
+      `,
+      )}
     </div>
   `;
 }
@@ -158,11 +179,14 @@ function recurringPatternsView(patterns) {
   const crossBead = patterns.cross_bead || [];
   const testFix = patterns.test_fix_loops || [];
   const reviewFix = patterns.review_fix_loops || [];
-  if (crossBead.length === 0 && testFix.length === 0 && reviewFix.length === 0) return nothing;
+  if (crossBead.length === 0 && testFix.length === 0 && reviewFix.length === 0)
+    return nothing;
 
   return html`
     <h4 class="learnings-table-title">Recurring Patterns</h4>
-    ${crossBead.length > 0 ? html`
+    ${
+      crossBead.length > 0
+        ? html`
       <h5 class="learnings-subtable-title">Cross-Bead</h5>
       <div class="learnings-table">
         <div class="learnings-table-header learnings-table-header--patterns">
@@ -170,16 +194,22 @@ function recurringPatternsView(patterns) {
           <span>Affected Beads</span>
           <span class="col-center">Count</span>
         </div>
-        ${crossBead.map(p => html`
+        ${crossBead.map(
+          (p) => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
             <span>${(p.affected_beads || []).join(', ')}</span>
             <span class="col-center">${p.frequency}</span>
           </div>
-        `)}
+        `,
+        )}
       </div>
-    ` : nothing}
-    ${testFix.length > 0 ? html`
+    `
+        : nothing
+    }
+    ${
+      testFix.length > 0
+        ? html`
       <h5 class="learnings-subtable-title">Test-Fix Loops</h5>
       <div class="learnings-table">
         <div class="learnings-table-header learnings-table-header--patterns">
@@ -187,7 +217,8 @@ function recurringPatternsView(patterns) {
           <span class="col-center">Iterations</span>
           <span class="col-center">Resolved</span>
         </div>
-        ${testFix.map(p => html`
+        ${testFix.map(
+          (p) => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
             <span class="col-center">${p.loop_iterations}</span>
@@ -195,10 +226,15 @@ function recurringPatternsView(patterns) {
               <sl-badge variant="${p.resolved ? 'success' : 'warning'}" pill>${p.resolved ? 'Yes' : 'No'}</sl-badge>
             </span>
           </div>
-        `)}
+        `,
+        )}
       </div>
-    ` : nothing}
-    ${reviewFix.length > 0 ? html`
+    `
+        : nothing
+    }
+    ${
+      reviewFix.length > 0
+        ? html`
       <h5 class="learnings-subtable-title">Review-Fix Loops</h5>
       <div class="learnings-table">
         <div class="learnings-table-header learnings-table-header--patterns">
@@ -206,7 +242,8 @@ function recurringPatternsView(patterns) {
           <span class="col-center">Iterations</span>
           <span class="col-center">Resolved</span>
         </div>
-        ${reviewFix.map(p => html`
+        ${reviewFix.map(
+          (p) => html`
           <div class="learnings-table-row learnings-table-row--patterns">
             <span>${p.pattern}</span>
             <span class="col-center">${p.loop_iterations}</span>
@@ -214,9 +251,12 @@ function recurringPatternsView(patterns) {
               <sl-badge variant="${p.resolved ? 'success' : 'warning'}" pill>${p.resolved ? 'Yes' : 'No'}</sl-badge>
             </span>
           </div>
-        `)}
+        `,
+        )}
       </div>
-    ` : nothing}
+    `
+        : nothing
+    }
   `;
 }
 
@@ -230,10 +270,12 @@ const STALE_THRESHOLD_MS = 15 * 60 * 1000; // 15 minutes
 export function learningsSectionView(learnStage, options = {}) {
   const status = learnStage?.status;
   const output = learnStage?.iterations?.[0]?.output;
-  const hasData = output && output.observations;
+  const hasData = output?.observations;
   const error = learnStage?.error || learnStage?.iterations?.[0]?.error;
-  const startedAt = learnStage?.started_at || learnStage?.iterations?.[0]?.started_at;
-  const completedAt = learnStage?.completed_at || learnStage?.iterations?.[0]?.completed_at;
+  const startedAt =
+    learnStage?.started_at || learnStage?.iterations?.[0]?.started_at;
+  const completedAt =
+    learnStage?.completed_at || learnStage?.iterations?.[0]?.completed_at;
 
   let innerContent;
 
@@ -291,13 +333,14 @@ export function learningsSectionView(learnStage, options = {}) {
     const turns = iter?.turns;
     const costUsd = iter?.cost_usd;
     const apiMs = iter?.duration_api_ms;
-    const wallMs = startedAt && completedAt ? elapsed(startedAt, completedAt) : 0;
+    const wallMs =
+      startedAt && completedAt ? elapsed(startedAt, completedAt) : 0;
 
     innerContent = html`
       ${timingStripView(startedAt, completedAt)}
       <div class="stage-info-strip">
         ${turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> <span class="meta-value">${turns}</span></span>` : nothing}
-        ${apiMs ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(apiMs)}${wallMs > 0 ? ` (${Math.round(apiMs / wallMs * 100)}%)` : ''}</span></span>` : nothing}
+        ${apiMs ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(apiMs)}${wallMs > 0 ? ` (${Math.round((apiMs / wallMs) * 100)}%)` : ''}</span></span>` : nothing}
         ${costUsd != null ? html`<span class="stage-info-item"><span class="meta-label">Cost:</span> <span class="meta-value">$${Number(costUsd).toFixed(2)}</span></span>` : nothing}
       </div>
       ${summaryStripView(output.run_summary)}
@@ -331,11 +374,15 @@ export function learningsSectionView(learnStage, options = {}) {
         <div slot="summary" class="learnings-header">
           <span class="learnings-icon">${unsafeHTML(iconSvg(Lightbulb, 16))}</span>
           <span class="learnings-title">Learnings</span>
-          ${isInProgress ? html`
+          ${
+            isInProgress
+              ? html`
             <sl-badge variant="warning" pill>
               ${unsafeHTML(iconSvg(Loader, 10, 'icon-spin'))} Analyzing
             </sl-badge>
-          ` : nothing}
+          `
+              : nothing
+          }
           ${hasData ? html`<span class="learnings-count">${countLabel}</span>` : nothing}
           ${status === 'error' ? html`<sl-badge variant="danger" pill>Error</sl-badge>` : nothing}
         </div>

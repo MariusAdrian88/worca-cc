@@ -1,5 +1,4 @@
 """Tests for plan_check.py - Block source file writes without MASTER_PLAN.md."""
-import os
 import pytest
 from worca.hooks.plan_check import check_plan
 

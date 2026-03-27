@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { runDetailView } from './run-detail.js';
 
 function renderToString(template) {
@@ -12,7 +12,7 @@ function renderToString(template) {
       const v = template.values[i];
       if (typeof v === 'string') result += v;
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
     }
   });
   return result;

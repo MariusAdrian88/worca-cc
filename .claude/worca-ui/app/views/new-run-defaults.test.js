@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getDefaults, loadSettings } from './settings.js';
 
 describe('getDefaults — cross-view wiring', () => {
@@ -22,12 +22,13 @@ describe('getDefaults — cross-view wiring', () => {
   it('returns stored defaults after loadSettings populates them', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        worca: {
-          defaults: { msize: 5, mloops: 3 },
-        },
-        permissions: {},
-      }),
+      json: () =>
+        Promise.resolve({
+          worca: {
+            defaults: { msize: 5, mloops: 3 },
+          },
+          permissions: {},
+        }),
     });
 
     await loadSettings();
@@ -40,10 +41,11 @@ describe('getDefaults — cross-view wiring', () => {
   it('normalizes missing defaults to { msize: 1, mloops: 1 } during loadSettings', async () => {
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        worca: {},
-        permissions: {},
-      }),
+      json: () =>
+        Promise.resolve({
+          worca: {},
+          permissions: {},
+        }),
     });
 
     await loadSettings();

@@ -26,7 +26,7 @@ export function createInbox(maxSize = 500) {
 
     list(sinceId) {
       if (sinceId != null) {
-        return events.filter(e => e.id > sinceId);
+        return events.filter((e) => e.id > sinceId);
       }
       return [...events];
     },

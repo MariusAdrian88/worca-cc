@@ -6,7 +6,7 @@
  *
  * We test the pure logic (title formatting, store contract) without DOM.
  */
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createStore } from './state.js';
 import { formatTitle } from './utils/title.js';
 

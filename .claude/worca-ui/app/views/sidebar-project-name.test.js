@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { sidebarView } from './sidebar.js';
 
 function makeState(overrides = {}) {
@@ -27,7 +27,7 @@ function collectStrings(tpl) {
   if (tpl.values) {
     for (const v of tpl.values) {
       if (typeof v === 'string') out.push(v);
-      else if (v && v.strings) out.push(...collectStrings(v));
+      else if (v?.strings) out.push(...collectStrings(v));
     }
   }
   return out;

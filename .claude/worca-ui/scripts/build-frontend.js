@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdirSync, copyFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,7 +37,7 @@ async function run() {
       outfile,
       sourcemap: true,
       minify: true,
-      legalComments: 'none'
+      legalComments: 'none',
     });
     console.log('built', path.relative(repoRoot, outfile));
   } catch (err) {

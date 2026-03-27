@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { dashboardView } from './dashboard.js';
 
 function renderToString(template) {
@@ -13,16 +13,36 @@ function renderToString(template) {
       if (typeof v === 'string') result += v;
       else if (typeof v === 'number') result += String(v);
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
     }
   });
   return result;
 }
 
-const running1 = { id: 'r1', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
-const running2 = { id: 'r2', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
-const paused1 = { id: 'p1', pipeline_status: 'paused', active: true, started_at: '2026-01-01T00:00:00Z' };
-const failed1 = { id: 'f1', pipeline_status: 'failed', active: true, started_at: '2026-01-01T00:00:00Z' };
+const running1 = {
+  id: 'r1',
+  pipeline_status: 'running',
+  active: true,
+  started_at: '2026-01-01T00:00:00Z',
+};
+const running2 = {
+  id: 'r2',
+  pipeline_status: 'running',
+  active: true,
+  started_at: '2026-01-01T00:00:00Z',
+};
+const paused1 = {
+  id: 'p1',
+  pipeline_status: 'paused',
+  active: true,
+  started_at: '2026-01-01T00:00:00Z',
+};
+const failed1 = {
+  id: 'f1',
+  pipeline_status: 'failed',
+  active: true,
+  started_at: '2026-01-01T00:00:00Z',
+};
 
 // ─── Grouping ────────────────────────────────────────────────────────────────
 
@@ -48,13 +68,17 @@ describe('dashboardView - active run grouping', () => {
   it('running group appears before paused group in output', () => {
     const state = { runs: { r1: running1, p1: paused1 } };
     const output = renderToString(dashboardView(state));
-    expect(output.indexOf('active-group-running')).toBeLessThan(output.indexOf('active-group-paused'));
+    expect(output.indexOf('active-group-running')).toBeLessThan(
+      output.indexOf('active-group-paused'),
+    );
   });
 
   it('paused group appears before failed group in output', () => {
     const state = { runs: { p1: paused1, f1: failed1 } };
     const output = renderToString(dashboardView(state));
-    expect(output.indexOf('active-group-paused')).toBeLessThan(output.indexOf('active-group-failed'));
+    expect(output.indexOf('active-group-paused')).toBeLessThan(
+      output.indexOf('active-group-failed'),
+    );
   });
 
   it('does not render active-group-running when no running runs', () => {
@@ -76,7 +100,12 @@ describe('dashboardView - active run grouping', () => {
   });
 
   it('treats resuming status as part of running group', () => {
-    const resuming = { id: 'res1', pipeline_status: 'resuming', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const resuming = {
+      id: 'res1',
+      pipeline_status: 'resuming',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const state = { runs: { res1: resuming } };
     const output = renderToString(dashboardView(state));
     expect(output).toContain('active-group-running');
@@ -115,27 +144,69 @@ describe('dashboardView - count badges', () => {
 
 describe('dashboardView - sort order within groups', () => {
   it('renders newer running run before older running run', () => {
-    const older = { id: 'rA', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z', work_request: { title: 'Older Running' } };
-    const newer = { id: 'rB', pipeline_status: 'running', active: true, started_at: '2026-03-01T00:00:00Z', work_request: { title: 'Newer Running' } };
+    const older = {
+      id: 'rA',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+      work_request: { title: 'Older Running' },
+    };
+    const newer = {
+      id: 'rB',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-03-01T00:00:00Z',
+      work_request: { title: 'Newer Running' },
+    };
     const state = { runs: { rA: older, rB: newer } };
     const output = renderToString(dashboardView(state));
-    expect(output.indexOf('Newer Running')).toBeLessThan(output.indexOf('Older Running'));
+    expect(output.indexOf('Newer Running')).toBeLessThan(
+      output.indexOf('Older Running'),
+    );
   });
 
   it('renders newer paused run before older paused run', () => {
-    const older = { id: 'pA', pipeline_status: 'paused', active: true, started_at: '2026-01-01T00:00:00Z', work_request: { title: 'Older Paused' } };
-    const newer = { id: 'pB', pipeline_status: 'paused', active: true, started_at: '2026-03-01T00:00:00Z', work_request: { title: 'Newer Paused' } };
+    const older = {
+      id: 'pA',
+      pipeline_status: 'paused',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+      work_request: { title: 'Older Paused' },
+    };
+    const newer = {
+      id: 'pB',
+      pipeline_status: 'paused',
+      active: true,
+      started_at: '2026-03-01T00:00:00Z',
+      work_request: { title: 'Newer Paused' },
+    };
     const state = { runs: { pA: older, pB: newer } };
     const output = renderToString(dashboardView(state));
-    expect(output.indexOf('Newer Paused')).toBeLessThan(output.indexOf('Older Paused'));
+    expect(output.indexOf('Newer Paused')).toBeLessThan(
+      output.indexOf('Older Paused'),
+    );
   });
 
   it('renders newer failed run before older failed run', () => {
-    const older = { id: 'fA', pipeline_status: 'failed', active: true, started_at: '2026-01-01T00:00:00Z', work_request: { title: 'Older Failed' } };
-    const newer = { id: 'fB', pipeline_status: 'failed', active: true, started_at: '2026-03-01T00:00:00Z', work_request: { title: 'Newer Failed' } };
+    const older = {
+      id: 'fA',
+      pipeline_status: 'failed',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+      work_request: { title: 'Older Failed' },
+    };
+    const newer = {
+      id: 'fB',
+      pipeline_status: 'failed',
+      active: true,
+      started_at: '2026-03-01T00:00:00Z',
+      work_request: { title: 'Newer Failed' },
+    };
     const state = { runs: { fA: older, fB: newer } };
     const output = renderToString(dashboardView(state));
-    expect(output.indexOf('Newer Failed')).toBeLessThan(output.indexOf('Older Failed'));
+    expect(output.indexOf('Newer Failed')).toBeLessThan(
+      output.indexOf('Older Failed'),
+    );
   });
 });
 

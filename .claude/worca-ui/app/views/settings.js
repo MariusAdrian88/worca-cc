@@ -1,6 +1,19 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Users, Shield, GitBranch, ChevronRight, Save, Settings, Bell, Plus, X, Zap, RefreshCw } from '../utils/icons.js';
+import {
+  Bell,
+  ChevronRight,
+  GitBranch,
+  iconSvg,
+  Plus,
+  RefreshCw,
+  Save,
+  Settings,
+  Shield,
+  Users,
+  X,
+  Zap,
+} from '../utils/icons.js';
 
 // Stage-to-agent mapping (from stages.py STAGE_AGENT_MAP)
 const STAGE_AGENT_MAP = {
@@ -10,21 +23,36 @@ const STAGE_AGENT_MAP = {
   test: 'tester',
   review: 'guardian',
   pr: 'guardian',
-  learn: 'learner'
+  learn: 'learner',
 };
 
-const STAGE_ORDER = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr', 'learn'];
-const AGENT_NAMES = ['planner', 'coordinator', 'implementer', 'tester', 'guardian', 'learner'];
+const STAGE_ORDER = [
+  'plan',
+  'coordinate',
+  'implement',
+  'test',
+  'review',
+  'pr',
+  'learn',
+];
+const AGENT_NAMES = [
+  'planner',
+  'coordinator',
+  'implementer',
+  'tester',
+  'guardian',
+  'learner',
+];
 const MODEL_OPTIONS = ['opus', 'sonnet', 'haiku'];
 
 const DEFAULT_STAGES = {
-  plan:       { agent: 'planner',     enabled: true },
+  plan: { agent: 'planner', enabled: true },
   coordinate: { agent: 'coordinator', enabled: true },
-  implement:  { agent: 'implementer', enabled: true },
-  test:       { agent: 'tester',      enabled: true },
-  review:     { agent: 'guardian',     enabled: true },
-  pr:         { agent: 'guardian',     enabled: true },
-  learn:      { agent: 'learner',     enabled: false }
+  implement: { agent: 'implementer', enabled: true },
+  test: { agent: 'tester', enabled: true },
+  review: { agent: 'guardian', enabled: true },
+  pr: { agent: 'guardian', enabled: true },
+  learn: { agent: 'learner', enabled: false },
 };
 
 export const PRICING_MODELS = ['opus', 'sonnet'];
@@ -36,30 +64,61 @@ export const PRICING_FIELDS = [
 ];
 export const DEFAULT_PRICING = {
   models: {
-    opus: { input_per_mtok: 15, output_per_mtok: 75, cache_write_per_mtok: 18.75, cache_read_per_mtok: 1.5 },
-    sonnet: { input_per_mtok: 3, output_per_mtok: 15, cache_write_per_mtok: 3.75, cache_read_per_mtok: 0.3 },
+    opus: {
+      input_per_mtok: 15,
+      output_per_mtok: 75,
+      cache_write_per_mtok: 18.75,
+      cache_read_per_mtok: 1.5,
+    },
+    sonnet: {
+      input_per_mtok: 3,
+      output_per_mtok: 15,
+      cache_write_per_mtok: 3.75,
+      cache_read_per_mtok: 0.3,
+    },
   },
   currency: 'USD',
   last_updated: '2025-05-01',
 };
 
 const GUARD_RULES = [
-  { key: 'block_rm_rf', label: 'Block rm -rf', description: 'Prevent recursive force-delete commands' },
-  { key: 'block_env_write', label: 'Block .env writes', description: 'Prevent writing to .env files' },
-  { key: 'block_force_push', label: 'Block force push', description: 'Prevent git push --force' },
-  { key: 'restrict_git_commit', label: 'Restrict git commit', description: 'Only guardian agent may commit' },
+  {
+    key: 'block_rm_rf',
+    label: 'Block rm -rf',
+    description: 'Prevent recursive force-delete commands',
+  },
+  {
+    key: 'block_env_write',
+    label: 'Block .env writes',
+    description: 'Prevent writing to .env files',
+  },
+  {
+    key: 'block_force_push',
+    label: 'Block force push',
+    description: 'Prevent git push --force',
+  },
+  {
+    key: 'restrict_git_commit',
+    label: 'Restrict git commit',
+    description: 'Only guardian agent may commit',
+  },
 ];
 
 const DEFAULT_GOVERNANCE = {
-  guards: { block_rm_rf: true, block_env_write: true, block_force_push: true, restrict_git_commit: true },
+  guards: {
+    block_rm_rf: true,
+    block_env_write: true,
+    block_force_push: true,
+    restrict_git_commit: true,
+  },
   test_gate_strikes: 2,
   dispatch: {
     planner: [],
     coordinator: ['implementer'],
     implementer: [],
     tester: [],
-    guardian: []
-  }
+    guardian: [],
+  },
 };
 
 // --- Module state ---
@@ -86,7 +145,11 @@ export async function loadSettings() {
     }
     // Ensure preflight defaults exist (script-based stage, not in STAGE_ORDER)
     if (!settingsData.worca.stages.preflight) {
-      settingsData.worca.stages.preflight = { enabled: true, script: '.claude/scripts/preflight_checks.py', require: [] };
+      settingsData.worca.stages.preflight = {
+        enabled: true,
+        script: '.claude/scripts/preflight_checks.py',
+        require: [],
+      };
     } else {
       const pf = settingsData.worca.stages.preflight;
       if (pf.enabled === undefined) pf.enabled = true;
@@ -94,15 +157,20 @@ export async function loadSettings() {
       if (!pf.require) pf.require = [];
     }
     if (!settingsData.worca.plan_path_template) {
-      settingsData.worca.plan_path_template = 'docs/plans/{timestamp}-{title_slug}.md';
+      settingsData.worca.plan_path_template =
+        'docs/plans/{timestamp}-{title_slug}.md';
     }
     if (!settingsData.worca.defaults) {
       settingsData.worca.defaults = { msize: 1, mloops: 1 };
     }
     if (!settingsData.worca.pricing) {
-      settingsData.worca.pricing = { ...DEFAULT_PRICING, models: { ...DEFAULT_PRICING.models } };
+      settingsData.worca.pricing = {
+        ...DEFAULT_PRICING,
+        models: { ...DEFAULT_PRICING.models },
+      };
     } else {
-      if (!settingsData.worca.pricing.models) settingsData.worca.pricing.models = {};
+      if (!settingsData.worca.pricing.models)
+        settingsData.worca.pricing.models = {};
       for (const model of PRICING_MODELS) {
         settingsData.worca.pricing.models[model] = {
           ...DEFAULT_PRICING.models[model],
@@ -116,12 +184,23 @@ export async function loadSettings() {
       settingsData.worca.governance = {
         ...DEFAULT_GOVERNANCE,
         ...settingsData.worca.governance,
-        guards: { ...DEFAULT_GOVERNANCE.guards, ...(settingsData.worca.governance.guards || {}) },
-        dispatch: { ...DEFAULT_GOVERNANCE.dispatch, ...(settingsData.worca.governance.dispatch || {}) }
+        guards: {
+          ...DEFAULT_GOVERNANCE.guards,
+          ...(settingsData.worca.governance.guards || {}),
+        },
+        dispatch: {
+          ...DEFAULT_GOVERNANCE.dispatch,
+          ...(settingsData.worca.governance.dispatch || {}),
+        },
       };
     }
     if (!settingsData.worca.events) {
-      settingsData.worca.events = { enabled: true, agent_telemetry: false, hook_events: true, rate_limit_ms: 1000 };
+      settingsData.worca.events = {
+        enabled: true,
+        agent_telemetry: false,
+        hook_events: true,
+        rate_limit_ms: 1000,
+      };
     }
     if (!settingsData.worca.budget) {
       settingsData.worca.budget = {};
@@ -132,7 +211,7 @@ export async function loadSettings() {
   } catch (err) {
     settingsData = null;
     saveStatus = 'error';
-    saveMessage = 'Failed to load settings: ' + err.message;
+    saveMessage = `Failed to load settings: ${err.message}`;
   }
 }
 
@@ -144,7 +223,7 @@ async function saveSettings(data, rerender) {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
+      body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const result = await res.json();
@@ -153,7 +232,7 @@ async function saveSettings(data, rerender) {
     saveMessage = 'Settings saved successfully';
   } catch (err) {
     saveStatus = 'error';
-    saveMessage = 'Failed to save: ' + err.message;
+    saveMessage = `Failed to save: ${err.message}`;
   }
   rerender();
   // Auto-clear success after 3s
@@ -183,7 +262,7 @@ async function resetSection(section, rerender) {
     saveMessage = `${section.charAt(0).toUpperCase() + section.slice(1)} reset to defaults`;
   } catch (err) {
     saveStatus = 'error';
-    saveMessage = 'Failed to reset: ' + err.message;
+    saveMessage = `Failed to reset: ${err.message}`;
   }
   rerender();
   if (saveStatus === 'success') {
@@ -206,7 +285,7 @@ function readAgentsFromDom() {
     const turnsEl = document.getElementById(`agent-${name}-turns`);
     agents[name] = {
       model: modelEl?.value || 'sonnet',
-      max_turns: parseInt(turnsEl?.value, 10) || 30
+      max_turns: parseInt(turnsEl?.value, 10) || 30,
     };
   }
   return agents;
@@ -236,7 +315,7 @@ function readStagesFromDom() {
     const agentEl = document.getElementById(`stage-${stage}-agent`);
     stages[stage] = {
       agent: agentEl?.value || DEFAULT_STAGES[stage].agent,
-      enabled: enabledEl?.checked ?? true
+      enabled: enabledEl?.checked ?? true,
     };
   }
   return stages;
@@ -250,7 +329,12 @@ function readPreflightFromDom() {
   return {
     enabled: enabledEl?.checked ?? true,
     script: scriptEl?.value?.trim() || '.claude/scripts/preflight_checks.py',
-    require: requireVal ? requireVal.split(',').map(s => s.trim()).filter(Boolean) : [],
+    require: requireVal
+      ? requireVal
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [],
   };
 }
 
@@ -267,7 +351,12 @@ function readGovernanceFromDom() {
   for (const agent of AGENT_NAMES) {
     const el = document.getElementById(`dispatch-${agent}`);
     const val = (el?.value || '').trim();
-    dispatch[agent] = val ? val.split(',').map(s => s.trim()).filter(Boolean) : [];
+    dispatch[agent] = val
+      ? val
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
   }
 
   return { guards, test_gate_strikes, dispatch };
@@ -276,8 +365,8 @@ function readGovernanceFromDom() {
 export function readPermissionsFromDom() {
   const inputs = document.querySelectorAll('.perm-input');
   return Array.from(inputs)
-    .map(el => el.value.trim())
-    .filter(v => v.length > 0);
+    .map((el) => el.value.trim())
+    .filter((v) => v.length > 0);
 }
 
 export function readPricingFromDom() {
@@ -307,7 +396,7 @@ function agentsTab(worca, rerender) {
   return html`
     <div class="settings-tab-content">
       <div class="settings-cards">
-        ${AGENT_NAMES.map(name => {
+        ${AGENT_NAMES.map((name) => {
           const agent = agents[name] || {};
           return html`
             <div class="settings-card">
@@ -319,7 +408,7 @@ function agentsTab(worca, rerender) {
                 <div class="settings-field">
                   <label class="settings-label">Model</label>
                   <sl-select id="agent-${name}-model" .value="${agent.model || 'sonnet'}" size="small">
-                    ${MODEL_OPTIONS.map(m => html`<sl-option value="${m}">${m}</sl-option>`)}
+                    ${MODEL_OPTIONS.map((m) => html`<sl-option value="${m}">${m}</sl-option>`)}
                   </sl-select>
                 </div>
                 <div class="settings-field">
@@ -352,7 +441,11 @@ function pipelineTab(worca, rerender) {
   const loops = worca.loops || {};
   const stages = worca.stages || DEFAULT_STAGES;
 
-  const preflight = stages.preflight || { enabled: true, script: '.claude/scripts/preflight_checks.py', require: [] };
+  const preflight = stages.preflight || {
+    enabled: true,
+    script: '.claude/scripts/preflight_checks.py',
+    require: [],
+  };
 
   return html`
     <div class="settings-tab-content">
@@ -390,24 +483,32 @@ function pipelineTab(worca, rerender) {
                     if (e.target.checked) {
                       node.classList.remove('pipeline-stage-node--disabled');
                       node.classList.add('pipeline-stage-node--enabled');
-                      node.querySelector('.pipeline-stage-name').classList.remove('pipeline-stage-name--disabled');
+                      node
+                        .querySelector('.pipeline-stage-name')
+                        .classList.remove('pipeline-stage-name--disabled');
                     } else {
                       node.classList.remove('pipeline-stage-node--enabled');
                       node.classList.add('pipeline-stage-node--disabled');
-                      node.querySelector('.pipeline-stage-name').classList.add('pipeline-stage-name--disabled');
+                      node
+                        .querySelector('.pipeline-stage-name')
+                        .classList.add('pipeline-stage-name--disabled');
                     }
                   }}></sl-switch>
               </div>
               <div class="settings-field pipeline-stage-field">
                 <label class="settings-label">Agent</label>
                 <sl-select id="stage-${stage}-agent" .value="${stageConfig.agent || STAGE_AGENT_MAP[stage]}" size="small">
-                  ${AGENT_NAMES.map(a => html`<sl-option value="${a}">${a}</sl-option>`)}
+                  ${AGENT_NAMES.map((a) => html`<sl-option value="${a}">${a}</sl-option>`)}
                 </sl-select>
               </div>
             </div>
-            ${i < STAGE_ORDER.length - 1 ? html`
+            ${
+              i < STAGE_ORDER.length - 1
+                ? html`
               <span class="pipeline-arrow">${unsafeHTML(iconSvg(ChevronRight, 16))}</span>
-            ` : nothing}
+            `
+                : nothing
+            }
           `;
         })}
       </div>
@@ -417,13 +518,15 @@ function pipelineTab(worca, rerender) {
         ${[
           { key: 'implement_test', label: 'Implement \u2194 Test' },
           { key: 'pr_changes', label: 'PR Changes' },
-          { key: 'restart_planning', label: 'Restart Planning' }
-        ].map(item => html`
+          { key: 'restart_planning', label: 'Restart Planning' },
+        ].map(
+          (item) => html`
           <div class="settings-field">
             <label class="settings-label">${item.label}</label>
             <sl-input id="loop-${item.key}" type="number" value="${loops[item.key] || 0}" size="small" min="0" max="50"></sl-input>
           </div>
-        `)}
+        `,
+        )}
       </div>
 
       <h3 class="settings-section-title">Plan Path Template</h3>
@@ -439,12 +542,12 @@ function pipelineTab(worca, rerender) {
       <div class="settings-grid">
         <div class="settings-field">
           <label class="settings-label">Size Multiplier (msize)</label>
-          <sl-input id="defaults-msize" type="number" value="${(worca.defaults || {}).msize || 1}" size="small" min="1" max="10"></sl-input>
+          <sl-input id="defaults-msize" type="number" value="${worca.defaults?.msize || 1}" size="small" min="1" max="10"></sl-input>
           <span class="settings-field-hint">Scales max_turns per stage</span>
         </div>
         <div class="settings-field">
           <label class="settings-label">Loop Multiplier (mloops)</label>
-          <sl-input id="defaults-mloops" type="number" value="${(worca.defaults || {}).mloops || 1}" size="small" min="1" max="10"></sl-input>
+          <sl-input id="defaults-mloops" type="number" value="${worca.defaults?.mloops || 1}" size="small" min="1" max="10"></sl-input>
           <span class="settings-field-hint">Scales max loop iterations</span>
         </div>
       </div>
@@ -454,7 +557,10 @@ function pipelineTab(worca, rerender) {
           const { loops, plan_path_template, defaults } = readPipelineFromDom();
           const stages = readStagesFromDom();
           stages.preflight = readPreflightFromDom();
-          saveSettings({ worca: { loops, stages, plan_path_template, defaults } }, rerender);
+          saveSettings(
+            { worca: { loops, stages, plan_path_template, defaults } },
+            rerender,
+          );
         }}>
           ${unsafeHTML(iconSvg(Save, 14))}
           Save Pipeline
@@ -479,14 +585,16 @@ function governanceTab(worca, permissions, rerender) {
     <div class="settings-tab-content">
       <h3 class="settings-section-title">Guard Rules</h3>
       <div class="settings-switches">
-        ${GUARD_RULES.map(rule => html`
+        ${GUARD_RULES.map(
+          (rule) => html`
           <div class="settings-switch-row">
             <sl-switch id="guard-${rule.key}" ?checked=${guards[rule.key] !== false} size="small">
               ${rule.label}
             </sl-switch>
             <span class="settings-switch-desc">${rule.description}</span>
           </div>
-        `)}
+        `,
+        )}
       </div>
 
       <h3 class="settings-section-title">Test Gate</h3>
@@ -500,17 +608,20 @@ function governanceTab(worca, permissions, rerender) {
 
       <h3 class="settings-section-title">Dispatch Rules</h3>
       <div class="settings-dispatch-table">
-        ${AGENT_NAMES.map(agent => html`
+        ${AGENT_NAMES.map(
+          (agent) => html`
           <div class="settings-dispatch-row">
             <span class="settings-dispatch-agent">${agent}</span>
             <sl-input id="dispatch-${agent}" value="${(dispatch[agent] || []).join(', ')}" size="small" placeholder="none"></sl-input>
           </div>
-        `)}
+        `,
+        )}
       </div>
 
       <h3 class="settings-section-title">Permissions</h3>
       <div class="settings-permissions" id="permissions-list">
-        ${permList.map((p, i) => html`
+        ${permList.map(
+          (p, i) => html`
           <div class="settings-perm-item settings-perm-item--editable">
             <sl-input class="perm-input" value="${p}" size="small" placeholder="e.g. Bash(pytest *)"></sl-input>
             <sl-icon-button name="x" label="Remove" class="perm-remove-btn" @click=${() => {
@@ -518,7 +629,8 @@ function governanceTab(worca, permissions, rerender) {
               rerender();
             }}>${unsafeHTML(iconSvg(X, 14))}</sl-icon-button>
           </div>
-        `)}
+        `,
+        )}
         ${permList.length === 0 ? html`<span class="settings-muted">No permissions configured</span>` : nothing}
       </div>
       <sl-button size="small" variant="text" @click=${() => {
@@ -533,7 +645,10 @@ function governanceTab(worca, permissions, rerender) {
         <sl-button variant="primary" size="small" @click=${() => {
           const governance = readGovernanceFromDom();
           const allow = readPermissionsFromDom();
-          saveSettings({ worca: { governance }, permissions: { allow } }, rerender);
+          saveSettings(
+            { worca: { governance }, permissions: { allow } },
+            rerender,
+          );
         }}>
           ${unsafeHTML(iconSvg(Save, 14))}
           Save Governance
@@ -568,16 +683,17 @@ function preferencesTab(preferences, worca, { onThemeToggle, rerender }) {
           <thead>
             <tr>
               <th>Model</th>
-              ${PRICING_FIELDS.map(f => html`<th>${f.label}</th>`)}
+              ${PRICING_FIELDS.map((f) => html`<th>${f.label}</th>`)}
             </tr>
           </thead>
           <tbody>
-            ${PRICING_MODELS.map(model => {
+            ${PRICING_MODELS.map((model) => {
               const costs = models[model] || DEFAULT_PRICING.models[model];
               return html`
                 <tr>
                   <td class="pricing-model-name">${model}</td>
-                  ${PRICING_FIELDS.map(f => html`
+                  ${PRICING_FIELDS.map(
+                    (f) => html`
                     <td>
                       <sl-input
                         id="pricing-${model}-${f.key}"
@@ -588,7 +704,8 @@ function preferencesTab(preferences, worca, { onThemeToggle, rerender }) {
                         size="small"
                       ></sl-input>
                     </td>
-                  `)}
+                  `,
+                  )}
                 </tr>
               `;
             })}
@@ -618,11 +735,26 @@ function preferencesTab(preferences, worca, { onThemeToggle, rerender }) {
 }
 
 const NOTIF_EVENT_LABELS = {
-  run_completed: { label: 'Run Completed', desc: 'When a pipeline run finishes successfully' },
-  run_failed: { label: 'Run Failed', desc: 'When a pipeline run fails at any stage' },
-  approval_needed: { label: 'Approval Required', desc: 'When a stage is waiting for plan or PR approval' },
-  test_failures: { label: 'Test Failures', desc: 'When a test iteration ends with failures' },
-  loop_limit_warning: { label: 'Loop Limit Warning', desc: 'When a stage approaches its configured loop limit' },
+  run_completed: {
+    label: 'Run Completed',
+    desc: 'When a pipeline run finishes successfully',
+  },
+  run_failed: {
+    label: 'Run Failed',
+    desc: 'When a pipeline run fails at any stage',
+  },
+  approval_needed: {
+    label: 'Approval Required',
+    desc: 'When a stage is waiting for plan or PR approval',
+  },
+  test_failures: {
+    label: 'Test Failures',
+    desc: 'When a test iteration ends with failures',
+  },
+  loop_limit_warning: {
+    label: 'Loop Limit Warning',
+    desc: 'When a stage approaches its configured loop limit',
+  },
 };
 
 function notificationsTab(preferences, { rerender, onSaveNotifications }) {
@@ -631,14 +763,18 @@ function notificationsTab(preferences, { rerender, onSaveNotifications }) {
   const sound = notifPrefs.sound ?? false;
   const events = notifPrefs.events || {};
 
-  const permission = typeof Notification !== 'undefined' ? Notification.permission : 'unsupported';
-  const permBadge = permission === 'granted'
-    ? html`<sl-badge variant="success" pill>Granted</sl-badge>`
-    : permission === 'denied'
-      ? html`<sl-badge variant="danger" pill>Blocked</sl-badge>`
-      : permission === 'default'
-        ? html`<sl-badge variant="neutral" pill>Not Yet Asked</sl-badge>`
-        : html`<sl-badge variant="neutral" pill>Not Supported</sl-badge>`;
+  const permission =
+    typeof Notification !== 'undefined'
+      ? Notification.permission
+      : 'unsupported';
+  const permBadge =
+    permission === 'granted'
+      ? html`<sl-badge variant="success" pill>Granted</sl-badge>`
+      : permission === 'denied'
+        ? html`<sl-badge variant="danger" pill>Blocked</sl-badge>`
+        : permission === 'default'
+          ? html`<sl-badge variant="neutral" pill>Not Yet Asked</sl-badge>`
+          : html`<sl-badge variant="neutral" pill>Not Supported</sl-badge>`;
 
   const notGranted = permission !== 'granted';
 
@@ -648,21 +784,29 @@ function notificationsTab(preferences, { rerender, onSaveNotifications }) {
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
         <span style="font-size: 13px; color: var(--muted);">Permission Status:</span>
         ${permBadge}
-        ${permission === 'default' ? html`
+        ${
+          permission === 'default'
+            ? html`
           <sl-button size="small" variant="primary" @click=${async () => {
             if (typeof Notification !== 'undefined') {
               await Notification.requestPermission();
               rerender();
             }
           }}>Enable Notifications</sl-button>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
 
-      ${notGranted ? html`
+      ${
+        notGranted
+          ? html`
         <div style="font-size: 12px; color: var(--muted); margin-bottom: 8px;">
           ${permission === 'denied' ? 'Notifications are blocked. Enable in your browser settings to use these controls.' : 'Grant notification permission to use these controls.'}
         </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       <div class="settings-switches">
         <div class="settings-switch-row">
@@ -677,21 +821,26 @@ function notificationsTab(preferences, { rerender, onSaveNotifications }) {
 
       <h3 class="settings-section-title">Notification Events</h3>
       <div class="settings-switches">
-        ${Object.entries(NOTIF_EVENT_LABELS).map(([key, { label, desc }]) => html`
+        ${Object.entries(NOTIF_EVENT_LABELS).map(
+          ([key, { label, desc }]) => html`
           <div class="settings-switch-row">
             <sl-switch id="notif-evt-${key}" ?checked=${events[key] ?? true} size="small" ?disabled=${notGranted}>${label}</sl-switch>
             <span class="settings-switch-desc">${desc}</span>
           </div>
-        `)}
+        `,
+        )}
       </div>
 
       <div class="settings-tab-actions">
         <sl-button variant="primary" size="small" ?disabled=${notGranted} @click=${() => {
-          const notifEnabled = document.getElementById('notif-enabled')?.checked ?? true;
-          const notifSound = document.getElementById('notif-sound')?.checked ?? false;
+          const notifEnabled =
+            document.getElementById('notif-enabled')?.checked ?? true;
+          const notifSound =
+            document.getElementById('notif-sound')?.checked ?? false;
           const eventPrefs = {};
           for (const key of Object.keys(NOTIF_EVENT_LABELS)) {
-            eventPrefs[key] = document.getElementById(`notif-evt-${key}`)?.checked ?? true;
+            eventPrefs[key] =
+              document.getElementById(`notif-evt-${key}`)?.checked ?? true;
           }
           onSaveNotifications({
             enabled: notifEnabled,
@@ -713,33 +862,60 @@ const webhookTestResults = {};
 function readEventsFromDom() {
   return {
     enabled: document.getElementById('events-enabled')?.checked ?? true,
-    agent_telemetry: document.getElementById('events-agent-telemetry')?.checked ?? false,
+    agent_telemetry:
+      document.getElementById('events-agent-telemetry')?.checked ?? false,
     hook_events: document.getElementById('events-hook-events')?.checked ?? true,
-    rate_limit_ms: parseInt(document.getElementById('events-rate-limit-ms')?.value, 10) || 1000,
+    rate_limit_ms:
+      parseInt(document.getElementById('events-rate-limit-ms')?.value, 10) ||
+      1000,
   };
 }
 
 function readBudgetFromDom() {
   const budget = {};
-  const maxCostVal = parseFloat(document.getElementById('budget-max-cost')?.value);
-  if (!isNaN(maxCostVal) && maxCostVal > 0) budget.max_cost_usd = maxCostVal;
-  const warningPctVal = parseInt(document.getElementById('budget-warning-pct')?.value, 10);
-  if (!isNaN(warningPctVal)) budget.warning_pct = warningPctVal;
+  const maxCostVal = parseFloat(
+    document.getElementById('budget-max-cost')?.value,
+  );
+  if (!Number.isNaN(maxCostVal) && maxCostVal > 0)
+    budget.max_cost_usd = maxCostVal;
+  const warningPctVal = parseInt(
+    document.getElementById('budget-warning-pct')?.value,
+    10,
+  );
+  if (!Number.isNaN(warningPctVal)) budget.warning_pct = warningPctVal;
   return budget;
 }
 
 function readWebhooksFromDom() {
   const webhooks = settingsData?.worca?.webhooks || [];
   return webhooks.map((_, i) => {
-    const eventsVal = (document.getElementById(`webhook-${i}-events`)?.value || '').trim();
+    const eventsVal = (
+      document.getElementById(`webhook-${i}-events`)?.value || ''
+    ).trim();
     return {
       url: document.getElementById(`webhook-${i}-url`)?.value?.trim() || '',
       secret: document.getElementById(`webhook-${i}-secret`)?.value || '',
-      events: eventsVal ? eventsVal.split(',').map(s => s.trim()).filter(Boolean) : [],
-      timeout_ms: parseInt(document.getElementById(`webhook-${i}-timeout-ms`)?.value, 10) || 10000,
-      max_retries: parseInt(document.getElementById(`webhook-${i}-retries`)?.value, 10) || 3,
-      rate_limit_ms: parseInt(document.getElementById(`webhook-${i}-rate-limit-ms`)?.value, 10) || 1000,
-      control: document.getElementById(`webhook-${i}-control`)?.checked ?? false,
+      events: eventsVal
+        ? eventsVal
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : [],
+      timeout_ms:
+        parseInt(
+          document.getElementById(`webhook-${i}-timeout-ms`)?.value,
+          10,
+        ) || 10000,
+      max_retries:
+        parseInt(document.getElementById(`webhook-${i}-retries`)?.value, 10) ||
+        3,
+      rate_limit_ms:
+        parseInt(
+          document.getElementById(`webhook-${i}-rate-limit-ms`)?.value,
+          10,
+        ) || 1000,
+      control:
+        document.getElementById(`webhook-${i}-control`)?.checked ?? false,
     };
   });
 }
@@ -790,9 +966,15 @@ function webhookEntry(wh, i, rerender) {
         </div>
         <div class="webhook-actions">
           <sl-button size="small" @click=${async () => {
-            const url = document.getElementById(`webhook-${i}-url`)?.value?.trim() || '';
-            const secret = document.getElementById(`webhook-${i}-secret`)?.value || '';
-            const timeout_ms = parseInt(document.getElementById(`webhook-${i}-timeout-ms`)?.value, 10) || 10000;
+            const url =
+              document.getElementById(`webhook-${i}-url`)?.value?.trim() || '';
+            const secret =
+              document.getElementById(`webhook-${i}-secret`)?.value || '';
+            const timeout_ms =
+              parseInt(
+                document.getElementById(`webhook-${i}-timeout-ms`)?.value,
+                10,
+              ) || 10000;
             try {
               const res = await fetch('/api/webhooks/test', {
                 method: 'POST',
@@ -805,11 +987,15 @@ function webhookEntry(wh, i, rerender) {
             }
             rerender();
           }}>Test</sl-button>
-          ${testResult ? html`
+          ${
+            testResult
+              ? html`
             <span class="webhook-test-result ${testResult.ok ? 'webhook-test-result--ok' : 'webhook-test-result--err'}">
-              ${testResult.ok ? `${testResult.status_code} OK (${testResult.response_ms}ms)` : (testResult.error || 'failed')}
+              ${testResult.ok ? `${testResult.status_code} OK (${testResult.response_ms}ms)` : testResult.error || 'failed'}
             </span>
-          ` : nothing}
+          `
+              : nothing
+          }
         </div>
       </div>
     </div>
@@ -817,7 +1003,12 @@ function webhookEntry(wh, i, rerender) {
 }
 
 function webhooksTab(worca, rerender) {
-  const events = worca.events || { enabled: true, agent_telemetry: false, hook_events: true, rate_limit_ms: 1000 };
+  const events = worca.events || {
+    enabled: true,
+    agent_telemetry: false,
+    hook_events: true,
+    rate_limit_ms: 1000,
+  };
   const budget = worca.budget || {};
   const webhooks = worca.webhooks || [];
 
@@ -866,9 +1057,18 @@ function webhooksTab(worca, rerender) {
         ${webhooks.map((wh, i) => webhookEntry(wh, i, rerender))}
       </div>
       <sl-button size="small" variant="text" @click=${() => {
-        settingsData.worca.webhooks = [...(settingsData.worca.webhooks || []), {
-          url: '', secret: '', events: [], timeout_ms: 10000, max_retries: 3, rate_limit_ms: 1000, control: false
-        }];
+        settingsData.worca.webhooks = [
+          ...(settingsData.worca.webhooks || []),
+          {
+            url: '',
+            secret: '',
+            events: [],
+            timeout_ms: 10000,
+            max_retries: 3,
+            rate_limit_ms: 1000,
+            control: false,
+          },
+        ];
         rerender();
       }}>
         ${unsafeHTML(iconSvg(Plus, 14))}
@@ -880,9 +1080,16 @@ function webhooksTab(worca, rerender) {
           const eventsConfig = readEventsFromDom();
           const budgetConfig = readBudgetFromDom();
           const webhooksConfig = readWebhooksFromDom();
-          saveSettings({
-            worca: { events: eventsConfig, budget: budgetConfig, webhooks: webhooksConfig }
-          }, rerender);
+          saveSettings(
+            {
+              worca: {
+                events: eventsConfig,
+                budget: budgetConfig,
+                webhooks: webhooksConfig,
+              },
+            },
+            rerender,
+          );
         }}>
           ${unsafeHTML(iconSvg(Save, 14))}
           Save Webhooks
@@ -904,7 +1111,11 @@ function feedbackAlert(rerender) {
   return html`
     <div class="settings-toast">
       <sl-alert variant="${variant}" open closable duration="3000"
-        @sl-after-hide=${() => { saveStatus = null; saveMessage = ''; rerender(); }}>
+        @sl-after-hide=${() => {
+          saveStatus = null;
+          saveMessage = '';
+          rerender();
+        }}>
         ${saveMessage}
       </sl-alert>
     </div>
@@ -913,7 +1124,10 @@ function feedbackAlert(rerender) {
 
 // --- Main export ---
 
-export function settingsView(preferences, { rerender, onThemeToggle, onSaveNotifications }) {
+export function settingsView(
+  preferences,
+  { rerender, onThemeToggle, onSaveNotifications },
+) {
   if (!settingsData) {
     return html`<div class="empty-state">Loading settings\u2026</div>`;
   }

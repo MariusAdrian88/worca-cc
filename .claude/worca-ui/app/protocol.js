@@ -6,23 +6,40 @@
 
 /** @type {MessageType[]} */
 export const MESSAGE_TYPES = [
-  'subscribe-run', 'unsubscribe-run',
-  'subscribe-log', 'unsubscribe-log',
+  'subscribe-run',
+  'unsubscribe-run',
+  'subscribe-log',
+  'unsubscribe-log',
   'list-runs',
   'get-agent-prompt',
-  'get-preferences', 'set-preferences',
-  'stop-run', 'resume-run',
-  'list-beads-issues', 'start-beads-issue', 'list-beads-by-run',
-  'list-beads-counts', 'list-beads-refs', 'list-beads-unlinked',
+  'get-preferences',
+  'set-preferences',
+  'stop-run',
+  'resume-run',
+  'list-beads-issues',
+  'start-beads-issue',
+  'list-beads-by-run',
+  'list-beads-counts',
+  'list-beads-refs',
+  'list-beads-unlinked',
   // Webhook inbox
-  'get-webhook-inbox', 'set-webhook-control', 'clear-webhook-inbox',
+  'get-webhook-inbox',
+  'set-webhook-control',
+  'clear-webhook-inbox',
   // Server → Client events
-  'run-snapshot', 'run-update', 'runs-list',
-  'log-line', 'log-bulk',
+  'run-snapshot',
+  'run-update',
+  'runs-list',
+  'log-line',
+  'log-bulk',
   'preferences',
-  'run-started', 'run-stopped', 'stage-restarted',
+  'run-started',
+  'run-stopped',
+  'stage-restarted',
   'beads-update',
-  'webhook-inbox-event', 'webhook-control-changed', 'webhook-inbox-cleared'
+  'webhook-inbox-event',
+  'webhook-control-changed',
+  'webhook-inbox-cleared',
 ];
 
 export function nextId() {
@@ -40,7 +57,12 @@ export function makeOk(req, payload) {
 }
 
 export function makeError(req, code, message, details) {
-  return { id: req.id, ok: false, type: req.type, error: { code, message, details } };
+  return {
+    id: req.id,
+    ok: false,
+    type: req.type,
+    error: { code, message, details },
+  };
 }
 
 export function isMessageType(value) {

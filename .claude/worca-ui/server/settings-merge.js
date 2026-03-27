@@ -3,7 +3,7 @@
 // All worca-ui server code should use readMergedSettings() for reads and
 // write UI changes to settings.local.json via readLocalSettings/localPathFor.
 
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { extname } from 'node:path';
 
 /**
@@ -13,14 +13,17 @@ import { extname } from 'node:path';
  */
 export function deepMerge(base, override) {
   if (!base || typeof base !== 'object' || Array.isArray(base)) return override;
-  if (!override || typeof override !== 'object' || Array.isArray(override)) return override;
+  if (!override || typeof override !== 'object' || Array.isArray(override))
+    return override;
 
   const result = { ...base };
   for (const key of Object.keys(override)) {
     if (
       key in result &&
-      typeof result[key] === 'object' && !Array.isArray(result[key]) &&
-      typeof override[key] === 'object' && !Array.isArray(override[key])
+      typeof result[key] === 'object' &&
+      !Array.isArray(result[key]) &&
+      typeof override[key] === 'object' &&
+      !Array.isArray(override[key])
     ) {
       result[key] = deepMerge(result[key], override[key]);
     } else {
@@ -37,7 +40,7 @@ export function deepMerge(base, override) {
 export function localPathFor(settingsPath) {
   const ext = extname(settingsPath);
   const base = settingsPath.slice(0, -ext.length);
-  return base + '.local' + ext;
+  return `${base}.local${ext}`;
 }
 
 /**
@@ -59,7 +62,9 @@ export function readMergedSettings(settingsPath) {
     const local = JSON.parse(readFileSync(localPath, 'utf8'));
     return deepMerge(base, local);
   } catch {
-    console.warn(`[settings] Warning: ${localPath} contains invalid JSON, ignoring local overrides`);
+    console.warn(
+      `[settings] Warning: ${localPath} contains invalid JSON, ignoring local overrides`,
+    );
     return base;
   }
 }

@@ -1,20 +1,39 @@
 import { html } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, Archive, Settings, Plus, List, Coins, Zap } from '../utils/icons.js';
+import {
+  Activity,
+  Archive,
+  Coins,
+  iconSvg,
+  List,
+  Plus,
+  Settings,
+  Zap,
+} from '../utils/icons.js';
 export function sidebarView(state, route, connectionState, { onNavigate }) {
   const { runs, preferences, projectName } = state;
   const runList = Object.values(runs);
-  const activeCount = runList.filter(r => r.active).length;
-  const historyCount = runList.filter(r => !r.active).length;
+  const activeCount = runList.filter((r) => r.active).length;
+  const historyCount = runList.filter((r) => !r.active).length;
 
   const beadsIssues = state.beads?.issues || [];
-  const beadsReady = beadsIssues.filter(i => i.status === 'ready' && (i.blocked_by?.length ?? 0) === 0).length;
+  const beadsReady = beadsIssues.filter(
+    (i) => i.status === 'ready' && (i.blocked_by?.length ?? 0) === 0,
+  ).length;
   const beadsDbExists = state.beads?.dbExists ?? false;
 
-  const connClass = connectionState === 'open' ? 'connected'
-    : connectionState === 'reconnecting' ? 'reconnecting' : 'disconnected';
-  const connLabel = connectionState === 'open' ? 'Connected'
-    : connectionState === 'reconnecting' ? 'Reconnecting\u2026' : 'Disconnected';
+  const connClass =
+    connectionState === 'open'
+      ? 'connected'
+      : connectionState === 'reconnecting'
+        ? 'reconnecting'
+        : 'disconnected';
+  const connLabel =
+    connectionState === 'open'
+      ? 'Connected'
+      : connectionState === 'reconnecting'
+        ? 'Reconnecting\u2026'
+        : 'Disconnected';
 
   return html`
     <aside class="sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}">
@@ -50,7 +69,9 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
         </div>
       </div>
 
-      ${beadsDbExists ? html`
+      ${
+        beadsDbExists
+          ? html`
         <div class="sidebar-section">
           <div class="sidebar-section-header">Work</div>
           <div class="sidebar-item ${route.section === 'beads' ? 'active' : ''}"
@@ -62,7 +83,9 @@ export function sidebarView(state, route, connectionState, { onNavigate }) {
             ${beadsReady > 0 ? html`<sl-badge variant="success" pill>${beadsReady}</sl-badge>` : ''}
           </div>
         </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       <div class="sidebar-section">
         <div class="sidebar-section-header">Analytics</div>

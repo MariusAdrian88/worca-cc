@@ -1,7 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, mkdirSync, rmSync, statSync, readFileSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Capture spawn calls to inspect args
 let spawnCalls = [];
@@ -53,7 +61,7 @@ describe('startPipeline arg building', () => {
   // --- New format: sourceType + prompt ---
 
   it('builds --source arg when sourceType=source', async () => {
-    const p = startPipeline(worcaDir, {
+    const _p = startPipeline(worcaDir, {
       sourceType: 'source',
       sourceValue: 'gh:issue:42',
       projectRoot: tmpDir,
@@ -262,7 +270,9 @@ describe('startPipeline arg building', () => {
     const args = getArgs();
     expect(args).toContain('--resume');
     expect(args).toContain('--status-dir');
-    expect(args[args.indexOf('--status-dir') + 1]).toContain('run-20260101-abc');
+    expect(args[args.indexOf('--status-dir') + 1]).toContain(
+      'run-20260101-abc',
+    );
   });
 
   it('omits --status-dir when resume=true but no runId', async () => {
@@ -421,7 +431,9 @@ describe('large prompt offloading', () => {
     expect(existsSync(promptFilePath)).toBe(true);
 
     // Find and trigger the 'error' event handler registered on fakeChild
-    const errorCall = fakeChild.on.mock.calls.find(([event]) => event === 'error');
+    const errorCall = fakeChild.on.mock.calls.find(
+      ([event]) => event === 'error',
+    );
     expect(errorCall).toBeTruthy();
     const errorHandler = errorCall[1];
     errorHandler(new Error('spawn ENOENT'));

@@ -8,7 +8,7 @@
  *
  * This test suite documents the required ordering and catches regressions.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { createStore } from './state.js';
 
 describe('runs-list handler: settings must be updated before store.setState', () => {
@@ -27,9 +27,9 @@ describe('runs-list handler: settings must be updated before store.setState', ()
 
     // Act: correct ordering – settings BEFORE setState (the fix we are implementing)
     const runs = {};
-    for (const run of (payload.runs || [])) runs[run.id] = run;
-    if (payload.settings) settings = payload.settings;   // must come first
-    store.setState({ runs });                            // triggers subscriber synchronously
+    for (const run of payload.runs || []) runs[run.id] = run;
+    if (payload.settings) settings = payload.settings; // must come first
+    store.setState({ runs }); // triggers subscriber synchronously
 
     // Assert: subscriber saw the fresh settings
     expect(settingsCapturedDuringRender).toHaveLength(1);
@@ -50,12 +50,12 @@ describe('runs-list handler: settings must be updated before store.setState', ()
 
     // Act: wrong ordering – settings AFTER setState (the original buggy code)
     const runs = {};
-    for (const run of (payload.runs || [])) runs[run.id] = run;
-    store.setState({ runs });                            // subscriber fires — settings still {}
-    if (payload.settings) settings = payload.settings;  // too late
+    for (const run of payload.runs || []) runs[run.id] = run;
+    store.setState({ runs }); // subscriber fires — settings still {}
+    if (payload.settings) settings = payload.settings; // too late
 
     // Assert: subscriber saw stale (empty) settings — this is the bug
     expect(settingsCapturedDuringRender).toHaveLength(1);
-    expect(settingsCapturedDuringRender[0]).toEqual({});  // stale!
+    expect(settingsCapturedDuringRender[0]).toEqual({}); // stale!
   });
 });

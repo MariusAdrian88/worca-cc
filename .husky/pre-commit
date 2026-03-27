@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Resolve project root (where .git lives)
+ROOT="$(git rev-parse --show-toplevel)"
+
+# Python lint
+echo "Running ruff..."
+ruff check "$ROOT" || exit 1
+
+# UI lint (biome)
+echo "Running biome..."
+(cd "$ROOT/.claude/worca-ui" && npx biome check) || exit 1
+
+# UI build check
+echo "Building worca-ui..."
+(cd "$ROOT/.claude/worca-ui" && npm run build) || exit 1

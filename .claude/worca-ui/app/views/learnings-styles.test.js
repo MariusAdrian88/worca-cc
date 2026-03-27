@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf-8');
 
@@ -15,7 +15,9 @@ describe('learnings + skipped CSS styles', () => {
 
   describe('sl-details.learnings-panel', () => {
     it('has ::part(base) styled like run-beads-panel', () => {
-      const match = css.match(/sl-details\.learnings-panel::part\(base\)\s*\{([^}]+)\}/);
+      const match = css.match(
+        /sl-details\.learnings-panel::part\(base\)\s*\{([^}]+)\}/,
+      );
       expect(match).not.toBeNull();
       const block = match[1];
       expect(block).toContain('border:');
@@ -24,13 +26,17 @@ describe('learnings + skipped CSS styles', () => {
     });
 
     it('has ::part(header) with padding', () => {
-      const match = css.match(/sl-details\.learnings-panel::part\(header\)\s*\{([^}]+)\}/);
+      const match = css.match(
+        /sl-details\.learnings-panel::part\(header\)\s*\{([^}]+)\}/,
+      );
       expect(match).not.toBeNull();
       expect(match[1]).toContain('padding:');
     });
 
     it('has ::part(content) with padding', () => {
-      const match = css.match(/sl-details\.learnings-panel::part\(content\)\s*\{([^}]+)\}/);
+      const match = css.match(
+        /sl-details\.learnings-panel::part\(content\)\s*\{([^}]+)\}/,
+      );
       expect(match).not.toBeNull();
       expect(match[1]).toContain('padding:');
     });
@@ -57,7 +63,9 @@ describe('learnings + skipped CSS styles', () => {
     });
 
     it('has .stage-node.status-skipped .stage-icon with dashed border', () => {
-      const match = css.match(/\.stage-node\.status-skipped\s+\.stage-icon\s*\{([^}]+)\}/);
+      const match = css.match(
+        /\.stage-node\.status-skipped\s+\.stage-icon\s*\{([^}]+)\}/,
+      );
       expect(match).not.toBeNull();
       expect(match[1]).toContain('border-style: dashed');
     });

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 describe('Pricing Editor constants and readPricingFromDom', () => {
   it('exports PRICING_MODELS with opus and sonnet', async () => {
@@ -9,7 +9,7 @@ describe('Pricing Editor constants and readPricingFromDom', () => {
   it('exports PRICING_FIELDS with 4 cost columns', async () => {
     const { PRICING_FIELDS } = await import('./settings.js');
     expect(PRICING_FIELDS).toHaveLength(4);
-    const keys = PRICING_FIELDS.map(f => f.key);
+    const keys = PRICING_FIELDS.map((f) => f.key);
     expect(keys).toContain('input_per_mtok');
     expect(keys).toContain('output_per_mtok');
     expect(keys).toContain('cache_write_per_mtok');

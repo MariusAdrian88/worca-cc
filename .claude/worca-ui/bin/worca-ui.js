@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { createServer } from 'node:net';
 import { spawn } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:net';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dirname } from 'node:path';
 
 function findProjectRoot(startDir) {
   let dir = startDir;
@@ -18,12 +23,22 @@ function findProjectRoot(startDir) {
 const PROJECT_ROOT = findProjectRoot(process.cwd());
 const PID_DIR = join(PROJECT_ROOT, '.worca');
 const PID_FILE = join(PID_DIR, 'worca-ui.pid');
-const SERVER_SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'server', 'index.js');
+const SERVER_SCRIPT = join(
+  dirname(fileURLToPath(import.meta.url)),
+  '..',
+  'server',
+  'index.js',
+);
 
 function parseArgs(argv) {
   const args = { command: 'start', port: 3400, host: '127.0.0.1', open: false };
   for (let i = 2; i < argv.length; i++) {
-    if (argv[i] === 'start' || argv[i] === 'stop' || argv[i] === 'restart' || argv[i] === 'status') {
+    if (
+      argv[i] === 'start' ||
+      argv[i] === 'stop' ||
+      argv[i] === 'restart' ||
+      argv[i] === 'status'
+    ) {
       args.command = argv[i];
     } else if (argv[i] === '--port' && argv[i + 1]) {
       args.port = parseInt(argv[++i], 10);
@@ -46,11 +61,15 @@ function readPid() {
 
 function writePid(info) {
   mkdirSync(PID_DIR, { recursive: true });
-  writeFileSync(PID_FILE, JSON.stringify(info, null, 2) + '\n');
+  writeFileSync(PID_FILE, `${JSON.stringify(info, null, 2)}\n`);
 }
 
 function removePid() {
-  try { unlinkSync(PID_FILE); } catch { /* ignore */ }
+  try {
+    unlinkSync(PID_FILE);
+  } catch {
+    /* ignore */
+  }
 }
 
 function isRunning(pid) {
@@ -66,7 +85,9 @@ function isPortAvailable(port, host) {
   return new Promise((resolve) => {
     const srv = createServer();
     srv.once('error', () => resolve(false));
-    srv.listen(port, host, () => { srv.close(() => resolve(true)); });
+    srv.listen(port, host, () => {
+      srv.close(() => resolve(true));
+    });
   });
 }
 
@@ -81,7 +102,9 @@ async function findAvailablePort(startPort, host, maxAttempts = 10) {
 async function start({ port, host, open }) {
   const existing = readPid();
   if (existing && isRunning(existing.pid)) {
-    console.log(`worca-ui already running (PID ${existing.pid}) at http://${existing.host}:${existing.port}`);
+    console.log(
+      `worca-ui already running (PID ${existing.pid}) at http://${existing.host}:${existing.port}`,
+    );
     return;
   }
 
@@ -94,14 +117,23 @@ async function start({ port, host, open }) {
     console.log(`Port ${port} in use, using ${availablePort}`);
   }
 
-  const child = spawn(process.execPath, [SERVER_SCRIPT, '--port', String(availablePort), '--host', host], {
-    detached: true,
-    stdio: 'ignore',
-    cwd: process.cwd()
-  });
+  const child = spawn(
+    process.execPath,
+    [SERVER_SCRIPT, '--port', String(availablePort), '--host', host],
+    {
+      detached: true,
+      stdio: 'ignore',
+      cwd: process.cwd(),
+    },
+  );
   child.unref();
 
-  const info = { pid: child.pid, port: availablePort, host, started_at: new Date().toISOString() };
+  const info = {
+    pid: child.pid,
+    port: availablePort,
+    host,
+    started_at: new Date().toISOString(),
+  };
   writePid(info);
   const url = `http://${host}:${availablePort}`;
   console.log(`worca-ui started (PID ${child.pid}) at ${url}`);
@@ -132,7 +164,7 @@ function stop() {
 
 async function restart(opts) {
   stop();
-  await new Promise(r => setTimeout(r, 500));
+  await new Promise((r) => setTimeout(r, 500));
   await start(opts);
 }
 
@@ -143,7 +175,9 @@ function status() {
     return;
   }
   if (isRunning(info.pid)) {
-    console.log(`worca-ui is running (PID ${info.pid}) at http://${info.host}:${info.port}`);
+    console.log(
+      `worca-ui is running (PID ${info.pid}) at http://${info.host}:${info.port}`,
+    );
     console.log(`Started: ${info.started_at}`);
   } else {
     console.log('worca-ui is not running (stale PID file)');
@@ -153,9 +187,20 @@ function status() {
 
 const args = parseArgs(process.argv);
 switch (args.command) {
-  case 'start': start(args); break;
-  case 'stop': stop(); break;
-  case 'restart': restart(args); break;
-  case 'status': status(); break;
-  default: console.log('Usage: worca-ui [start|stop|restart|status] [--port N] [--host H] [--open]');
+  case 'start':
+    start(args);
+    break;
+  case 'stop':
+    stop();
+    break;
+  case 'restart':
+    restart(args);
+    break;
+  case 'status':
+    status();
+    break;
+  default:
+    console.log(
+      'Usage: worca-ui [start|stop|restart|status] [--port N] [--host H] [--open]',
+    );
 }

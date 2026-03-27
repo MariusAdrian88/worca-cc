@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Mock lit-html since it requires DOM APIs (createTreeWalker)
 vi.mock('lit-html', () => ({
@@ -18,8 +18,12 @@ function createDocStub() {
   const elements = {};
   return {
     getElementById: vi.fn((id) => elements[id] || null),
-    _set(id, value) { elements[id] = { value, id }; },
-    _clear() { Object.keys(elements).forEach(k => delete elements[k]); },
+    _set(id, value) {
+      elements[id] = { value, id };
+    },
+    _clear() {
+      for (const k of Object.keys(elements)) delete elements[k];
+    },
   };
 }
 
@@ -36,8 +40,13 @@ describe('submitNewRun — new format validation and payload', () => {
     vi.resetModules();
     // Re-apply mocks after resetModules
     vi.doMock('lit-html', () => ({ html: () => null, nothing: null }));
-    vi.doMock('lit-html/directives/unsafe-html.js', () => ({ unsafeHTML: () => null }));
-    vi.doMock('../utils/icons.js', () => ({ iconSvg: () => '', FileText: 'FileText' }));
+    vi.doMock('lit-html/directives/unsafe-html.js', () => ({
+      unsafeHTML: () => null,
+    }));
+    vi.doMock('../utils/icons.js', () => ({
+      iconSvg: () => '',
+      FileText: 'FileText',
+    }));
 
     const mod = await import('./new-run.js');
     submitNewRun = mod.submitNewRun;
@@ -122,7 +131,10 @@ describe('submitNewRun — new format validation and payload', () => {
   it('sends planFile when selected', async () => {
     const getBody = mockFetch();
     setupDOM();
-    resetNewRunState({ sourceType: 'none', selectedPlan: 'docs/plans/my-plan.md' });
+    resetNewRunState({
+      sourceType: 'none',
+      selectedPlan: 'docs/plans/my-plan.md',
+    });
 
     await submitNewRun({ rerender: vi.fn(), onStarted: vi.fn() });
 
@@ -159,7 +171,10 @@ describe('submitNewRun — new format validation and payload', () => {
   it('planFile-only is valid (no source, no prompt)', async () => {
     const getBody = mockFetch();
     setupDOM();
-    resetNewRunState({ sourceType: 'none', selectedPlan: 'docs/plans/my-plan.md' });
+    resetNewRunState({
+      sourceType: 'none',
+      selectedPlan: 'docs/plans/my-plan.md',
+    });
 
     const onStarted = vi.fn();
     await submitNewRun({ rerender: vi.fn(), onStarted });

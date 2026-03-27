@@ -1,6 +1,6 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, FileText } from '../utils/icons.js';
+import { FileText, iconSvg } from '../utils/icons.js';
 import { getDefaults } from './settings.js';
 
 // Module-level state
@@ -35,19 +35,22 @@ function sourceLabel(type) {
 function fetchBranches() {
   if (branches !== null) return Promise.resolve(branches);
   return fetch('/api/branches')
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       branches = (data.ok && data.branches) || [];
       return branches;
     })
-    .catch(() => { branches = []; return []; });
+    .catch(() => {
+      branches = [];
+      return [];
+    });
 }
 
 function fetchPlanFiles() {
   if (planFiles) return Promise.resolve(planFiles);
   return fetch('/api/plan-files')
-    .then(r => r.json())
-    .then(data => {
+    .then((r) => r.json())
+    .then((data) => {
       if (data.ok) planFiles = data.files;
       return planFiles || [];
     })
@@ -58,8 +61,10 @@ function filteredPlanFiles() {
   if (!planFiles) return [];
   if (!planFilter) return planFiles;
   const term = planFilter.toLowerCase();
-  return planFiles.filter(f =>
-    f.name.toLowerCase().includes(term) || f.path.toLowerCase().includes(term)
+  return planFiles.filter(
+    (f) =>
+      f.name.toLowerCase().includes(term) ||
+      f.path.toLowerCase().includes(term),
   );
 }
 
@@ -100,7 +105,8 @@ export async function submitNewRun({ rerender, onStarted }) {
   // Validation: at least one of source, plan, or prompt required
   if (!hasSource && !hasPlan && !hasPrompt) {
     submitStatus = 'error';
-    submitError = 'Please provide at least one of: a work source, a plan file, or a prompt.';
+    submitError =
+      'Please provide at least one of: a work source, a plan file, or a prompt.';
     rerender();
     return;
   }
@@ -145,8 +151,7 @@ export async function submitNewRun({ rerender, onStarted }) {
   }
 }
 
-export function newRunView(state, { rerender }) {
-
+export function newRunView(_state, { rerender }) {
   function handleSourceTypeChange(e) {
     sourceType = e.target.value;
     rerender();
@@ -203,7 +208,9 @@ export function newRunView(state, { rerender }) {
   const hasSource = sourceType !== 'none';
   const hasPlan = !!selectedPlan;
   const promptRequired = !hasSource && !hasPlan;
-  const promptLabel = promptRequired ? 'Prompt (required)' : 'Additional Instructions (optional)';
+  const promptLabel = promptRequired
+    ? 'Prompt (required)'
+    : 'Additional Instructions (optional)';
 
   return html`
     <div class="new-run-page">
@@ -222,12 +229,16 @@ export function newRunView(state, { rerender }) {
             </sl-select>
           </div>
 
-          ${sourceType !== 'none' ? html`
+          ${
+            sourceType !== 'none'
+              ? html`
             <div class="settings-field">
               <label class="settings-label">${sourceLabel(sourceType)}</label>
               <sl-input id="new-run-source-value" placeholder=${sourceType === 'source' ? 'https://github.com/...' : 'path/to/spec.md'}></sl-input>
             </div>
-          ` : nothing}
+          `
+              : nothing
+          }
 
           <div class="settings-field">
             <label class="settings-label">Plan File (optional)</label>
@@ -244,18 +255,26 @@ export function newRunView(state, { rerender }) {
               >
                 <span slot="prefix">${unsafeHTML(iconSvg(FileText, 14))}</span>
               </sl-input>
-              ${planDropdownOpen && filtered.length > 0 ? html`
+              ${
+                planDropdownOpen && filtered.length > 0
+                  ? html`
                 <div class="plan-dropdown">
-                  ${Object.entries(grouped).map(([dir, files]) => html`
+                  ${Object.entries(grouped).map(
+                    ([dir, files]) => html`
                     <div class="plan-group-header">${dir}/</div>
-                    ${files.map(f => html`
+                    ${files.map(
+                      (f) => html`
                       <div class="plan-item" @mousedown=${() => handlePlanSelect(f)}>
                         ${f.name}
                       </div>
-                    `)}
-                  `)}
+                    `,
+                    )}
+                  `,
+                  )}
                 </div>
-              ` : nothing}
+              `
+                  : nothing
+              }
             </div>
             <span class="settings-field-hint">Skips the planning stage. Relative to project root.</span>
           </div>
@@ -292,9 +311,11 @@ export function newRunView(state, { rerender }) {
               <label class="settings-label">Branch</label>
               <sl-select value=${selectedBranch} @sl-change=${handleBranchChange}>
                 <sl-option value="">&lt;New branch&gt;</sl-option>
-                ${(branches || []).map(b => html`
+                ${(branches || []).map(
+                  (b) => html`
                   <sl-option value=${b}>${b}</sl-option>
-                `)}
+                `,
+                )}
               </sl-select>
               <span class="settings-field-hint">Use an existing branch instead of creating a new one</span>
             </div>

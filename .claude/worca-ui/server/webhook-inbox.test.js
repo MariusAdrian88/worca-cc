@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { createInbox } from './webhook-inbox.js';
 
 describe('webhook-inbox', () => {
@@ -9,8 +9,14 @@ describe('webhook-inbox', () => {
   });
 
   it('stores and returns events with sequential IDs', () => {
-    inbox.push({ headers: { 'x-worca-event': 'test' }, envelope: { event_type: 'pipeline.test.ping' } });
-    inbox.push({ headers: {}, envelope: { event_type: 'pipeline.run.started' } });
+    inbox.push({
+      headers: { 'x-worca-event': 'test' },
+      envelope: { event_type: 'pipeline.test.ping' },
+    });
+    inbox.push({
+      headers: {},
+      envelope: { event_type: 'pipeline.run.started' },
+    });
 
     const events = inbox.list();
     expect(events).toHaveLength(2);

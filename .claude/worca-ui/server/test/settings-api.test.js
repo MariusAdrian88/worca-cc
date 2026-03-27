@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 import { localPathFor } from '../settings-merge.js';
 
@@ -23,19 +23,38 @@ function stopServer(server) {
 }
 
 const SAMPLE_SETTINGS = {
-  hooks: { PreToolUse: [{ matcher: 'Bash', hooks: [{ type: 'command', command: 'echo test' }] }] },
+  hooks: {
+    PreToolUse: [
+      { matcher: 'Bash', hooks: [{ type: 'command', command: 'echo test' }] },
+    ],
+  },
   permissions: { allow: ['Read(*)'] },
   worca: {
-    stages: { plan: { agent: 'planner', enabled: true }, implement: { agent: 'implementer', enabled: true } },
-    agents: { planner: { model: 'opus', max_turns: 100 }, implementer: { model: 'sonnet', max_turns: 300 } },
+    stages: {
+      plan: { agent: 'planner', enabled: true },
+      implement: { agent: 'implementer', enabled: true },
+    },
+    agents: {
+      planner: { model: 'opus', max_turns: 100 },
+      implementer: { model: 'sonnet', max_turns: 300 },
+    },
     loops: { implement_test: 3, pr_changes: 3, restart_planning: 2 },
-    milestones: { plan_approval: true, pr_approval: true, deploy_approval: true },
+    milestones: {
+      plan_approval: true,
+      pr_approval: true,
+      deploy_approval: true,
+    },
     governance: {
-      guards: { block_rm_rf: true, block_env_write: true, block_force_push: true, restrict_git_commit: true },
+      guards: {
+        block_rm_rf: true,
+        block_env_write: true,
+        block_force_push: true,
+        restrict_git_commit: true,
+      },
       test_gate_strikes: 2,
-      dispatch: { planner: [], coordinator: ['implementer'] }
-    }
-  }
+      dispatch: { planner: [], coordinator: ['implementer'] },
+    },
+  },
 };
 
 describe('GET /api/settings', () => {
@@ -103,7 +122,10 @@ describe('POST /api/settings', () => {
   beforeEach(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'settings-test-'));
     settingsPath = join(tmpDir, 'settings.json');
-    writeFileSync(settingsPath, JSON.stringify(SAMPLE_SETTINGS, null, 2) + '\n');
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify(SAMPLE_SETTINGS, null, 2)}\n`,
+    );
     ({ server, base } = await startServer(settingsPath));
   });
 
@@ -116,32 +138,49 @@ describe('POST /api/settings', () => {
     return fetch(`${base}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
   }
 
   it('merges worca.agents correctly -- writes to local, returns merged view', async () => {
-    const res = await post({ worca: { agents: { planner: { model: 'haiku', max_turns: 50 } } } });
+    const res = await post({
+      worca: { agents: { planner: { model: 'haiku', max_turns: 50 } } },
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     // Merged view: local override for planner + base's implementer
-    expect(data.worca.agents.planner).toEqual({ model: 'haiku', max_turns: 50 });
-    expect(data.worca.agents.implementer).toEqual(SAMPLE_SETTINGS.worca.agents.implementer);
+    expect(data.worca.agents.planner).toEqual({
+      model: 'haiku',
+      max_turns: 50,
+    });
+    expect(data.worca.agents.implementer).toEqual(
+      SAMPLE_SETTINGS.worca.agents.implementer,
+    );
     // Other worca keys preserved from base
     expect(data.worca.loops).toEqual(SAMPLE_SETTINGS.worca.loops);
     // Local file has only the override
     const localPath = localPathFor(settingsPath);
     const local = JSON.parse(readFileSync(localPath, 'utf8'));
-    expect(local.worca.agents).toEqual({ planner: { model: 'haiku', max_turns: 50 } });
+    expect(local.worca.agents).toEqual({
+      planner: { model: 'haiku', max_turns: 50 },
+    });
     // Base file is unchanged
     const base_ = JSON.parse(readFileSync(settingsPath, 'utf8'));
     expect(base_.worca.agents).toEqual(SAMPLE_SETTINGS.worca.agents);
   });
 
   it('merges worca.loops correctly', async () => {
-    const res = await post({ worca: { loops: { implement_test: 5, pr_changes: 1, restart_planning: 1 } } });
+    const res = await post({
+      worca: {
+        loops: { implement_test: 5, pr_changes: 1, restart_planning: 1 },
+      },
+    });
     const data = await res.json();
-    expect(data.worca.loops).toEqual({ implement_test: 5, pr_changes: 1, restart_planning: 1 });
+    expect(data.worca.loops).toEqual({
+      implement_test: 5,
+      pr_changes: 1,
+      restart_planning: 1,
+    });
   });
 
   it('merges worca.stages correctly -- returns merged view', async () => {
@@ -149,12 +188,21 @@ describe('POST /api/settings', () => {
     const res = await post({ worca: { stages: newStages } });
     const data = await res.json();
     // Merged: local override + base's implement stage
-    expect(data.worca.stages.plan).toEqual({ agent: 'planner', enabled: false });
-    expect(data.worca.stages.implement).toEqual(SAMPLE_SETTINGS.worca.stages.implement);
+    expect(data.worca.stages.plan).toEqual({
+      agent: 'planner',
+      enabled: false,
+    });
+    expect(data.worca.stages.implement).toEqual(
+      SAMPLE_SETTINGS.worca.stages.implement,
+    );
   });
 
   it('merges worca.governance correctly -- returns merged view', async () => {
-    const newGov = { guards: { block_rm_rf: false }, test_gate_strikes: 5, dispatch: { planner: ['implementer'] } };
+    const newGov = {
+      guards: { block_rm_rf: false },
+      test_gate_strikes: 5,
+      dispatch: { planner: ['implementer'] },
+    };
     const res = await post({ worca: { governance: newGov } });
     const data = await res.json();
     // Merged: local governance override deep-merged with base governance
@@ -165,7 +213,12 @@ describe('POST /api/settings', () => {
   });
 
   it('preserves hooks even if the client sends a hooks key', async () => {
-    const res = await post({ hooks: { evil: true }, worca: { loops: { implement_test: 1, pr_changes: 1, restart_planning: 1 } } });
+    const res = await post({
+      hooks: { evil: true },
+      worca: {
+        loops: { implement_test: 1, pr_changes: 1, restart_planning: 1 },
+      },
+    });
     expect(res.status).toBe(200);
     // Base file still has original hooks, untouched
     const raw = JSON.parse(readFileSync(settingsPath, 'utf8'));
@@ -177,7 +230,9 @@ describe('POST /api/settings', () => {
   });
 
   it('preserves unrelated worca sub-keys not mentioned in the request', async () => {
-    const res = await post({ worca: { agents: { planner: { model: 'haiku', max_turns: 10 } } } });
+    const res = await post({
+      worca: { agents: { planner: { model: 'haiku', max_turns: 10 } } },
+    });
     const data = await res.json();
     expect(data.worca.milestones).toEqual(SAMPLE_SETTINGS.worca.milestones);
     expect(data.worca.stages).toEqual(SAMPLE_SETTINGS.worca.stages);
@@ -190,7 +245,9 @@ describe('POST /api/settings', () => {
   });
 
   it('returns the full merged state in the response', async () => {
-    const res = await post({ worca: { agents: { tester: { model: 'haiku', max_turns: 20 } } } });
+    const res = await post({
+      worca: { agents: { tester: { model: 'haiku', max_turns: 20 } } },
+    });
     const data = await res.json();
     expect(data.worca).toBeDefined();
     expect(data.permissions).toBeDefined();
@@ -198,7 +255,9 @@ describe('POST /api/settings', () => {
   });
 
   it('merges plan_path_template into worca', async () => {
-    const res = await post({ worca: { plan_path_template: 'custom/{title_slug}.md' } });
+    const res = await post({
+      worca: { plan_path_template: 'custom/{title_slug}.md' },
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.worca.plan_path_template).toBe('custom/{title_slug}.md');
@@ -218,8 +277,18 @@ describe('POST /api/settings', () => {
   it('merges worca.pricing correctly', async () => {
     const pricing = {
       models: {
-        opus: { input_per_mtok: 20, output_per_mtok: 80, cache_write_per_mtok: 20, cache_read_per_mtok: 2 },
-        sonnet: { input_per_mtok: 5, output_per_mtok: 20, cache_write_per_mtok: 5, cache_read_per_mtok: 0.5 },
+        opus: {
+          input_per_mtok: 20,
+          output_per_mtok: 80,
+          cache_write_per_mtok: 20,
+          cache_read_per_mtok: 2,
+        },
+        sonnet: {
+          input_per_mtok: 5,
+          output_per_mtok: 20,
+          cache_write_per_mtok: 5,
+          cache_read_per_mtok: 0.5,
+        },
       },
       currency: 'USD',
       last_updated: '2026-03-17',
@@ -233,13 +302,17 @@ describe('POST /api/settings', () => {
   });
 
   it('written local file is valid JSON with 2-space indent and trailing newline', async () => {
-    await post({ worca: { loops: { implement_test: 1, pr_changes: 1, restart_planning: 1 } } });
+    await post({
+      worca: {
+        loops: { implement_test: 1, pr_changes: 1, restart_planning: 1 },
+      },
+    });
     const localPath = localPathFor(settingsPath);
     const content = readFileSync(localPath, 'utf8');
     expect(content.endsWith('\n')).toBe(true);
     // Verify 2-space indent
     const parsed = JSON.parse(content);
-    expect(JSON.stringify(parsed, null, 2) + '\n').toBe(content);
+    expect(`${JSON.stringify(parsed, null, 2)}\n`).toBe(content);
     // Base file should be unchanged
     const baseContent = readFileSync(settingsPath, 'utf8');
     const baseParsed = JSON.parse(baseContent);
@@ -253,7 +326,10 @@ describe('POST /api/settings - validation rejections', () => {
   beforeEach(async () => {
     tmpDir = mkdtempSync(join(tmpdir(), 'settings-test-'));
     settingsPath = join(tmpDir, 'settings.json');
-    writeFileSync(settingsPath, JSON.stringify(SAMPLE_SETTINGS, null, 2) + '\n');
+    writeFileSync(
+      settingsPath,
+      `${JSON.stringify(SAMPLE_SETTINGS, null, 2)}\n`,
+    );
     ({ server, base } = await startServer(settingsPath));
   });
 
@@ -266,39 +342,53 @@ describe('POST /api/settings - validation rejections', () => {
     return fetch(`${base}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
   }
 
   it('rejects unknown agent names', async () => {
-    const res = await post({ worca: { agents: { hacker: { model: 'opus', max_turns: 10 } } } });
+    const res = await post({
+      worca: { agents: { hacker: { model: 'opus', max_turns: 10 } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('hacker'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('hacker'),
+    );
   });
 
   it('rejects invalid model values', async () => {
-    const res = await post({ worca: { agents: { planner: { model: 'gpt4' } } } });
+    const res = await post({
+      worca: { agents: { planner: { model: 'gpt4' } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error.details).toContainEqual(expect.stringContaining('gpt4'));
   });
 
   it('rejects max_turns outside 1-500 range', async () => {
-    const res = await post({ worca: { agents: { planner: { max_turns: 0 } } } });
+    const res = await post({
+      worca: { agents: { planner: { max_turns: 0 } } },
+    });
     expect(res.status).toBe(400);
   });
 
   it('rejects max_turns when not an integer', async () => {
-    const res = await post({ worca: { agents: { planner: { max_turns: 3.5 } } } });
+    const res = await post({
+      worca: { agents: { planner: { max_turns: 3.5 } } },
+    });
     expect(res.status).toBe(400);
   });
 
   it('rejects unknown stage names', async () => {
-    const res = await post({ worca: { stages: { deploy: { agent: 'guardian', enabled: true } } } });
+    const res = await post({
+      worca: { stages: { deploy: { agent: 'guardian', enabled: true } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('deploy'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('deploy'),
+    );
   });
 
   it('rejects enabled when not a boolean', async () => {
@@ -322,17 +412,23 @@ describe('POST /api/settings - validation rejections', () => {
   });
 
   it('rejects dispatch arrays containing unknown agent names', async () => {
-    const res = await post({ worca: { governance: { dispatch: { planner: ['unknown_agent'] } } } });
+    const res = await post({
+      worca: { governance: { dispatch: { planner: ['unknown_agent'] } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('unknown_agent'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('unknown_agent'),
+    );
   });
 
   it('rejects non-string plan_path_template', async () => {
     const res = await post({ worca: { plan_path_template: 42 } });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('plan_path_template'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('plan_path_template'),
+    );
   });
 
   it('rejects defaults.msize outside 1-10', async () => {
@@ -353,17 +449,25 @@ describe('POST /api/settings - validation rejections', () => {
   });
 
   it('rejects negative pricing cost values', async () => {
-    const res = await post({ worca: { pricing: { models: { opus: { input_per_mtok: -5 } } } } });
+    const res = await post({
+      worca: { pricing: { models: { opus: { input_per_mtok: -5 } } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('non-negative'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('non-negative'),
+    );
   });
 
   it('rejects unknown pricing model names', async () => {
-    const res = await post({ worca: { pricing: { models: { gpt4: { input_per_mtok: 1 } } } } });
+    const res = await post({
+      worca: { pricing: { models: { gpt4: { input_per_mtok: 1 } } } },
+    });
     expect(res.status).toBe(400);
     const data = await res.json();
-    expect(data.error.details).toContainEqual(expect.stringContaining('Unknown pricing model'));
+    expect(data.error.details).toContainEqual(
+      expect.stringContaining('Unknown pricing model'),
+    );
   });
 
   it('rejects non-object request bodies', async () => {
@@ -371,7 +475,7 @@ describe('POST /api/settings - validation rejections', () => {
     const res = await fetch(`${base}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: 'null'
+      body: 'null',
     });
     expect(res.status).toBe(400);
   });

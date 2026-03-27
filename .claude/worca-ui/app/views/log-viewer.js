@@ -1,19 +1,27 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, ArrowDown, Pause, Search, Star, Clock, ClipboardCopy } from '../utils/icons.js';
-import { copyTerminalToClipboard } from '../utils/terminal-clipboard.js';
+import {
+  ArrowDown,
+  ClipboardCopy,
+  Clock,
+  iconSvg,
+  Pause,
+  Search,
+  Star,
+} from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
+import { copyTerminalToClipboard } from '../utils/terminal-clipboard.js';
 
 // ANSI color palette for stage tags
 const STAGE_COLORS = [
-  '\x1b[36m',  // cyan
-  '\x1b[33m',  // yellow
-  '\x1b[35m',  // magenta
-  '\x1b[32m',  // green
-  '\x1b[34m',  // blue
-  '\x1b[91m',  // bright red
-  '\x1b[96m',  // bright cyan
-  '\x1b[93m',  // bright yellow
+  '\x1b[36m', // cyan
+  '\x1b[33m', // yellow
+  '\x1b[35m', // magenta
+  '\x1b[32m', // green
+  '\x1b[34m', // blue
+  '\x1b[91m', // bright red
+  '\x1b[96m', // bright cyan
+  '\x1b[93m', // bright yellow
 ];
 const RESET = '\x1b[0m';
 const DIM = '\x1b[2m';
@@ -58,7 +66,10 @@ async function ensureTerminal(container) {
   }
 
   // Guard against concurrent creation (multiple rerender() calls)
-  if (pendingInit) { await pendingInit; return; }
+  if (pendingInit) {
+    await pendingInit;
+    return;
+  }
 
   pendingInit = (async () => {
     // Lazy-load xterm to keep initial bundle light when not in run view
@@ -105,8 +116,12 @@ async function ensureTerminal(container) {
 
 export function writeLogLine(entry) {
   if (!terminal) return;
-  const ts = entry.timestamp ? `${DIM}${formatTimestamp(entry.timestamp)}${RESET} ` : '';
-  const stage = entry.stage ? `${stageColor(entry.stage)}[${entry.stage.toUpperCase()}]${RESET} ` : '';
+  const ts = entry.timestamp
+    ? `${DIM}${formatTimestamp(entry.timestamp)}${RESET} `
+    : '';
+  const stage = entry.stage
+    ? `${stageColor(entry.stage)}[${entry.stage.toUpperCase()}]${RESET} `
+    : '';
   const msg = entry.line || entry;
   terminal.writeln(`${ts}${stage}${msg}`);
 }
@@ -162,17 +177,38 @@ export async function mountTerminal(runId) {
 
 export function writeIterationSeparator(iterNum) {
   if (!terminal) return;
-  terminal.writeln(`\n${DIM}${'─'.repeat(40)} Iteration ${iterNum} ${'─'.repeat(40)}${RESET}\n`);
+  terminal.writeln(
+    `\n${DIM}${'─'.repeat(40)} Iteration ${iterNum} ${'─'.repeat(40)}${RESET}\n`,
+  );
 }
 
-export function logViewerView(state, { onStageFilter, onIterationFilter, onSearch, onToggleAutoScroll, autoScroll, stageIterations, runStages }) {
+export function logViewerView(
+  state,
+  {
+    onStageFilter,
+    onIterationFilter,
+    onSearch,
+    onToggleAutoScroll,
+    autoScroll,
+    stageIterations,
+    runStages,
+  },
+) {
   // Build stage list: orchestrator first, then pipeline stages from status.json
-  const configStages = runStages ? ['orchestrator', ...Object.keys(runStages)] : null;
-  const logStages = [...new Set(['orchestrator', ...state.logLines.map(l => l.stage).filter(Boolean)])];
+  const configStages = runStages
+    ? ['orchestrator', ...Object.keys(runStages)]
+    : null;
+  const logStages = [
+    ...new Set([
+      'orchestrator',
+      ...state.logLines.map((l) => l.stage).filter(Boolean),
+    ]),
+  ];
   const stages = configStages || logStages;
   const currentStage = state.currentLogStage;
   const iterCount = stageIterations?.[currentStage] || 0;
-  const showIterationSelector = currentStage && currentStage !== '*' && iterCount > 0;
+  const showIterationSelector =
+    currentStage && currentStage !== '*' && iterCount > 0;
 
   // When no specific stage is selected, show a prompt instead of concatenated logs
   const hasStageSelected = currentStage && currentStage !== '*';
@@ -193,19 +229,25 @@ export function logViewerView(state, { onStageFilter, onIterationFilter, onSearc
               clearable
               @sl-change=${(e) => onStageFilter(e.target.value || '*')}
             >
-              ${stages.map(s => html`<sl-option value="${s}">${s === 'orchestrator' ? html`<span style="display:inline-flex;align-items:center;gap:4px">${unsafeHTML(iconSvg(Star, 12))} ORCHESTRATOR</span>` : s.toUpperCase()}</sl-option>`)}
+              ${stages.map((s) => html`<sl-option value="${s}">${s === 'orchestrator' ? html`<span style="display:inline-flex;align-items:center;gap:4px">${unsafeHTML(iconSvg(Star, 12))} ORCHESTRATOR</span>` : s.toUpperCase()}</sl-option>`)}
             </sl-select>
-            ${showIterationSelector ? html`
+            ${
+              showIterationSelector
+                ? html`
               <sl-select
                 .value=${String(state.currentLogIteration || iterCount)}
                 size="small"
-                @sl-change=${(e) => onIterationFilter(e.target.value ? parseInt(e.target.value) : null)}
+                @sl-change=${(e) => onIterationFilter(e.target.value ? parseInt(e.target.value, 10) : null)}
               >
-                ${Array.from({length: iterCount}, (_, i) =>
-                  html`<sl-option value="${i + 1}">Iteration ${i + 1}</sl-option>`
+                ${Array.from(
+                  { length: iterCount },
+                  (_, i) =>
+                    html`<sl-option value="${i + 1}">Iteration ${i + 1}</sl-option>`,
                 )}
               </sl-select>
-            ` : nothing}
+            `
+                : nothing
+            }
             <sl-input
               class="log-search"
               type="text"
@@ -224,23 +266,31 @@ export function logViewerView(state, { onStageFilter, onIterationFilter, onSearc
               ${unsafeHTML(iconSvg(autoScroll ? ArrowDown : Pause, 14))}
               ${autoScroll ? 'Auto' : 'Paused'}
             </sl-button>
-            ${hasStageSelected ? html`
+            ${
+              hasStageSelected
+                ? html`
               <button class="terminal-copy-btn" @click=${(e) => copyTerminalToClipboard(terminal, e.currentTarget)}>
                 ${unsafeHTML(iconSvg(ClipboardCopy, 14))}
                 Copy
               </button>
-            ` : nothing}
+            `
+                : nothing
+            }
           </div>
-          ${hasStageSelected ? html`
+          ${
+            hasStageSelected
+              ? html`
             <div class="log-terminal-wrapper">
               <div id="log-terminal" class="log-terminal"></div>
             </div>
-          ` : html`
+          `
+              : html`
             <div class="log-history-empty">
               <span class="log-history-empty-icon">${unsafeHTML(iconSvg(Clock, 32))}</span>
               <p>Select a stage from the dropdown to review past output.</p>
             </div>
-          `}
+          `
+          }
         </div>
       </sl-details>
     </div>

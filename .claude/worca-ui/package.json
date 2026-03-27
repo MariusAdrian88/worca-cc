@@ -15,7 +15,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:browser": "playwright test",
-    "test:browser:ui": "playwright test --ui"
+    "test:browser:ui": "playwright test --ui",
+    "lint": "biome check",
+    "lint:fix": "biome check --write"
   },
   "dependencies": {
     "@shoelace-style/shoelace": "^2.20.1",
@@ -30,6 +32,7 @@
     "ws": "^8.18.3"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.4",
     "@playwright/test": "^1.58.2",
     "esbuild": "^0.27.1",
     "vitest": "^4.0.15"

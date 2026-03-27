@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 describe('preferencesTab signature: (preferences, worca, { onThemeToggle, rerender })', () => {
   it('preferencesTab accepts 3 parameters', async () => {

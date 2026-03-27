@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
-import { X, Lightbulb, iconSvg, RotateCw, CircleSlash } from './icons.js';
+import { describe, expect, it } from 'vitest';
+import { CircleSlash, iconSvg, Lightbulb, RotateCw, X } from './icons.js';
 
 describe('icons', () => {
   it('exports X icon data as an array', () => {

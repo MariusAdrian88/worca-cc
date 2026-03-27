@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { createServer } from 'node:http';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockStartPipeline = vi.fn().mockResolvedValue({ pid: 12345 });
 
@@ -56,7 +56,10 @@ describe('POST /api/runs - new format', () => {
   // --- Acceptance: valid payloads ---
 
   it('accepts sourceType=source with sourceValue', async () => {
-    const res = await postRun(base, { sourceType: 'source', sourceValue: 'gh:issue:42' });
+    const res = await postRun(base, {
+      sourceType: 'source',
+      sourceValue: 'gh:issue:42',
+    });
     expect(res.status).toBe(200);
     const data = await res.json();
     expect(data.ok).toBe(true);
@@ -64,13 +67,19 @@ describe('POST /api/runs - new format', () => {
   });
 
   it('accepts sourceType=spec with sourceValue', async () => {
-    const res = await postRun(base, { sourceType: 'spec', sourceValue: 'docs/spec.md' });
+    const res = await postRun(base, {
+      sourceType: 'spec',
+      sourceValue: 'docs/spec.md',
+    });
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
   });
 
   it('accepts sourceType=none with prompt', async () => {
-    const res = await postRun(base, { sourceType: 'none', prompt: 'Add user auth' });
+    const res = await postRun(base, {
+      sourceType: 'none',
+      prompt: 'Add user auth',
+    });
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
   });
@@ -89,7 +98,9 @@ describe('POST /api/runs - new format', () => {
 
   it('accepts source + prompt together', async () => {
     const res = await postRun(base, {
-      sourceType: 'source', sourceValue: 'gh:issue:42', prompt: 'focus on auth',
+      sourceType: 'source',
+      sourceValue: 'gh:issue:42',
+      prompt: 'focus on auth',
     });
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
@@ -97,7 +108,8 @@ describe('POST /api/runs - new format', () => {
 
   it('accepts planFile + prompt together', async () => {
     const res = await postRun(base, {
-      planFile: 'docs/plans/my-plan.md', prompt: 'focus on auth',
+      planFile: 'docs/plans/my-plan.md',
+      prompt: 'focus on auth',
     });
     expect(res.status).toBe(200);
     expect((await res.json()).ok).toBe(true);
@@ -125,12 +137,18 @@ describe('POST /api/runs - new format', () => {
   });
 
   it('rejects sourceType=source with empty sourceValue', async () => {
-    const res = await postRun(base, { sourceType: 'source', sourceValue: '  ' });
+    const res = await postRun(base, {
+      sourceType: 'source',
+      sourceValue: '  ',
+    });
     expect(res.status).toBe(400);
   });
 
   it('rejects invalid sourceType', async () => {
-    const res = await postRun(base, { sourceType: 'invalid', sourceValue: 'test' });
+    const res = await postRun(base, {
+      sourceType: 'invalid',
+      sourceValue: 'test',
+    });
     expect(res.status).toBe(400);
   });
 
@@ -142,7 +160,10 @@ describe('POST /api/runs - new format', () => {
   });
 
   it('rejects sourceValue longer than 50000 chars', async () => {
-    const res = await postRun(base, { sourceType: 'source', sourceValue: 'x'.repeat(50001) });
+    const res = await postRun(base, {
+      sourceType: 'source',
+      sourceValue: 'x'.repeat(50001),
+    });
     expect(res.status).toBe(400);
   });
 
@@ -165,8 +186,10 @@ describe('POST /api/runs - new format', () => {
 
   it('passes new-format fields to startPipeline', async () => {
     await postRun(base, {
-      sourceType: 'source', sourceValue: 'gh:issue:42',
-      prompt: 'focus on auth', planFile: 'docs/plans/my-plan.md',
+      sourceType: 'source',
+      sourceValue: 'gh:issue:42',
+      prompt: 'focus on auth',
+      planFile: 'docs/plans/my-plan.md',
     });
     expect(mockStartPipeline).toHaveBeenCalledWith(
       tmpDir,
@@ -187,7 +210,8 @@ describe('POST /api/runs - new format', () => {
 
   it('trims prompt and sourceValue', async () => {
     await postRun(base, {
-      sourceType: 'source', sourceValue: '  gh:issue:42  ',
+      sourceType: 'source',
+      sourceValue: '  gh:issue:42  ',
       prompt: '  focus on auth  ',
     });
     expect(mockStartPipeline).toHaveBeenCalledWith(
@@ -216,7 +240,10 @@ describe('POST /api/runs - backwards compatibility', () => {
   });
 
   it('normalizes old inputType=prompt to sourceType=none + prompt', async () => {
-    const res = await postRun(base, { inputType: 'prompt', inputValue: 'Add user auth' });
+    const res = await postRun(base, {
+      inputType: 'prompt',
+      inputValue: 'Add user auth',
+    });
     expect(res.status).toBe(200);
     expect(mockStartPipeline).toHaveBeenCalledWith(
       tmpDir,
@@ -228,7 +255,10 @@ describe('POST /api/runs - backwards compatibility', () => {
   });
 
   it('normalizes old inputType=source to sourceType=source + sourceValue', async () => {
-    const res = await postRun(base, { inputType: 'source', inputValue: 'gh:issue:42' });
+    const res = await postRun(base, {
+      inputType: 'source',
+      inputValue: 'gh:issue:42',
+    });
     expect(res.status).toBe(200);
     expect(mockStartPipeline).toHaveBeenCalledWith(
       tmpDir,
@@ -240,7 +270,10 @@ describe('POST /api/runs - backwards compatibility', () => {
   });
 
   it('normalizes old inputType=spec to sourceType=spec + sourceValue', async () => {
-    const res = await postRun(base, { inputType: 'spec', inputValue: 'docs/spec.md' });
+    const res = await postRun(base, {
+      inputType: 'spec',
+      inputValue: 'docs/spec.md',
+    });
     expect(res.status).toBe(200);
     expect(mockStartPipeline).toHaveBeenCalledWith(
       tmpDir,
@@ -253,7 +286,9 @@ describe('POST /api/runs - backwards compatibility', () => {
 
   it('preserves planFile from old format', async () => {
     const res = await postRun(base, {
-      inputType: 'prompt', inputValue: 'test', planFile: 'docs/plans/p.md',
+      inputType: 'prompt',
+      inputValue: 'test',
+      planFile: 'docs/plans/p.md',
     });
     expect(res.status).toBe(200);
     expect(mockStartPipeline).toHaveBeenCalledWith(
@@ -263,7 +298,12 @@ describe('POST /api/runs - backwards compatibility', () => {
   });
 
   it('preserves msize/mloops from old format', async () => {
-    await postRun(base, { inputType: 'prompt', inputValue: 'test', msize: 3, mloops: 2 });
+    await postRun(base, {
+      inputType: 'prompt',
+      inputValue: 'test',
+      msize: 3,
+      mloops: 2,
+    });
     expect(mockStartPipeline).toHaveBeenCalledWith(
       tmpDir,
       expect.objectContaining({ msize: 3, mloops: 2 }),

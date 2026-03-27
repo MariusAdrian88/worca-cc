@@ -61,6 +61,10 @@ jobs:
         working-directory: .claude/worca-ui
         run: npm ci
 
+      - name: Lint with biome
+        working-directory: .claude/worca-ui
+        run: npx biome check
+
       - name: Run vitest
         working-directory: .claude/worca-ui
         run: npx vitest run

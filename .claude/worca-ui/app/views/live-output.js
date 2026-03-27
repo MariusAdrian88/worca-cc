@@ -1,19 +1,19 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Activity, ClipboardCopy } from '../utils/icons.js';
-import { copyTerminalToClipboard } from '../utils/terminal-clipboard.js';
+import { Activity, ClipboardCopy, iconSvg } from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
+import { copyTerminalToClipboard } from '../utils/terminal-clipboard.js';
 
 // ANSI color palette (matches log-viewer.js)
 const STAGE_COLORS = [
-  '\x1b[36m',  // cyan
-  '\x1b[33m',  // yellow
-  '\x1b[35m',  // magenta
-  '\x1b[32m',  // green
-  '\x1b[34m',  // blue
-  '\x1b[91m',  // bright red
-  '\x1b[96m',  // bright cyan
-  '\x1b[93m',  // bright yellow
+  '\x1b[36m', // cyan
+  '\x1b[33m', // yellow
+  '\x1b[35m', // magenta
+  '\x1b[32m', // green
+  '\x1b[34m', // blue
+  '\x1b[91m', // bright red
+  '\x1b[96m', // bright cyan
+  '\x1b[93m', // bright yellow
 ];
 const RESET = '\x1b[0m';
 const DIM = '\x1b[2m';
@@ -60,7 +60,10 @@ async function ensureTerminal(container) {
   }
 
   // Guard against concurrent creation (multiple rerender() calls)
-  if (pendingInit) { await pendingInit; return; }
+  if (pendingInit) {
+    await pendingInit;
+    return;
+  }
 
   pendingInit = (async () => {
     const [{ Terminal }, { FitAddon }] = await Promise.all([
@@ -109,8 +112,12 @@ export function writeLiveLogLine(entry) {
   if (!activeStage) return;
   if (entry.stage !== activeStage) return;
 
-  const ts = entry.timestamp ? `${DIM}${formatTimestamp(entry.timestamp)}${RESET} ` : '';
-  const stage = entry.stage ? `${stageColor(entry.stage)}[${entry.stage.toUpperCase()}]${RESET} ` : '';
+  const ts = entry.timestamp
+    ? `${DIM}${formatTimestamp(entry.timestamp)}${RESET} `
+    : '';
+  const stage = entry.stage
+    ? `${stageColor(entry.stage)}[${entry.stage.toUpperCase()}]${RESET} `
+    : '';
   const msg = entry.line || entry;
   terminal.writeln(`${ts}${stage}${msg}`);
 }
@@ -120,7 +127,9 @@ export function writeLiveLogLine(entry) {
  */
 export function writeLiveIterationSeparator(iterNum) {
   if (!terminal) return;
-  terminal.writeln(`\n${DIM}${'─'.repeat(40)} Iteration ${iterNum} ${'─'.repeat(40)}${RESET}\n`);
+  terminal.writeln(
+    `\n${DIM}${'─'.repeat(40)} Iteration ${iterNum} ${'─'.repeat(40)}${RESET}\n`,
+  );
 }
 
 export function clearLiveTerminal() {
@@ -180,7 +189,9 @@ export function updateActiveStage(run) {
     if (terminal && prev !== null) {
       terminal.clear();
       if (newActive) {
-        terminal.writeln(`${DIM}--- Switched to stage: ${newActive.toUpperCase()} ---${RESET}\n`);
+        terminal.writeln(
+          `${DIM}--- Switched to stage: ${newActive.toUpperCase()} ---${RESET}\n`,
+        );
       }
     }
     return { changed: true, activeStage: newActive };
@@ -222,7 +233,9 @@ export async function mountLiveTerminal(runId) {
 export function liveOutputView(stageName, isRunning) {
   if (!isRunning) return nothing;
 
-  const label = stageName ? stageName.replace(/_/g, ' ').toUpperCase() : 'WAITING';
+  const label = stageName
+    ? stageName.replace(/_/g, ' ').toUpperCase()
+    : 'WAITING';
 
   return html`
     <div class="live-output-container">

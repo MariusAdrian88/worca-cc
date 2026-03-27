@@ -1,12 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { reconcileStatus } from '../process-manager.js';
 
 function makeTmpDir() {
-  const d = join(tmpdir(), `worca-reconcile-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const d = join(
+    tmpdir(),
+    `worca-reconcile-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(d, { recursive: true });
   return d;
 }
@@ -14,22 +17,33 @@ function makeTmpDir() {
 function writeStatus(worcaDir, runId, status) {
   const runDir = join(worcaDir, 'runs', runId);
   mkdirSync(runDir, { recursive: true });
-  writeFileSync(join(runDir, 'status.json'), JSON.stringify(status, null, 2) + '\n', 'utf8');
+  writeFileSync(
+    join(runDir, 'status.json'),
+    `${JSON.stringify(status, null, 2)}\n`,
+    'utf8',
+  );
   writeFileSync(join(worcaDir, 'active_run'), runId, 'utf8');
 }
 
 function readStatus(worcaDir, runId) {
-  return JSON.parse(readFileSync(join(worcaDir, 'runs', runId, 'status.json'), 'utf8'));
+  return JSON.parse(
+    readFileSync(join(worcaDir, 'runs', runId, 'status.json'), 'utf8'),
+  );
 }
 
 describe('reconcileStatus', () => {
   let worcaDir;
 
-  beforeEach(() => { worcaDir = makeTmpDir(); });
+  beforeEach(() => {
+    worcaDir = makeTmpDir();
+  });
   afterEach(() => rmSync(worcaDir, { recursive: true, force: true }));
 
   it('fixes stale running status when process is dead', () => {
-    writeStatus(worcaDir, 'run-001', { pipeline_status: 'running', stage: 'plan' });
+    writeStatus(worcaDir, 'run-001', {
+      pipeline_status: 'running',
+      stage: 'plan',
+    });
     // No PID file → getRunningPid returns null → process is "dead"
 
     const fixed = reconcileStatus(worcaDir);
@@ -41,7 +55,10 @@ describe('reconcileStatus', () => {
   });
 
   it('does not change status when process is alive', () => {
-    writeStatus(worcaDir, 'run-002', { pipeline_status: 'running', stage: 'test' });
+    writeStatus(worcaDir, 'run-002', {
+      pipeline_status: 'running',
+      stage: 'test',
+    });
     // Write a PID file pointing to our own PID (which is alive)
     writeFileSync(join(worcaDir, 'pipeline.pid'), String(process.pid), 'utf8');
 
@@ -53,7 +70,11 @@ describe('reconcileStatus', () => {
   });
 
   it('does not change status when already failed', () => {
-    writeStatus(worcaDir, 'run-003', { pipeline_status: 'failed', stop_reason: 'pipeline_error', stage: 'test' });
+    writeStatus(worcaDir, 'run-003', {
+      pipeline_status: 'failed',
+      stop_reason: 'pipeline_error',
+      stage: 'test',
+    });
 
     const fixed = reconcileStatus(worcaDir);
 
@@ -64,7 +85,11 @@ describe('reconcileStatus', () => {
   });
 
   it('preserves existing stop_reason when fixing stale status', () => {
-    writeStatus(worcaDir, 'run-004', { pipeline_status: 'running', stop_reason: 'signal', stage: 'implement' });
+    writeStatus(worcaDir, 'run-004', {
+      pipeline_status: 'running',
+      stop_reason: 'signal',
+      stage: 'implement',
+    });
 
     const fixed = reconcileStatus(worcaDir);
 

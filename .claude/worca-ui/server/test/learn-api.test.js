@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { createServer } from 'node:http';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockGetRunningPid = vi.fn().mockReturnValue(null);
 
@@ -72,11 +78,14 @@ describe('POST /api/runs/:id/learn', () => {
   it('returns 409 when pipeline is currently running', async () => {
     const runDir = join(tmpDir, 'runs', 'run-123');
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
-      run_id: 'run-123',
-      result: 'success',
-      stages: {},
-    }));
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify({
+        run_id: 'run-123',
+        result: 'success',
+        stages: {},
+      }),
+    );
 
     mockGetRunningPid.mockReturnValue({ pid: 99999 });
 
@@ -91,11 +100,14 @@ describe('POST /api/runs/:id/learn', () => {
   it('returns 200 and spawns learn script for valid run', async () => {
     const runDir = join(tmpDir, 'runs', 'my-run');
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
-      run_id: 'my-run',
-      result: 'success',
-      stages: {},
-    }));
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify({
+        run_id: 'my-run',
+        result: 'success',
+        stages: {},
+      }),
+    );
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'my-run');
@@ -108,12 +120,15 @@ describe('POST /api/runs/:id/learn', () => {
   it('returns 200 for a failed run too', async () => {
     const runDir = join(tmpDir, 'runs', 'failed-run');
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
-      run_id: 'failed-run',
-      result: 'failure',
-      error: 'Tests failed',
-      stages: {},
-    }));
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify({
+        run_id: 'failed-run',
+        result: 'failure',
+        error: 'Tests failed',
+        stages: {},
+      }),
+    );
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'failed-run');
@@ -126,11 +141,14 @@ describe('POST /api/runs/:id/learn', () => {
     const runDir = join(tmpDir, 'runs', 'status-write-run');
     mkdirSync(runDir, { recursive: true });
     const statusPath = join(runDir, 'status.json');
-    writeFileSync(statusPath, JSON.stringify({
-      run_id: 'status-write-run',
-      result: 'success',
-      stages: {},
-    }));
+    writeFileSync(
+      statusPath,
+      JSON.stringify({
+        run_id: 'status-write-run',
+        result: 'success',
+        stages: {},
+      }),
+    );
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'status-write-run');
@@ -151,17 +169,20 @@ describe('POST /api/runs/:id/learn', () => {
     const runDir = join(tmpDir, 'runs', 'concurrent-run');
     mkdirSync(runDir, { recursive: true });
     // Use current process PID (which is alive) to simulate a running learn stage
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
-      run_id: 'concurrent-run',
-      result: 'success',
-      stages: {
-        learn: {
-          status: 'in_progress',
-          pid: process.pid, // current process — guaranteed alive
-          started_at: new Date().toISOString(),
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify({
+        run_id: 'concurrent-run',
+        result: 'success',
+        stages: {
+          learn: {
+            status: 'in_progress',
+            pid: process.pid, // current process — guaranteed alive
+            started_at: new Date().toISOString(),
+          },
         },
-      },
-    }));
+      }),
+    );
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'concurrent-run');
@@ -174,17 +195,20 @@ describe('POST /api/runs/:id/learn', () => {
   it('allows re-run when learn stage has stale (dead) PID', async () => {
     const runDir = join(tmpDir, 'runs', 'stale-run');
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'status.json'), JSON.stringify({
-      run_id: 'stale-run',
-      result: 'success',
-      stages: {
-        learn: {
-          status: 'in_progress',
-          pid: 999999999, // very unlikely to be a real PID
-          started_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+    writeFileSync(
+      join(runDir, 'status.json'),
+      JSON.stringify({
+        run_id: 'stale-run',
+        result: 'success',
+        stages: {
+          learn: {
+            status: 'in_progress',
+            pid: 999999999, // very unlikely to be a real PID
+            started_at: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
+          },
         },
-      },
-    }));
+      }),
+    );
 
     ({ server, base } = await startServer(tmpDir, { projectRoot: tmpDir }));
     const res = await postLearn(base, 'stale-run');

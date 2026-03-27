@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { runDetailView } from './run-detail.js';
 
 function renderToString(template) {
@@ -12,7 +12,7 @@ function renderToString(template) {
       const v = template.values[i];
       if (typeof v === 'string') result += v;
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
     }
   });
   return result;
@@ -31,12 +31,14 @@ describe('runDetailView classification strip', () => {
       stages: {
         implement: {
           status: 'error',
-          iterations: [{
-            number: 1,
-            status: 'error',
-            outcome: 'error',
-            classification: classificationOverride,
-          }],
+          iterations: [
+            {
+              number: 1,
+              status: 'error',
+              outcome: 'error',
+              classification: classificationOverride,
+            },
+          ],
         },
       },
     };
@@ -62,35 +64,60 @@ describe('runDetailView classification strip', () => {
   });
 
   it('renders category badge with warning variant for infra_transient', () => {
-    const run = makeRunSingleIter({ category: 'infra_transient', retriable: true, remediation: 'Retry later', similar_to_previous: false });
+    const run = makeRunSingleIter({
+      category: 'infra_transient',
+      retriable: true,
+      remediation: 'Retry later',
+      similar_to_previous: false,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('infra_transient');
     expect(html).toContain('variant="warning"');
   });
 
   it('renders category badge with danger variant for infra_permanent', () => {
-    const run = makeRunSingleIter({ category: 'infra_permanent', retriable: false, remediation: 'Auth failed', similar_to_previous: false });
+    const run = makeRunSingleIter({
+      category: 'infra_permanent',
+      retriable: false,
+      remediation: 'Auth failed',
+      similar_to_previous: false,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('infra_permanent');
     expect(html).toContain('variant="danger"');
   });
 
   it('renders category badge with danger variant for logic_stuck', () => {
-    const run = makeRunSingleIter({ category: 'logic_stuck', retriable: false, remediation: 'Change approach', similar_to_previous: true });
+    const run = makeRunSingleIter({
+      category: 'logic_stuck',
+      retriable: false,
+      remediation: 'Change approach',
+      similar_to_previous: true,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('logic_stuck');
     expect(html).toContain('variant="danger"');
   });
 
   it('renders category badge with danger variant for env_missing', () => {
-    const run = makeRunSingleIter({ category: 'env_missing', retriable: false, remediation: 'Install tool', similar_to_previous: false });
+    const run = makeRunSingleIter({
+      category: 'env_missing',
+      retriable: false,
+      remediation: 'Install tool',
+      similar_to_previous: false,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('env_missing');
     expect(html).toContain('variant="danger"');
   });
 
   it('renders category badge with neutral variant for unknown', () => {
-    const run = makeRunSingleIter({ category: 'unknown', retriable: false, remediation: '', similar_to_previous: false });
+    const run = makeRunSingleIter({
+      category: 'unknown',
+      retriable: false,
+      remediation: '',
+      similar_to_previous: false,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('classification-strip');
     expect(html).toContain('unknown');
@@ -105,7 +132,12 @@ describe('runDetailView classification strip', () => {
   });
 
   it('renders retriable no when retriable is false', () => {
-    const run = makeRunSingleIter({ category: 'infra_permanent', retriable: false, remediation: 'Fix auth', similar_to_previous: false });
+    const run = makeRunSingleIter({
+      category: 'infra_permanent',
+      retriable: false,
+      remediation: 'Fix auth',
+      similar_to_previous: false,
+    });
     const html = renderToString(runDetailView(run));
     expect(html).toContain('Retriable');
     expect(html).toContain('>no<');

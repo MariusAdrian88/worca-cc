@@ -1,15 +1,34 @@
 // server/app.js
-import express from 'express';
-import { fileURLToPath } from 'node:url';
-import { join, dirname, basename } from 'node:path';
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, unlinkSync } from 'node:fs';
+
 import { execFileSync, spawn } from 'node:child_process';
 import { createHmac, randomUUID } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import { dbExists, getIssue, listIssues } from './beads-reader.js';
+import {
+  getRunningPid,
+  pausePipeline,
+  reconcileStatus,
+  restartStage,
+  startPipeline,
+  stopPipeline,
+} from './process-manager.js';
+import {
+  localPathFor,
+  readLocalSettings,
+  readMergedSettings,
+} from './settings-merge.js';
 import { validateSettingsPayload } from './settings-validator.js';
-import { readMergedSettings, readLocalSettings, localPathFor, deepMerge } from './settings-merge.js';
-import { startPipeline, stopPipeline, pausePipeline, restartStage, getRunningPid, reconcileStatus } from './process-manager.js';
 import { discoverRuns } from './watcher.js';
-import { listIssues, getIssue, dbExists } from './beads-reader.js';
 import { createInbox } from './webhook-inbox.js';
 
 function readFullSettings(settingsPath) {
@@ -29,27 +48,56 @@ export function createApp(options = {}) {
 
   // GET /api/settings — returns merged base + local config
   app.get('/api/settings', (_req, res) => {
-    if (!settingsPath) return res.status(501).json({ error: { code: 'not_configured', message: 'settingsPath not configured' } });
+    if (!settingsPath)
+      return res.status(501).json({
+        error: {
+          code: 'not_configured',
+          message: 'settingsPath not configured',
+        },
+      });
     try {
       const merged = readMergedSettings(settingsPath);
-      res.json({ worca: merged.worca || {}, permissions: merged.permissions || {} });
+      res.json({
+        worca: merged.worca || {},
+        permissions: merged.permissions || {},
+      });
     } catch (err) {
-      res.status(500).json({ error: { code: 'read_error', message: err.message } });
+      res
+        .status(500)
+        .json({ error: { code: 'read_error', message: err.message } });
     }
   });
 
   // POST /api/settings — writes to settings.local.json (never modifies base)
   app.post('/api/settings', (req, res) => {
-    if (!settingsPath) return res.status(501).json({ error: { code: 'not_configured', message: 'settingsPath not configured' } });
+    if (!settingsPath)
+      return res.status(501).json({
+        error: {
+          code: 'not_configured',
+          message: 'settingsPath not configured',
+        },
+      });
 
     const body = req.body;
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      return res.status(400).json({ error: { code: 'validation_error', message: 'Request body must be a JSON object', details: [] } });
+      return res.status(400).json({
+        error: {
+          code: 'validation_error',
+          message: 'Request body must be a JSON object',
+          details: [],
+        },
+      });
     }
 
     const validation = validateSettingsPayload(body);
     if (!validation.valid) {
-      return res.status(400).json({ error: { code: 'validation_error', message: 'Invalid settings payload', details: validation.details } });
+      return res.status(400).json({
+        error: {
+          code: 'validation_error',
+          message: 'Invalid settings payload',
+          details: validation.details,
+        },
+      });
     }
 
     try {
@@ -69,13 +117,18 @@ export function createApp(options = {}) {
         local.permissions = body.permissions;
       }
 
-      writeFileSync(localPath, JSON.stringify(local, null, 2) + '\n', 'utf8');
+      writeFileSync(localPath, `${JSON.stringify(local, null, 2)}\n`, 'utf8');
 
       // Return merged view so UI shows effective config
       const merged = readMergedSettings(settingsPath);
-      res.json({ worca: merged.worca || {}, permissions: merged.permissions || {} });
+      res.json({
+        worca: merged.worca || {},
+        permissions: merged.permissions || {},
+      });
     } catch (err) {
-      res.status(500).json({ error: { code: 'write_error', message: err.message } });
+      res
+        .status(500)
+        .json({ error: { code: 'write_error', message: err.message } });
     }
   });
 
@@ -89,12 +142,23 @@ export function createApp(options = {}) {
   };
 
   app.delete('/api/settings/:section', (req, res) => {
-    if (!settingsPath) return res.status(501).json({ error: { code: 'not_configured', message: 'settingsPath not configured' } });
+    if (!settingsPath)
+      return res.status(501).json({
+        error: {
+          code: 'not_configured',
+          message: 'settingsPath not configured',
+        },
+      });
 
     const section = req.params.section;
     const mapping = SECTION_KEYS[section];
     if (!mapping) {
-      return res.status(400).json({ error: { code: 'invalid_section', message: `Unknown section: ${section}. Valid: ${Object.keys(SECTION_KEYS).join(', ')}` } });
+      return res.status(400).json({
+        error: {
+          code: 'invalid_section',
+          message: `Unknown section: ${section}. Valid: ${Object.keys(SECTION_KEYS).join(', ')}`,
+        },
+      });
     }
 
     try {
@@ -119,22 +183,34 @@ export function createApp(options = {}) {
 
       // If local is now empty, delete the file
       if (Object.keys(local).length === 0) {
-        try { unlinkSync(localPath); } catch { /* file may not exist */ }
+        try {
+          unlinkSync(localPath);
+        } catch {
+          /* file may not exist */
+        }
       } else {
-        writeFileSync(localPath, JSON.stringify(local, null, 2) + '\n', 'utf8');
+        writeFileSync(localPath, `${JSON.stringify(local, null, 2)}\n`, 'utf8');
       }
 
       // Return merged view (now base-only for this section)
       const merged = readMergedSettings(settingsPath);
-      res.json({ worca: merged.worca || {}, permissions: merged.permissions || {} });
+      res.json({
+        worca: merged.worca || {},
+        permissions: merged.permissions || {},
+      });
     } catch (err) {
-      res.status(500).json({ error: { code: 'write_error', message: err.message } });
+      res
+        .status(500)
+        .json({ error: { code: 'write_error', message: err.message } });
     }
   });
 
   // GET /api/runs
   app.get('/api/runs', (_req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     try {
       const runs = discoverRuns(worcaDir);
       res.json({ ok: true, runs });
@@ -145,12 +221,16 @@ export function createApp(options = {}) {
 
   // POST /api/runs — start a new pipeline
   app.post('/api/runs', async (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
 
     const body = req.body || {};
 
     // Backwards compat: detect old { inputType, inputValue } format
-    let { sourceType, sourceValue, prompt, planFile, msize, mloops, branch } = body;
+    let { sourceType, sourceValue, prompt, planFile, msize, mloops, branch } =
+      body;
     if (body.inputType && sourceType === undefined) {
       if (body.inputType === 'prompt') {
         sourceType = 'none';
@@ -166,30 +246,45 @@ export function createApp(options = {}) {
 
     // Validation: sourceType must be valid
     if (!['none', 'source', 'spec'].includes(sourceType)) {
-      return res.status(400).json({ ok: false, error: 'sourceType must be "none", "source", or "spec"' });
+      return res.status(400).json({
+        ok: false,
+        error: 'sourceType must be "none", "source", or "spec"',
+      });
     }
 
     // Validation: sourceValue required when sourceType is source or spec
     if (sourceType !== 'none') {
       if (typeof sourceValue !== 'string' || sourceValue.trim().length === 0) {
-        return res.status(400).json({ ok: false, error: 'sourceValue must be a non-empty string when sourceType is "source" or "spec"' });
+        return res.status(400).json({
+          ok: false,
+          error:
+            'sourceValue must be a non-empty string when sourceType is "source" or "spec"',
+        });
       }
       if (sourceValue.length > 50000) {
-        return res.status(400).json({ ok: false, error: 'sourceValue must be 50,000 characters or less' });
+        return res.status(400).json({
+          ok: false,
+          error: 'sourceValue must be 50,000 characters or less',
+        });
       }
       sourceValue = sourceValue.trim();
     }
 
     // Validation: prompt length
     if (prompt != null && typeof prompt === 'string' && prompt.length > 50000) {
-      return res.status(400).json({ ok: false, error: 'prompt must be 50,000 characters or less' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'prompt must be 50,000 characters or less' });
     }
     if (typeof prompt === 'string') prompt = prompt.trim() || undefined;
 
     // Validation: planFile
     if (planFile !== undefined && planFile !== null) {
       if (typeof planFile !== 'string' || planFile.trim().length === 0) {
-        return res.status(400).json({ ok: false, error: 'planFile must be a non-empty string if provided' });
+        return res.status(400).json({
+          ok: false,
+          error: 'planFile must be a non-empty string if provided',
+        });
       }
     }
 
@@ -199,11 +294,18 @@ export function createApp(options = {}) {
 
     // Validation: at least one of source, planFile, or prompt required
     if (!hasSource && !hasPlan && !hasPrompt) {
-      return res.status(400).json({ ok: false, error: 'At least one of source, planFile, or prompt is required' });
+      return res.status(400).json({
+        ok: false,
+        error: 'At least one of source, planFile, or prompt is required',
+      });
     }
 
-    const msizeVal = msize != null ? Math.max(1, Math.min(10, Math.round(Number(msize)))) : 1;
-    const mloopsVal = mloops != null ? Math.max(1, Math.min(10, Math.round(Number(mloops)))) : 1;
+    const msizeVal =
+      msize != null ? Math.max(1, Math.min(10, Math.round(Number(msize)))) : 1;
+    const mloopsVal =
+      mloops != null
+        ? Math.max(1, Math.min(10, Math.round(Number(mloops))))
+        : 1;
 
     try {
       const result = await startPipeline(worcaDir, {
@@ -232,7 +334,11 @@ export function createApp(options = {}) {
   app.get('/api/branches', (_req, res) => {
     const cwd = projectRoot || process.cwd();
     try {
-      const out = execFileSync('git', ['branch', '--format=%(refname:short)'], { cwd, encoding: 'utf8', timeout: 5000 });
+      const out = execFileSync('git', ['branch', '--format=%(refname:short)'], {
+        cwd,
+        encoding: 'utf8',
+        timeout: 5000,
+      });
       const branches = out.trim().split('\n').filter(Boolean);
       res.json({ ok: true, branches });
     } catch (err) {
@@ -249,8 +355,10 @@ export function createApp(options = {}) {
     if (settingsPath) {
       const settings = readFullSettings(settingsPath);
       const planFiles = settings.worca?.planFiles;
-      if (planFiles?.dirs && Array.isArray(planFiles.dirs)) dirs = planFiles.dirs;
-      if (planFiles?.extensions && Array.isArray(planFiles.extensions)) extensions = planFiles.extensions;
+      if (planFiles?.dirs && Array.isArray(planFiles.dirs))
+        dirs = planFiles.dirs;
+      if (planFiles?.extensions && Array.isArray(planFiles.extensions))
+        extensions = planFiles.extensions;
     }
 
     const files = [];
@@ -260,11 +368,13 @@ export function createApp(options = {}) {
       try {
         const entries = readdirSync(absDir);
         for (const name of entries.sort()) {
-          if (extensions.some(ext => name.endsWith(ext))) {
+          if (extensions.some((ext) => name.endsWith(ext))) {
             files.push({ path: join(dir, name), dir, name });
           }
         }
-      } catch { /* skip unreadable dirs */ }
+      } catch {
+        /* skip unreadable dirs */
+      }
     }
 
     res.json({ ok: true, files });
@@ -272,7 +382,10 @@ export function createApp(options = {}) {
 
   // DELETE /api/runs/:id — stop a running pipeline
   app.delete('/api/runs/:id', (_req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     try {
       const result = stopPipeline(worcaDir);
       if (app.locals.broadcast) {
@@ -289,7 +402,10 @@ export function createApp(options = {}) {
 
   // POST /api/runs/:id/pause — pause a running pipeline via control file
   app.post('/api/runs/:id/pause', (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
     try {
       const result = pausePipeline(worcaDir, runId);
@@ -304,10 +420,17 @@ export function createApp(options = {}) {
 
   // POST /api/runs/:id/resume — resume a paused/failed pipeline
   app.post('/api/runs/:id/resume', async (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
     try {
-      const result = await startPipeline(worcaDir, { resume: true, runId, projectRoot });
+      const result = await startPipeline(worcaDir, {
+        resume: true,
+        runId,
+        projectRoot,
+      });
       if (app.locals.broadcast) {
         app.locals.broadcast('run-resumed', { runId, pid: result.pid });
       }
@@ -322,7 +445,10 @@ export function createApp(options = {}) {
 
   // POST /api/runs/:id/stop — write control.json + SIGTERM for a specific run
   app.post('/api/runs/:id/stop', (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
     // Write control.json to signal the orchestrator gracefully before SIGTERM
     try {
@@ -330,10 +456,20 @@ export function createApp(options = {}) {
       mkdirSync(controlDir, { recursive: true });
       writeFileSync(
         join(controlDir, 'control.json'),
-        JSON.stringify({ action: 'stop', requested_at: new Date().toISOString(), source: 'ui' }, null, 2) + '\n',
+        `${JSON.stringify(
+          {
+            action: 'stop',
+            requested_at: new Date().toISOString(),
+            source: 'ui',
+          },
+          null,
+          2,
+        )}\n`,
         'utf8',
       );
-    } catch { /* non-fatal — SIGTERM follows */ }
+    } catch {
+      /* non-fatal — SIGTERM follows */
+    }
     try {
       const result = stopPipeline(worcaDir);
       if (app.locals.broadcast) {
@@ -347,16 +483,25 @@ export function createApp(options = {}) {
         if (existsSync(statusPath)) {
           try {
             const st = JSON.parse(readFileSync(statusPath, 'utf8'));
-            if (st.pipeline_status === 'paused' || st.pipeline_status === 'running') {
+            if (
+              st.pipeline_status === 'paused' ||
+              st.pipeline_status === 'running'
+            ) {
               st.pipeline_status = 'failed';
               st.stop_reason = 'stopped';
-              writeFileSync(statusPath, JSON.stringify(st, null, 2) + '\n', 'utf8');
+              writeFileSync(
+                statusPath,
+                `${JSON.stringify(st, null, 2)}\n`,
+                'utf8',
+              );
               if (app.locals.broadcast) {
                 app.locals.broadcast('run-stopped', { runId, pid: null });
               }
               return res.json({ ok: true, stopped: true, runId, pid: null });
             }
-          } catch { /* fall through to 404 */ }
+          } catch {
+            /* fall through to 404 */
+          }
         }
         return res.status(404).json({ ok: false, error: err.message });
       }
@@ -366,14 +511,19 @@ export function createApp(options = {}) {
 
   // GET /api/runs/:id/status — return pipeline_status, stage, iteration from status.json
   app.get('/api/runs/:id/status', (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
     let statusPath = join(worcaDir, 'runs', runId, 'status.json');
     if (!existsSync(statusPath)) {
       statusPath = join(worcaDir, 'results', runId, 'status.json');
     }
     if (!existsSync(statusPath)) {
-      return res.status(404).json({ ok: false, error: `Run "${runId}" not found` });
+      return res
+        .status(404)
+        .json({ ok: false, error: `Run "${runId}" not found` });
     }
     try {
       let status = JSON.parse(readFileSync(statusPath, 'utf8'));
@@ -382,19 +532,32 @@ export function createApp(options = {}) {
         try {
           reconcileStatus(worcaDir);
           status = JSON.parse(readFileSync(statusPath, 'utf8'));
-        } catch { /* reconciliation is best-effort */ }
+        } catch {
+          /* reconciliation is best-effort */
+        }
       }
       const stage = status.stage ?? null;
-      const iteration = stage != null ? (status.stages?.[stage]?.iteration ?? null) : null;
-      res.json({ ok: true, pipeline_status: status.pipeline_status ?? null, stage, iteration });
+      const iteration =
+        stage != null ? (status.stages?.[stage]?.iteration ?? null) : null;
+      res.json({
+        ok: true,
+        pipeline_status: status.pipeline_status ?? null,
+        stage,
+        iteration,
+      });
     } catch (err) {
-      res.status(500).json({ ok: false, error: `Failed to read status: ${err.message}` });
+      res
+        .status(500)
+        .json({ ok: false, error: `Failed to read status: ${err.message}` });
     }
   });
 
   // POST /api/runs/:id/stages/:stage/restart — restart a failed stage
   app.post('/api/runs/:id/stages/:stage/restart', async (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const { stage } = req.params;
     try {
       const result = await restartStage(worcaDir, stage, { projectRoot });
@@ -415,7 +578,10 @@ export function createApp(options = {}) {
 
   // POST /api/runs/:id/learn — trigger learning analysis for a completed run
   app.post('/api/runs/:id/learn', (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
 
     const runId = req.params.id;
     // Check both runs/ and results/ directories
@@ -425,19 +591,26 @@ export function createApp(options = {}) {
     }
 
     if (!existsSync(statusPath)) {
-      return res.status(404).json({ ok: false, error: `Run "${runId}" not found` });
+      return res
+        .status(404)
+        .json({ ok: false, error: `Run "${runId}" not found` });
     }
 
     const running = getRunningPid(worcaDir);
     if (running) {
-      return res.status(409).json({ ok: false, error: `Pipeline is currently running (PID ${running.pid})` });
+      return res.status(409).json({
+        ok: false,
+        error: `Pipeline is currently running (PID ${running.pid})`,
+      });
     }
 
     let status;
     try {
       status = JSON.parse(readFileSync(statusPath, 'utf8'));
     } catch (err) {
-      return res.status(500).json({ ok: false, error: `Failed to read status: ${err.message}` });
+      return res
+        .status(500)
+        .json({ ok: false, error: `Failed to read status: ${err.message}` });
     }
 
     // Concurrency guard: check if learn is already running
@@ -445,20 +618,28 @@ export function createApp(options = {}) {
     if (learnStage?.status === 'in_progress' && learnStage.pid) {
       try {
         process.kill(learnStage.pid, 0); // throws if PID dead
-        return res.status(409).json({ ok: false, error: 'Learning analysis is already running' });
-      } catch { /* stale PID — allow re-run */ }
+        return res
+          .status(409)
+          .json({ ok: false, error: 'Learning analysis is already running' });
+      } catch {
+        /* stale PID — allow re-run */
+      }
     }
 
     const cwd = projectRoot || process.cwd();
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
-    const child = spawn('python3', ['.claude/scripts/run_learn.py', '--run-id', runId], {
-      detached: true,
-      stdio: 'ignore',
-      cwd,
-      env,
-    });
+    const child = spawn(
+      'python3',
+      ['.claude/scripts/run_learn.py', '--run-id', runId],
+      {
+        detached: true,
+        stdio: 'ignore',
+        cwd,
+        env,
+      },
+    );
     child.unref();
 
     // Write in_progress status immediately so UI reflects it on refresh
@@ -468,14 +649,22 @@ export function createApp(options = {}) {
       status: 'in_progress',
       pid: child.pid,
       started_at: now,
-      iterations: [{
-        number: 1, status: 'in_progress', started_at: now,
-        agent: 'learner', model: 'sonnet', trigger: 'manual',
-      }],
+      iterations: [
+        {
+          number: 1,
+          status: 'in_progress',
+          started_at: now,
+          agent: 'learner',
+          model: 'sonnet',
+          trigger: 'manual',
+        },
+      ],
     };
     try {
-      writeFileSync(statusPath, JSON.stringify(status, null, 2) + '\n', 'utf8');
-    } catch { /* non-fatal */ }
+      writeFileSync(statusPath, `${JSON.stringify(status, null, 2)}\n`, 'utf8');
+    } catch {
+      /* non-fatal */
+    }
 
     if (app.locals.broadcast) {
       app.locals.broadcast('learn-started', { runId });
@@ -487,8 +676,11 @@ export function createApp(options = {}) {
         const fresh = JSON.parse(readFileSync(statusPath, 'utf8'));
         if (app.locals.scheduleRefresh) app.locals.scheduleRefresh();
         const ls = fresh.stages?.learn?.status;
-        if (ls !== 'in_progress' && ls !== 'pending') clearInterval(pollInterval);
-      } catch { clearInterval(pollInterval); }
+        if (ls !== 'in_progress' && ls !== 'pending')
+          clearInterval(pollInterval);
+      } catch {
+        clearInterval(pollInterval);
+      }
     }, 3000);
     setTimeout(() => clearInterval(pollInterval), 15 * 60 * 1000);
     if (pollInterval.unref) pollInterval.unref();
@@ -498,10 +690,18 @@ export function createApp(options = {}) {
 
   // GET /api/beads/issues
   app.get('/api/beads/issues', (_req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const beadsDbPath = join(worcaDir, '..', '.beads', 'beads.db');
     if (!dbExists(beadsDbPath)) {
-      return res.json({ ok: true, issues: [], dbExists: false, dbPath: beadsDbPath });
+      return res.json({
+        ok: true,
+        issues: [],
+        dbExists: false,
+        dbPath: beadsDbPath,
+      });
     }
     try {
       const issues = listIssues(beadsDbPath);
@@ -513,38 +713,62 @@ export function createApp(options = {}) {
 
   // POST /api/beads/issues/:id/start
   app.post('/api/beads/issues/:id/start', async (req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const issueId = parseInt(req.params.id, 10);
     if (!Number.isInteger(issueId) || issueId <= 0) {
-      return res.status(400).json({ ok: false, error: 'Issue ID must be a positive integer' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Issue ID must be a positive integer' });
     }
     const beadsDbPath = join(worcaDir, '..', '.beads', 'beads.db');
     const issue = getIssue(beadsDbPath, issueId);
     if (!issue) {
-      return res.status(404).json({ ok: false, error: `Issue ${issueId} not found` });
+      return res
+        .status(404)
+        .json({ ok: false, error: `Issue ${issueId} not found` });
     }
     if (issue.status !== 'ready') {
-      return res.status(409).json({ ok: false, error: `Issue ${issueId} is not in 'ready' state (current: ${issue.status})` });
+      return res.status(409).json({
+        ok: false,
+        error: `Issue ${issueId} is not in 'ready' state (current: ${issue.status})`,
+      });
     }
     if (issue.blocked_by.length > 0) {
-      return res.status(409).json({ ok: false, error: `Issue ${issueId} is blocked by issues: ${issue.blocked_by.join(', ')}` });
+      return res.status(409).json({
+        ok: false,
+        error: `Issue ${issueId} is blocked by issues: ${issue.blocked_by.join(', ')}`,
+      });
     }
     try {
-      const prompt = `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
-      const result = await startPipeline(worcaDir, { inputType: 'prompt', inputValue: prompt, msize: 1, mloops: 1 });
+      const prompt =
+        `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
+      const result = await startPipeline(worcaDir, {
+        inputType: 'prompt',
+        inputValue: prompt,
+        msize: 1,
+        mloops: 1,
+      });
       if (app.locals.broadcast) {
         app.locals.broadcast('run-started', { pid: result.pid });
       }
       res.json({ ok: true, pid: result.pid, issueId, prompt });
     } catch (err) {
-      const status = (err.message || '').includes('already running') ? 409 : 500;
+      const status = (err.message || '').includes('already running')
+        ? 409
+        : 500;
       res.status(status).json({ ok: false, error: err.message });
     }
   });
 
   // GET /api/costs — token & cost data for all runs
   app.get('/api/costs', (_req, res) => {
-    if (!worcaDir) return res.status(501).json({ ok: false, error: 'worcaDir not configured' });
+    if (!worcaDir)
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
     const resultsDir = join(worcaDir, 'results');
     if (!existsSync(resultsDir)) return res.json({ ok: true, tokenData: {} });
 
@@ -558,7 +782,9 @@ export function createApp(options = {}) {
         for (const sub of readdirSync(runDir, { withFileTypes: true })) {
           if (sub.isDirectory()) stageNames.push(sub.name);
         }
-      } catch { continue; }
+      } catch {
+        continue;
+      }
 
       if (stageNames.length === 0) continue;
       tokenData[entry.name] = {};
@@ -567,13 +793,20 @@ export function createApp(options = {}) {
         const stageDir = join(runDir, stage);
         const iters = [];
         try {
-          const files = readdirSync(stageDir).filter(f => f.startsWith('iter-') && f.endsWith('.json')).sort();
+          const files = readdirSync(stageDir)
+            .filter((f) => f.startsWith('iter-') && f.endsWith('.json'))
+            .sort();
           for (const file of files) {
             try {
-              const data = JSON.parse(readFileSync(join(stageDir, file), 'utf8'));
+              const data = JSON.parse(
+                readFileSync(join(stageDir, file), 'utf8'),
+              );
               const mu = data.modelUsage || {};
               // Aggregate across all models in this iteration
-              let inputTokens = 0, outputTokens = 0, cacheReadInputTokens = 0, cacheCreationInputTokens = 0;
+              let inputTokens = 0,
+                outputTokens = 0,
+                cacheReadInputTokens = 0,
+                cacheCreationInputTokens = 0;
               const models = [];
               for (const [model, usage] of Object.entries(mu)) {
                 inputTokens += usage.inputTokens || 0;
@@ -582,10 +815,20 @@ export function createApp(options = {}) {
                 cacheCreationInputTokens += usage.cacheCreationInputTokens || 0;
                 models.push(model);
               }
-              iters.push({ inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, models });
-            } catch { /* skip bad files */ }
+              iters.push({
+                inputTokens,
+                outputTokens,
+                cacheReadInputTokens,
+                cacheCreationInputTokens,
+                models,
+              });
+            } catch {
+              /* skip bad files */
+            }
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         if (iters.length > 0) tokenData[entry.name][stage] = iters;
       }
     }
@@ -606,11 +849,15 @@ export function createApp(options = {}) {
     try {
       parsedUrl = new URL(trimmedUrl);
     } catch {
-      return res.status(400).json({ ok: false, error: 'url is not a valid URL' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'url is not a valid URL' });
     }
 
     if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
-      return res.status(400).json({ ok: false, error: 'url must use http or https protocol' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'url must use http or https protocol' });
     }
 
     const event = {
@@ -629,12 +876,13 @@ export function createApp(options = {}) {
     if (secret && typeof secret === 'string' && secret.length > 0) {
       const hmac = createHmac('sha256', secret);
       hmac.update(body);
-      headers['X-Worca-Signature'] = 'sha256=' + hmac.digest('hex');
+      headers['X-Worca-Signature'] = `sha256=${hmac.digest('hex')}`;
     }
 
-    const timeoutMs = (typeof timeout_ms === 'number' && timeout_ms > 0)
-      ? Math.min(timeout_ms, 30000)
-      : 10000;
+    const timeoutMs =
+      typeof timeout_ms === 'number' && timeout_ms > 0
+        ? Math.min(timeout_ms, 30000)
+        : 10000;
 
     const startMs = Date.now();
     try {
@@ -642,13 +890,26 @@ export function createApp(options = {}) {
       const timer = setTimeout(() => controller.abort(), timeoutMs);
       let response;
       try {
-        response = await fetch(trimmedUrl, { method: 'POST', headers, body, signal: controller.signal });
+        response = await fetch(trimmedUrl, {
+          method: 'POST',
+          headers,
+          body,
+          signal: controller.signal,
+        });
       } finally {
         clearTimeout(timer);
       }
-      res.json({ ok: true, status_code: response.status, response_ms: Date.now() - startMs });
+      res.json({
+        ok: true,
+        status_code: response.status,
+        response_ms: Date.now() - startMs,
+      });
     } catch (err) {
-      res.json({ ok: false, error: err.message, response_ms: Date.now() - startMs });
+      res.json({
+        ok: false,
+        error: err.message,
+        response_ms: Date.now() - startMs,
+      });
     }
   });
 
@@ -669,8 +930,13 @@ export function createApp(options = {}) {
 
   // GET /api/webhooks/inbox — list stored events
   app.get('/api/webhooks/inbox', (req, res) => {
-    const since = req.query.since != null ? parseInt(req.query.since, 10) : undefined;
-    res.json({ ok: true, events: webhookInbox.list(since), controlAction: webhookInbox.getControlAction() });
+    const since =
+      req.query.since != null ? parseInt(req.query.since, 10) : undefined;
+    res.json({
+      ok: true,
+      events: webhookInbox.list(since),
+      controlAction: webhookInbox.getControlAction(),
+    });
   });
 
   // DELETE /api/webhooks/inbox — clear all events
@@ -691,7 +957,10 @@ export function createApp(options = {}) {
   app.put('/api/webhooks/inbox/control', (req, res) => {
     const { action } = req.body || {};
     if (!['continue', 'pause', 'abort'].includes(action)) {
-      return res.status(400).json({ ok: false, error: 'action must be "continue", "pause", or "abort"' });
+      return res.status(400).json({
+        ok: false,
+        error: 'action must be "continue", "pause", or "abort"',
+      });
     }
     webhookInbox.setControlAction(action);
     if (app.locals.broadcast) {

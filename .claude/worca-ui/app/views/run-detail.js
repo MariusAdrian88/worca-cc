@@ -1,12 +1,32 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { stageTimelineView } from './stage-timeline.js';
-import { statusClass, statusIcon, resolveStatus } from '../utils/status-badge.js';
-import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
-import { iconSvg, Clock, Timer, Cpu, GitBranch, RefreshCw, FileText, ClipboardCopy, Coins, RotateCcw, List } from '../utils/icons.js';
-import { beadsDependencyGraph, priorityVariant, statusVariant } from './beads-panel.js';
-import { resolveIterationTab } from './stage-tab-memory.js';
+import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
+import {
+  ClipboardCopy,
+  Clock,
+  Coins,
+  Cpu,
+  FileText,
+  GitBranch,
+  iconSvg,
+  List,
+  RefreshCw,
+  RotateCcw,
+  Timer,
+} from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
+import {
+  resolveStatus,
+  statusClass,
+  statusIcon,
+} from '../utils/status-badge.js';
+import {
+  beadsDependencyGraph,
+  priorityVariant,
+  statusVariant,
+} from './beads-panel.js';
+import { resolveIterationTab } from './stage-tab-memory.js';
+import { stageTimelineView } from './stage-timeline.js';
 
 /**
  * Render a stacked horizontal timing bar at the pipeline level.
@@ -16,7 +36,10 @@ import { scrollOnExpand } from '../utils/scroll.js';
 function _pipelineTimingBar(allIters, pipelineWallMs) {
   if (!pipelineWallMs || pipelineWallMs <= 0) return nothing;
 
-  const thinkingMs = allIters.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
+  const thinkingMs = allIters.reduce(
+    (sum, it) => sum + (it.duration_api_ms || 0),
+    0,
+  );
   // duration_session_ms = CLI session time. Only fall back to duration_ms for legacy runs
   // where duration_session_ms is undefined. When explicitly 0 (e.g. preflight), don't fall back.
   const sessionMs = allIters.reduce((sum, it) => {
@@ -28,20 +51,42 @@ function _pipelineTimingBar(allIters, pipelineWallMs) {
 
   if (thinkingMs <= 0 && toolsMs <= 0) return nothing;
 
-  const thinkingPct = Math.round(thinkingMs / pipelineWallMs * 100);
-  const toolsPct = Math.round(toolsMs / pipelineWallMs * 100);
+  const thinkingPct = Math.round((thinkingMs / pipelineWallMs) * 100);
+  const toolsPct = Math.round((toolsMs / pipelineWallMs) * 100);
   const restPct = Math.max(0, 100 - thinkingPct - toolsPct);
 
   const segments = [
-    { key: 'thinking', pct: thinkingPct, ms: thinkingMs, label: 'Thinking (Agent)', desc: 'Time spent on model inference (API round-trips)', cls: 'timing-bar-thinking' },
-    { key: 'tools', pct: toolsPct, ms: toolsMs, label: 'Tools (Agent)', desc: 'Time spent executing tools (bash, file I/O, subprocesses)', cls: 'timing-bar-tools' },
-    { key: 'rest', pct: restPct, ms: restMs, label: 'Rest of Pipeline', desc: 'Orchestration, status writes, stage transitions, retry delays', cls: 'timing-bar-rest' },
-  ].filter(s => s.pct > 0);
+    {
+      key: 'thinking',
+      pct: thinkingPct,
+      ms: thinkingMs,
+      label: 'Thinking (Agent)',
+      desc: 'Time spent on model inference (API round-trips)',
+      cls: 'timing-bar-thinking',
+    },
+    {
+      key: 'tools',
+      pct: toolsPct,
+      ms: toolsMs,
+      label: 'Tools (Agent)',
+      desc: 'Time spent executing tools (bash, file I/O, subprocesses)',
+      cls: 'timing-bar-tools',
+    },
+    {
+      key: 'rest',
+      pct: restPct,
+      ms: restMs,
+      label: 'Rest of Pipeline',
+      desc: 'Orchestration, status writes, stage transitions, retry delays',
+      cls: 'timing-bar-rest',
+    },
+  ].filter((s) => s.pct > 0);
 
   return html`
     <div class="pipeline-timing-bar-container">
       <div class="pipeline-timing-bar">
-        ${segments.map(s => html`
+        ${segments.map(
+          (s) => html`
           <sl-tooltip>
             <div slot="content">
               <strong>${s.label}</strong><br>
@@ -49,20 +94,28 @@ function _pipelineTimingBar(allIters, pipelineWallMs) {
               <span style="opacity:0.7">${s.desc}</span>
             </div>
             <div class="timing-bar-segment ${s.cls}" style="width:${s.pct}%">
-              ${s.pct >= 15 ? html`<span class="timing-bar-segment-text">${s.label} ${s.pct}%</span>` :
-                s.pct >= 8 ? html`<span class="timing-bar-segment-text">${s.pct}%</span>` : nothing}
+              ${
+                s.pct >= 15
+                  ? html`<span class="timing-bar-segment-text">${s.label} ${s.pct}%</span>`
+                  : s.pct >= 8
+                    ? html`<span class="timing-bar-segment-text">${s.pct}%</span>`
+                    : nothing
+              }
             </div>
           </sl-tooltip>
-        `)}
+        `,
+        )}
       </div>
       <div class="pipeline-timing-bar-legend">
-        ${segments.map(s => html`
+        ${segments.map(
+          (s) => html`
           <span class="timing-bar-legend-item">
             <span class="timing-bar-legend-swatch ${s.cls}"></span>
             <span class="timing-bar-legend-label">${s.label}</span>
             <span class="timing-bar-legend-value">${formatDuration(s.ms)} (${s.pct}%)</span>
           </span>
-        `)}
+        `,
+        )}
       </div>
     </div>
   `;
@@ -72,7 +125,8 @@ function _lastStageEnd(stages) {
   if (!stages) return null;
   let latest = null;
   for (const s of Object.values(stages)) {
-    if (s.completed_at && (!latest || s.completed_at > latest)) latest = s.completed_at;
+    if (s.completed_at && (!latest || s.completed_at > latest))
+      latest = s.completed_at;
   }
   return latest;
 }
@@ -86,10 +140,14 @@ function _badgeVariant(status) {
 
 function _iterStatusIcon(iter) {
   const s = iter.status || 'pending';
-  if (s === 'completed' && iter.outcome === 'success') return html`<span class="iter-status-icon success">${unsafeHTML(statusIcon('completed', 12))}</span>`;
-  if (s === 'completed') return html`<span class="iter-status-icon">${unsafeHTML(statusIcon('completed', 12))}</span>`;
-  if (s === 'error') return html`<span class="iter-status-icon failure">${unsafeHTML(statusIcon('error', 12))}</span>`;
-  if (s === 'in_progress') return html`<span class="iter-status-icon in-progress">${unsafeHTML(statusIcon('in_progress', 12))}</span>`;
+  if (s === 'completed' && iter.outcome === 'success')
+    return html`<span class="iter-status-icon success">${unsafeHTML(statusIcon('completed', 12))}</span>`;
+  if (s === 'completed')
+    return html`<span class="iter-status-icon">${unsafeHTML(statusIcon('completed', 12))}</span>`;
+  if (s === 'error')
+    return html`<span class="iter-status-icon failure">${unsafeHTML(statusIcon('error', 12))}</span>`;
+  if (s === 'in_progress')
+    return html`<span class="iter-status-icon in-progress">${unsafeHTML(statusIcon('in_progress', 12))}</span>`;
   return nothing;
 }
 
@@ -112,7 +170,12 @@ function _outcomeLabel(outcome) {
 
 function _classificationVariant(category) {
   if (category === 'infra_transient') return 'warning';
-  if (category === 'infra_permanent' || category === 'logic_stuck' || category === 'env_missing') return 'danger';
+  if (
+    category === 'infra_permanent' ||
+    category === 'logic_stuck' ||
+    category === 'env_missing'
+  )
+    return 'danger';
   return 'neutral';
 }
 
@@ -134,12 +197,16 @@ function _classificationStripView(iter) {
         <span class="classification-strip-label">Similar:</span>
         <span class="classification-strip-value">${c.similar_to_previous ? 'yes' : 'no'}</span>
       </span>
-      ${c.remediation ? html`
+      ${
+        c.remediation
+          ? html`
         <span class="classification-strip-item classification-remediation">
           <span class="classification-strip-label">Remediation:</span>
           <span class="classification-strip-value">${c.remediation}</span>
         </span>
-      ` : nothing}
+      `
+          : nothing
+      }
     </div>
   `;
 }
@@ -156,7 +223,7 @@ function _circuitBreakerBannerView(run, settings) {
   }
   const failures = cb.consecutive_failures || 0;
   if (failures > 0) {
-    const threshold = (settings.circuit_breaker || {}).max_consecutive_failures ?? 3;
+    const threshold = settings.circuit_breaker?.max_consecutive_failures ?? 3;
     return html`
       <sl-alert class="circuit-breaker-banner" variant="warning" open>
         <strong>Circuit breaker warning:</strong> ${String(failures)}/${String(threshold)} consecutive failures.
@@ -185,7 +252,9 @@ function _preflightChecksView(stage, iter) {
   return html`
     <div class="preflight-checks-view">
       ${summary ? html`<div class="preflight-summary">${summary}</div>` : nothing}
-      ${checks.length > 0 ? html`
+      ${
+        checks.length > 0
+          ? html`
         <table class="preflight-table">
           <thead>
             <tr>
@@ -195,16 +264,20 @@ function _preflightChecksView(stage, iter) {
             </tr>
           </thead>
           <tbody>
-            ${checks.map(check => html`
+            ${checks.map(
+              (check) => html`
               <tr>
                 <td><sl-badge variant="${_preflightCheckBadgeVariant(check.status)}" pill>${check.status}</sl-badge></td>
                 <td class="preflight-check-name">${check.name}</td>
                 <td class="preflight-check-message">${check.message || ''}</td>
               </tr>
-            `)}
+            `,
+            )}
           </tbody>
         </table>
-      ` : nothing}
+      `
+          : nothing
+      }
     </div>
   `;
 }
@@ -227,7 +300,7 @@ function _stageToJson(key, stage, stageAgent, stageModel, promptData) {
     started_at: stage.started_at || undefined,
     completed_at: stage.completed_at || undefined,
     error: stage.error || undefined,
-    iterations: iterations.map(it => ({
+    iterations: iterations.map((it) => ({
       number: it.number,
       status: it.status,
       outcome: it.outcome || undefined,
@@ -242,10 +315,12 @@ function _stageToJson(key, stage, stageAgent, stageModel, promptData) {
       started_at: it.started_at || undefined,
       completed_at: it.completed_at || undefined,
     })),
-    prompts: promptData ? {
-      agent_instructions: promptData.agentInstructions || undefined,
-      user_prompt: promptData.userPrompt || undefined,
-    } : undefined,
+    prompts: promptData
+      ? {
+          agent_instructions: promptData.agentInstructions || undefined,
+          user_prompt: promptData.userPrompt || undefined,
+        }
+      : undefined,
   };
 }
 
@@ -266,7 +341,10 @@ function _stageWallMs(stage) {
 }
 
 function timingStripView(startedAt, completedAt, extra = nothing) {
-  const dur = startedAt && completedAt ? formatDuration(elapsed(startedAt, completedAt)) : '';
+  const dur =
+    startedAt && completedAt
+      ? formatDuration(elapsed(startedAt, completedAt))
+      : '';
   return html`
     <div class="timing-strip">
       ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> <span class="meta-value">${formatTimestamp(startedAt)}</span></span>` : nothing}
@@ -283,17 +361,21 @@ function _iterationDetailView(iter, stageKey, stageAgent, promptData) {
   const iterNum = iter.number ?? 0;
   // Find the prompt for this iteration
   const iterPrompts = promptData?.iterationPrompts || [];
-  const iterPrompt = iterPrompts.find(ip => ip.iteration === iterNum);
+  const iterPrompt = iterPrompts.find((ip) => ip.iteration === iterNum);
   const userPrompt = iterPrompt?.prompt || promptData?.userPrompt || null;
-  const iterPromptData = userPrompt ? { agentInstructions: promptData?.agentInstructions, userPrompt } : promptData;
-  const iterDur = iter.started_at ? formatDuration(elapsed(iter.started_at, iter.completed_at || null)) : '';
+  const iterPromptData = userPrompt
+    ? { agentInstructions: promptData?.agentInstructions, userPrompt }
+    : promptData;
+  const iterDur = iter.started_at
+    ? formatDuration(elapsed(iter.started_at, iter.completed_at || null))
+    : '';
   return html`
     <div class="iteration-detail">
       ${timingStripView(iter.started_at, iter.completed_at)}
       <div class="stage-info-strip">
         ${agentName ? html`<span class="stage-info-item"><span class="stage-meta-icon">${unsafeHTML(iconSvg(Cpu, 12))}</span> ${agentName}${model ? html` <span class="text-muted">(${model})</span>` : ''}</span>` : nothing}
         ${iter.turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> <span class="meta-value">${iter.turns}</span></span>` : nothing}
-        ${iter.duration_api_ms ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(iter.duration_api_ms)}${iter.started_at && iter.completed_at ? ` (${Math.round(iter.duration_api_ms / elapsed(iter.started_at, iter.completed_at) * 100)}%)` : ''}</span></span>` : nothing}
+        ${iter.duration_api_ms ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(iter.duration_api_ms)}${iter.started_at && iter.completed_at ? ` (${Math.round((iter.duration_api_ms / elapsed(iter.started_at, iter.completed_at)) * 100)}%)` : ''}</span></span>` : nothing}
         ${iter.cost_usd != null ? html`<span class="stage-info-item"><span class="meta-label">Iteration Cost:</span> <span class="meta-value">$${Number(iter.cost_usd).toFixed(2)}</span></span>` : nothing}
         ${iterDur ? html`<span class="stage-info-item"><span class="meta-label">Iteration Duration:</span> <span class="meta-value">${iterDur}</span></span>` : nothing}
       </div>
@@ -308,7 +390,9 @@ function _iterationDetailView(iter, stageKey, stageAgent, promptData) {
 function _copyToClipboard(text, btn) {
   navigator.clipboard.writeText(text).then(() => {
     btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+    setTimeout(() => {
+      btn.textContent = 'Copy';
+    }, 1500);
   });
 }
 
@@ -322,7 +406,9 @@ function _agentPromptSection(_stageKey, promptData) {
         <span class="stage-meta-icon">${unsafeHTML(iconSvg(FileText, 12))}</span>
         Agent Instructions
       </div>
-      ${userPrompt ? html`
+      ${
+        userPrompt
+          ? html`
         <div class="agent-prompt-block">
           <div class="agent-prompt-label-row">
             <span class="agent-prompt-label">User Prompt (-p)</span>
@@ -332,8 +418,12 @@ function _agentPromptSection(_stageKey, promptData) {
           </div>
           <pre class="agent-prompt-content">${userPrompt}</pre>
         </div>
-      ` : nothing}
-      ${agentInstructions ? html`
+      `
+          : nothing
+      }
+      ${
+        agentInstructions
+          ? html`
         <div class="agent-prompt-block">
           <div class="agent-prompt-label-row">
             <span class="agent-prompt-label">System Prompt (agent .md)</span>
@@ -343,7 +433,9 @@ function _agentPromptSection(_stageKey, promptData) {
           </div>
           <pre class="agent-prompt-content">${agentInstructions}</pre>
         </div>
-      ` : nothing}
+      `
+          : nothing
+      }
     </sl-details>
   `;
 }
@@ -369,23 +461,29 @@ export function runBeadsSectionView(beads) {
         <div slot="summary" class="run-beads-header">
           <span class="run-beads-icon">${unsafeHTML(iconSvg(List, 16))}</span>
           <span class="run-beads-title">Beads</span>
-          <span class="run-beads-count">${beads.filter(b => b.status === 'closed').length}/${beads.length}</span>
+          <span class="run-beads-count">${beads.filter((b) => b.status === 'closed').length}/${beads.length}</span>
         </div>
         <div class="run-beads-list">
-          ${beads.map(issue => html`
+          ${beads.map(
+            (issue) => html`
             <div class="run-bead-row">
               <sl-badge variant="${statusVariant(issue.status)}" pill>${issue.status}</sl-badge>
               <sl-badge variant="${priorityVariant(issue.priority)}" pill>P${issue.priority}</sl-badge>
               <span class="run-bead-id">#${issue.id}</span>
               <span class="run-bead-title">${issue.title}</span>
             </div>
-          `)}
+          `,
+          )}
         </div>
-        ${beads.length > 1 ? html`
+        ${
+          beads.length > 1
+            ? html`
           <div class="run-beads-graph">
             ${unsafeHTML(beadsDependencyGraph(beads))}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
       </sl-details>
     </div>
   `;
@@ -398,11 +496,15 @@ export function runDetailView(run, settings = {}, options = {}) {
 
   const branch = run.branch || run.work_request?.branch || '';
   const pr = run.pr_url || null;
-  const endTime = run.completed_at || _lastStageEnd(run.stages) || (run.active ? new Date().toISOString() : null);
+  const endTime =
+    run.completed_at ||
+    _lastStageEnd(run.stages) ||
+    (run.active ? new Date().toISOString() : null);
   const rawStages = run.stages || {};
   // Ensure preflight and learn exist (may be absent in old runs)
   let stages = rawStages;
-  if (!rawStages.preflight) stages = { preflight: { status: 'skipped' }, ...stages };
+  if (!rawStages.preflight)
+    stages = { preflight: { status: 'skipped' }, ...stages };
   if (!rawStages.learn) stages = { ...stages, learn: { status: 'skipped' } };
   const stageUi = settings.stageUi || {};
   const agents = settings.agents || {};
@@ -413,26 +515,43 @@ export function runDetailView(run, settings = {}, options = {}) {
       ${_circuitBreakerBannerView(run, settings)}
 
       <div class="run-info-section">
-        ${branch ? html`
+        ${
+          branch
+            ? html`
           <div class="run-branch">
             <span class="stage-meta-icon">${unsafeHTML(iconSvg(GitBranch, 14))}</span>
             <span>${branch}</span>
             ${pr ? html`<a class="run-pr-link" href="${pr}" target="_blank">View PR</a>` : nothing}
           </div>
-        ` : nothing}
+        `
+            : nothing
+        }
         ${timingStripView(run.started_at, endTime)}
         ${(() => {
-          const allIters = Object.values(stages).flatMap(s => s.iterations || []);
-          const pipelineCost = allIters.reduce((sum, it) => sum + (it.cost_usd || 0), 0);
-          const pipelineTurns = allIters.reduce((sum, it) => sum + (it.turns || 0), 0);
-          const pipelineWallMs = run.started_at && endTime ? elapsed(run.started_at, endTime) : 0;
+          const allIters = Object.values(stages).flatMap(
+            (s) => s.iterations || [],
+          );
+          const pipelineCost = allIters.reduce(
+            (sum, it) => sum + (it.cost_usd || 0),
+            0,
+          );
+          const pipelineTurns = allIters.reduce(
+            (sum, it) => sum + (it.turns || 0),
+            0,
+          );
+          const pipelineWallMs =
+            run.started_at && endTime ? elapsed(run.started_at, endTime) : 0;
           return html`
-            ${(pipelineCost > 0 || pipelineTurns > 0) ? html`
+            ${
+              pipelineCost > 0 || pipelineTurns > 0
+                ? html`
               <div class="pipeline-cost-strip">
                 ${pipelineCost > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Pipeline Cost:</span> <span class="meta-value">$${pipelineCost.toFixed(2)}</span></span>` : nothing}
                 ${pipelineTurns > 0 ? html`<span class="pipeline-cost-item"><span class="meta-label">Total Turns:</span> <span class="meta-value">${pipelineTurns}</span></span>` : nothing}
               </div>
-            ` : nothing}
+            `
+                : nothing
+            }
             ${_pipelineTimingBar(allIters, pipelineWallMs)}
           `;
         })()}
@@ -440,8 +559,12 @@ export function runDetailView(run, settings = {}, options = {}) {
 
       <div class="stage-panels">
         ${Object.entries(stages).map(([key, stage]) => {
-          const label = stageUi[key]?.label || key.replace(/_/g, ' ').toUpperCase();
-          const stageStatus = resolveStatus(stage.status || 'pending', run.active);
+          const label =
+            stageUi[key]?.label || key.replace(/_/g, ' ').toUpperCase();
+          const stageStatus = resolveStatus(
+            stage.status || 'pending',
+            run.active,
+          );
           const stageAgent = stage.agent || agents[key]?.agent || key;
           const stageModel = stage.model || agents[key]?.model || '';
           const stageMs = _stageWallMs(stage);
@@ -457,7 +580,11 @@ export function runDetailView(run, settings = {}, options = {}) {
                 if (!hasMultipleIterations) return;
                 const tabGroup = e.target.querySelector('sl-tab-group');
                 if (!tabGroup) return;
-                const targetIter = resolveIterationTab(options.stageIterationTab, key, iterations);
+                const targetIter = resolveIterationTab(
+                  options.stageIterationTab,
+                  key,
+                  iterations,
+                );
                 const panelName = `iter-${key}-${targetIter}`;
                 requestAnimationFrame(() => tabGroup.show(panelName));
               }}>
@@ -465,60 +592,106 @@ export function runDetailView(run, settings = {}, options = {}) {
                 <span class="stage-panel-icon ${statusClass(stageStatus)}">${unsafeHTML(statusIcon(stageStatus))}</span>
                 <span class="stage-panel-label">${label}</span>
                 <span class="stage-panel-meta">
-                  ${hasMultipleIterations ? html`
+                  ${
+                    hasMultipleIterations
+                      ? html`
                     <span class="stage-meta-item stage-meta-iteration">
                       <span class="stage-meta-icon">${unsafeHTML(iconSvg(RefreshCw, 11))}</span>
                       <span class="meta-value">${iterations.length} iterations</span>
                     </span>
-                  ` : nothing}
-                  ${(() => { const t = iterations.reduce((s, it) => s + (it.turns || 0), 0); return t > 0 ? html`
+                  `
+                      : nothing
+                  }
+                  ${(() => {
+                    const t = iterations.reduce(
+                      (s, it) => s + (it.turns || 0),
+                      0,
+                    );
+                    return t > 0
+                      ? html`
                     <span class="stage-meta-item">
                       <span class="stage-meta-icon">${unsafeHTML(iconSvg(RefreshCw, 11))}</span>
                       <span class="meta-value">${t} turns</span>
                     </span>
-                  ` : nothing; })()}
-                  ${stageCost > 0 ? html`
+                  `
+                      : nothing;
+                  })()}
+                  ${
+                    stageCost > 0
+                      ? html`
                     <span class="stage-meta-item">
                       <span class="stage-meta-icon">${unsafeHTML(iconSvg(Coins, 11))}</span>
                       <span class="meta-value">$${stageCost.toFixed(2)}</span>
                     </span>
-                  ` : nothing}
-                  ${stage.completed_at ? html`
+                  `
+                      : nothing
+                  }
+                  ${
+                    stage.completed_at
+                      ? html`
                     <span class="stage-meta-item">
                       <span class="stage-meta-icon">${unsafeHTML(iconSvg(Clock, 11))}</span>
                       <span class="meta-value">${formatTimestamp(stage.completed_at)}</span>
                     </span>
-                  ` : nothing}
-                  ${stageDuration ? html`
+                  `
+                      : nothing
+                  }
+                  ${
+                    stageDuration
+                      ? html`
                     <span class="stage-meta-item">
                       <span class="stage-meta-icon">${unsafeHTML(iconSvg(Timer, 11))}</span>
                       <span class="meta-value">${stageDuration}</span>
                     </span>
-                  ` : nothing}
+                  `
+                      : nothing
+                  }
                 </span>
                 <sl-badge variant="${_badgeVariant(stageStatus)}" pill>
                   ${stageStatus.replace(/_/g, ' ')}
                 </sl-badge>
               </div>
               ${(() => {
-                const promptData = stageStatus !== 'pending' ? options.promptCache?.[key] : null;
+                const promptData =
+                  stageStatus !== 'pending' ? options.promptCache?.[key] : null;
                 const copyBtn = html`
-                  <button class="stage-copy-btn" title="Copy stage data as JSON" @click=${(e) => {
-                    const json = _stageToJson(key, stage, stageAgent, stageModel, promptData);
-                    _copyToClipboard(JSON.stringify(json, null, 2), e.currentTarget);
+                  <button class="stage-copy-btn" title="Copy stage data as JSON" @click=${(
+                    e,
+                  ) => {
+                    const json = _stageToJson(
+                      key,
+                      stage,
+                      stageAgent,
+                      stageModel,
+                      promptData,
+                    );
+                    _copyToClipboard(
+                      JSON.stringify(json, null, 2),
+                      e.currentTarget,
+                    );
                   }}>
                     ${unsafeHTML(iconSvg(ClipboardCopy, 12))} Copy
                   </button>
                 `;
                 if (hasMultipleIterations) {
-                  const stageTotalDur = stageMs > 0 ? formatDuration(stageMs) : '';
+                  const stageTotalDur =
+                    stageMs > 0 ? formatDuration(stageMs) : '';
                   return html`
                     <div class="stage-content-wrapper">
                       ${copyBtn}
                       ${(() => {
-                        const stageApiMs = iterations.reduce((sum, it) => sum + (it.duration_api_ms || 0), 0);
-                        const stageTurns = iterations.reduce((sum, it) => sum + (it.turns || 0), 0);
-                        const stageApiPct = stageMs > 0 && stageApiMs > 0 ? Math.round(stageApiMs / stageMs * 100) : 0;
+                        const stageApiMs = iterations.reduce(
+                          (sum, it) => sum + (it.duration_api_ms || 0),
+                          0,
+                        );
+                        const stageTurns = iterations.reduce(
+                          (sum, it) => sum + (it.turns || 0),
+                          0,
+                        );
+                        const stageApiPct =
+                          stageMs > 0 && stageApiMs > 0
+                            ? Math.round((stageApiMs / stageMs) * 100)
+                            : 0;
                         return html`
                           <div class="stage-totals-strip">
                             <span class="stage-totals-item"><span class="meta-label">Cost:</span> <span class="meta-value">$${stageCost.toFixed(2)}</span></span>
@@ -530,18 +703,23 @@ export function runDetailView(run, settings = {}, options = {}) {
                       <sl-tab-group @sl-tab-show=${(e) => {
                         const panel = e.detail.name;
                         const num = parseInt(panel.split('-').pop(), 10);
-                        if (!isNaN(num)) options.onStageTabChange?.(key, num);
+                        if (!Number.isNaN(num))
+                          options.onStageTabChange?.(key, num);
                       }}>
-                        ${iterations.map(iter => html`
+                        ${iterations.map(
+                          (iter) => html`
                           <sl-tab slot="nav" panel="iter-${key}-${iter.number}">
                             Iter ${iter.number} ${_iterStatusIcon(iter)}
                           </sl-tab>
-                        `)}
-                        ${iterations.map(iter => html`
+                        `,
+                        )}
+                        ${iterations.map(
+                          (iter) => html`
                           <sl-tab-panel name="iter-${key}-${iter.number}">
                             ${_iterationDetailView(iter, key, stageAgent, promptData)}
                           </sl-tab-panel>
-                        `)}
+                        `,
+                        )}
                       </sl-tab-group>
                     </div>
                   `;
@@ -554,7 +732,7 @@ export function runDetailView(run, settings = {}, options = {}) {
                       <div class="stage-info-strip">
                         ${stageAgent ? html`<span class="stage-info-item"><span class="stage-meta-icon">${unsafeHTML(iconSvg(Cpu, 12))}</span> ${stageAgent}${stageModel ? html` <span class="text-muted">(${stageModel})</span>` : ''}</span>` : nothing}
                         ${iterations.length === 1 && iterations[0].turns ? html`<span class="stage-info-item"><span class="meta-label">Turns:</span> <span class="meta-value">${iterations[0].turns}</span></span>` : nothing}
-                        ${iterations.length === 1 && iterations[0].duration_api_ms ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(iterations[0].duration_api_ms)}${stageMs > 0 ? ` (${Math.round(iterations[0].duration_api_ms / stageMs * 100)}%)` : ''}</span></span>` : nothing}
+                        ${iterations.length === 1 && iterations[0].duration_api_ms ? html`<span class="stage-info-item"><span class="meta-label">API Duration:</span> <span class="meta-value">${formatDuration(iterations[0].duration_api_ms)}${stageMs > 0 ? ` (${Math.round((iterations[0].duration_api_ms / stageMs) * 100)}%)` : ''}</span></span>` : nothing}
                         ${iterations.length === 1 && iterations[0].cost_usd != null ? html`<span class="stage-info-item"><span class="meta-label">Cost:</span> <span class="meta-value">$${Number(iterations[0].cost_usd).toFixed(2)}</span></span>` : nothing}
                       </div>
                       ${iterations.length === 1 && iterations[0].trigger ? html`<div class="detail-row">${_triggerLabel(iterations[0].trigger)}</div>` : nothing}
@@ -568,14 +746,18 @@ export function runDetailView(run, settings = {}, options = {}) {
                   </div>
                 `;
               })()}
-              ${stageStatus === 'error' && !run.active && options.onRestartStage ? html`
+              ${
+                stageStatus === 'error' && !run.active && options.onRestartStage
+                  ? html`
                 <div class="stage-restart-btn">
                   <sl-button variant="warning" size="small" @click=${() => options.onRestartStage(key)}>
                     ${unsafeHTML(iconSvg(RotateCcw, 14))}
                     Restart Stage
                   </sl-button>
                 </div>
-              ` : nothing}
+              `
+                  : nothing
+              }
             </sl-details>
           `;
         })}

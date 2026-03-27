@@ -13,28 +13,37 @@ export function createStore(initial = {}) {
     preferences: {
       theme: initial.preferences?.theme ?? 'light',
       sidebarCollapsed: initial.preferences?.sidebarCollapsed ?? false,
-      notifications: initial.preferences?.notifications ?? null
+      notifications: initial.preferences?.notifications ?? null,
     },
     beads: initial.beads ?? { issues: [], dbExists: false, loading: false },
-    webhookInbox: initial.webhookInbox ?? { events: [], controlAction: 'continue' }
+    webhookInbox: initial.webhookInbox ?? {
+      events: [],
+      controlAction: 'continue',
+    },
   };
 
   const subs = new Set();
 
   function emit() {
     for (const fn of Array.from(subs)) {
-      try { fn(state); } catch { /* ignore */ }
+      try {
+        fn(state);
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   return {
-    getState() { return state; },
+    getState() {
+      return state;
+    },
 
     setState(patch) {
       const next = {
         ...state,
         ...patch,
-        preferences: { ...state.preferences, ...(patch.preferences || {}) }
+        preferences: { ...state.preferences, ...(patch.preferences || {}) },
       };
       if (
         next.activeRunId === state.activeRunId &&
@@ -42,11 +51,13 @@ export function createStore(initial = {}) {
         next.runs === state.runs &&
         next.logLines === state.logLines &&
         next.preferences.theme === state.preferences.theme &&
-        next.preferences.sidebarCollapsed === state.preferences.sidebarCollapsed &&
+        next.preferences.sidebarCollapsed ===
+          state.preferences.sidebarCollapsed &&
         next.preferences.notifications === state.preferences.notifications &&
         next.beads === state.beads &&
         next.webhookInbox === state.webhookInbox
-      ) return;
+      )
+        return;
       state = next;
       emit();
     },
@@ -59,7 +70,8 @@ export function createStore(initial = {}) {
 
     appendLog(entry) {
       const logLines = [...state.logLines, entry];
-      if (logLines.length > LOG_CAP) logLines.splice(0, logLines.length - LOG_CAP);
+      if (logLines.length > LOG_CAP)
+        logLines.splice(0, logLines.length - LOG_CAP);
       state = { ...state, logLines };
       emit();
     },
@@ -72,6 +84,6 @@ export function createStore(initial = {}) {
     subscribe(fn) {
       subs.add(fn);
       return () => subs.delete(fn);
-    }
+    },
   };
 }

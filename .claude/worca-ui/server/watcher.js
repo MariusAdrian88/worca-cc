@@ -1,6 +1,6 @@
-import { readFileSync, readdirSync, existsSync, watch } from 'node:fs';
-import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { existsSync, readdirSync, readFileSync, watch } from 'node:fs';
+import { join } from 'node:path';
 
 export function createRunId(status) {
   // Prefer run_id from status (new per-run format)
@@ -14,8 +14,14 @@ function isTerminal(status) {
   if (status.completed_at) return true;
   if (!status.stages) return false;
   const values = Object.values(status.stages);
-  return values.length > 0 && values.every(s =>
-    s.status === 'completed' || s.status === 'error' || s.status === 'interrupted'
+  return (
+    values.length > 0 &&
+    values.every(
+      (s) =>
+        s.status === 'completed' ||
+        s.status === 'error' ||
+        s.status === 'interrupted',
+    )
   );
 }
 
@@ -49,7 +55,9 @@ export function discoverRuns(worcaDir) {
         runs.push({ id, active, ...status });
         seenIds.add(id);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // 2. Scan .worca/runs/ for non-active runs
@@ -64,7 +72,9 @@ export function discoverRuns(worcaDir) {
         if (seenIds.has(id)) continue;
         seenIds.add(id);
         runs.push({ id, active: false, ...status });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -79,7 +89,9 @@ export function discoverRuns(worcaDir) {
         runs.push({ id, active, ...status });
         seenIds.add(id);
       }
-    } catch { /* ignore malformed */ }
+    } catch {
+      /* ignore malformed */
+    }
   }
 
   // 4. Results: handle both dir format (results/{id}/status.json) and file format (results/{id}.json)
@@ -89,7 +101,9 @@ export function discoverRuns(worcaDir) {
       try {
         if (entry.isFile() && entry.name.endsWith('.json')) {
           // Legacy file format
-          const data = JSON.parse(readFileSync(join(resultsDir, entry.name), 'utf8'));
+          const data = JSON.parse(
+            readFileSync(join(resultsDir, entry.name), 'utf8'),
+          );
           if (data.started_at) {
             const id = createRunId(data);
             if (!seenIds.has(id)) {
@@ -109,7 +123,9 @@ export function discoverRuns(worcaDir) {
             }
           }
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -142,9 +158,15 @@ export function watchEvents(runDir, callback) {
       byteOffset = buf.length;
       for (const line of newContent.split('\n')) {
         if (!line.trim()) continue;
-        try { callback(JSON.parse(line)); } catch { /* skip malformed */ }
+        try {
+          callback(JSON.parse(line));
+        } catch {
+          /* skip malformed */
+        }
       }
-    } catch { /* ignore read errors */ }
+    } catch {
+      /* ignore read errors */
+    }
   }
 
   function startFileWatcher() {
@@ -155,7 +177,14 @@ export function watchEvents(runDir, callback) {
           processNewContent();
         } else if (eventType === 'rename') {
           // File deleted or recreated — reset and retry
-          if (fileWatcher) { try { fileWatcher.close(); } catch { /* ignore */ } fileWatcher = null; }
+          if (fileWatcher) {
+            try {
+              fileWatcher.close();
+            } catch {
+              /* ignore */
+            }
+            fileWatcher = null;
+          }
           setTimeout(() => {
             if (!closed && existsSync(eventsPath)) {
               startFileWatcher();
@@ -164,33 +193,63 @@ export function watchEvents(runDir, callback) {
           }, 100);
         }
       });
-    } catch { /* ignore — file may have been deleted */ }
+    } catch {
+      /* ignore — file may have been deleted */
+    }
   }
 
   if (existsSync(eventsPath)) {
     // Start from current end of file (tail only new content)
-    try { byteOffset = readFileSync(eventsPath).length; } catch { /* ignore */ }
+    try {
+      byteOffset = readFileSync(eventsPath).length;
+    } catch {
+      /* ignore */
+    }
     startFileWatcher();
   }
 
   // Watch the run directory so we detect events.jsonl being created
   if (existsSync(runDir)) {
     try {
-      dirWatcher = watch(runDir, { recursive: false }, (_eventType, filename) => {
-        if (filename === 'events.jsonl' && existsSync(eventsPath) && !fileWatcher) {
-          byteOffset = 0; // Newly created — read from the beginning
-          startFileWatcher();
-          processNewContent();
-        }
-      });
-    } catch { /* ignore */ }
+      dirWatcher = watch(
+        runDir,
+        { recursive: false },
+        (_eventType, filename) => {
+          if (
+            filename === 'events.jsonl' &&
+            existsSync(eventsPath) &&
+            !fileWatcher
+          ) {
+            byteOffset = 0; // Newly created — read from the beginning
+            startFileWatcher();
+            processNewContent();
+          }
+        },
+      );
+    } catch {
+      /* ignore */
+    }
   }
 
   return {
     close() {
       closed = true;
-      if (fileWatcher) { try { fileWatcher.close(); } catch { /* ignore */ } fileWatcher = null; }
-      if (dirWatcher) { try { dirWatcher.close(); } catch { /* ignore */ } dirWatcher = null; }
+      if (fileWatcher) {
+        try {
+          fileWatcher.close();
+        } catch {
+          /* ignore */
+        }
+        fileWatcher = null;
+      }
+      if (dirWatcher) {
+        try {
+          dirWatcher.close();
+        } catch {
+          /* ignore */
+        }
+        dirWatcher = null;
+      }
     },
   };
 }

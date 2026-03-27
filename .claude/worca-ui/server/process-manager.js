@@ -2,11 +2,21 @@
  * Pipeline process lifecycle management.
  * Handles starting, stopping, and restarting pipeline processes.
  */
-import { existsSync, readFileSync, writeFileSync, unlinkSync, mkdirSync, openSync, writeSync, closeSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+
+import { execFileSync, spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { spawn, execFileSync } from 'node:child_process';
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /** Byte threshold — must match claude_cli.py _ARG_INLINE_LIMIT */
 const ARG_INLINE_LIMIT = 128 * 1024;
@@ -35,7 +45,11 @@ function writePromptFile(content) {
  */
 function cleanupPromptFile(filePath) {
   if (!filePath) return;
-  try { unlinkSync(filePath); } catch { /* ignore */ }
+  try {
+    unlinkSync(filePath);
+  } catch {
+    /* ignore */
+  }
 }
 
 /**
@@ -48,15 +62,23 @@ export function getRunningPid(worcaDir) {
   if (!existsSync(pidPath)) return null;
   try {
     const pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
-    if (isNaN(pid) || pid <= 0) {
-      try { unlinkSync(pidPath); } catch { /* ignore */ }
+    if (Number.isNaN(pid) || pid <= 0) {
+      try {
+        unlinkSync(pidPath);
+      } catch {
+        /* ignore */
+      }
       return null;
     }
     process.kill(pid, 0); // throws if dead
     return { pid };
   } catch {
     // Stale PID file — clean up
-    try { unlinkSync(pidPath); } catch { /* ignore */ }
+    try {
+      unlinkSync(pidPath);
+    } catch {
+      /* ignore */
+    }
     return null;
   }
 }
@@ -80,7 +102,9 @@ export function reconcileStatus(worcaDir) {
   let runId;
   try {
     runId = readFileSync(activeRunPath, 'utf8').trim();
-  } catch { return false; }
+  } catch {
+    return false;
+  }
   if (!runId) return false;
 
   const statusPath = join(worcaDir, 'runs', runId, 'status.json');
@@ -89,7 +113,9 @@ export function reconcileStatus(worcaDir) {
   let status;
   try {
     status = JSON.parse(readFileSync(statusPath, 'utf8'));
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 
   if (status.pipeline_status !== 'running') return false;
 
@@ -98,8 +124,10 @@ export function reconcileStatus(worcaDir) {
     status.stop_reason = 'stale';
   }
   try {
-    writeFileSync(statusPath, JSON.stringify(status, null, 2) + '\n', 'utf8');
-  } catch { return false; }
+    writeFileSync(statusPath, `${JSON.stringify(status, null, 2)}\n`, 'utf8');
+  } catch {
+    return false;
+  }
 
   return true;
 }
@@ -127,7 +155,7 @@ export async function startPipeline(worcaDir, opts = {}) {
   }
 
   const args = ['.claude/scripts/run_pipeline.py'];
-  let promptFilePath = null;  // track for cleanup on spawn failure
+  let promptFilePath = null; // track for cleanup on spawn failure
 
   if (opts.resume) {
     args.push('--resume');
@@ -148,10 +176,16 @@ export async function startPipeline(worcaDir, opts = {}) {
     }
   } else {
     // Legacy format: inputType/inputValue
-    const flag = opts.inputType === 'source' ? '--source'
-      : opts.inputType === 'spec' ? '--spec'
-      : '--prompt';
-    if (flag === '--prompt' && Buffer.byteLength(opts.inputValue, 'utf8') > ARG_INLINE_LIMIT) {
+    const flag =
+      opts.inputType === 'source'
+        ? '--source'
+        : opts.inputType === 'spec'
+          ? '--spec'
+          : '--prompt';
+    if (
+      flag === '--prompt' &&
+      Buffer.byteLength(opts.inputValue, 'utf8') > ARG_INLINE_LIMIT
+    ) {
       promptFilePath = writePromptFile(opts.inputValue);
       args.push('--prompt-file', promptFilePath);
     } else {
@@ -239,7 +273,11 @@ export function stopPipeline(worcaDir) {
       pid = parseInt(readFileSync(pidPath, 'utf8').trim(), 10);
       process.kill(pid, 0); // verify alive
     } catch {
-      try { unlinkSync(pidPath); } catch { /* ignore */ }
+      try {
+        unlinkSync(pidPath);
+      } catch {
+        /* ignore */
+      }
       pid = null;
     }
   }
@@ -247,10 +285,19 @@ export function stopPipeline(worcaDir) {
   // Fallback: find by command line
   if (!pid) {
     try {
-      const out = execFileSync('pgrep', ['-f', 'run_pipeline\\.py'], { encoding: 'utf8', timeout: 3000 });
-      const pids = out.trim().split('\n').map(s => parseInt(s, 10)).filter(n => n > 0);
+      const out = execFileSync('pgrep', ['-f', 'run_pipeline\\.py'], {
+        encoding: 'utf8',
+        timeout: 3000,
+      });
+      const pids = out
+        .trim()
+        .split('\n')
+        .map((s) => parseInt(s, 10))
+        .filter((n) => n > 0);
       if (pids.length > 0) pid = pids[0];
-    } catch { /* no matching process */ }
+    } catch {
+      /* no matching process */
+    }
   }
 
   if (!pid) {
@@ -269,17 +316,31 @@ export function stopPipeline(worcaDir) {
         mkdirSync(controlDir, { recursive: true });
         writeFileSync(
           join(controlDir, 'control.json'),
-          JSON.stringify({ action: 'stop', requested_at: new Date().toISOString(), source: 'ui' }, null, 2) + '\n',
-          'utf8'
+          `${JSON.stringify(
+            {
+              action: 'stop',
+              requested_at: new Date().toISOString(),
+              source: 'ui',
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
         );
       }
-    } catch { /* non-fatal */ }
+    } catch {
+      /* non-fatal */
+    }
   }
 
   try {
     process.kill(pid, 'SIGTERM');
   } catch (e) {
-    try { unlinkSync(pidPath); } catch { /* ignore */ }
+    try {
+      unlinkSync(pidPath);
+    } catch {
+      /* ignore */
+    }
     const err = new Error(`Failed to stop pipeline: ${e.message}`);
     err.code = 'not_running';
     throw err;
@@ -300,7 +361,11 @@ export function stopPipeline(worcaDir) {
   watchdog.unref();
 
   // Clean up PID file
-  try { unlinkSync(pidPath); } catch { /* ignore */ }
+  try {
+    unlinkSync(pidPath);
+  } catch {
+    /* ignore */
+  }
 
   return { pid, stopped: true };
 }
@@ -316,8 +381,12 @@ export function pausePipeline(worcaDir, runId) {
   mkdirSync(controlDir, { recursive: true });
   writeFileSync(
     join(controlDir, 'control.json'),
-    JSON.stringify({ action: 'pause', requested_at: new Date().toISOString(), source: 'ui' }, null, 2) + '\n',
-    'utf8'
+    `${JSON.stringify(
+      { action: 'pause', requested_at: new Date().toISOString(), source: 'ui' },
+      null,
+      2,
+    )}\n`,
+    'utf8',
   );
   return { runId, paused: true };
 }
@@ -353,7 +422,9 @@ export async function restartStage(worcaDir, stageKey, opts = {}) {
       const runId = readFileSync(activeRunPath, 'utf8').trim();
       const candidate = join(worcaDir, 'runs', runId, 'status.json');
       if (existsSync(candidate)) statusPath = candidate;
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   if (!statusPath) {
     const legacy = join(worcaDir, 'status.json');
@@ -375,7 +446,9 @@ export async function restartStage(worcaDir, stageKey, opts = {}) {
   }
 
   if (status.stages[stageKey].status !== 'error') {
-    const err = new Error(`Stage "${stageKey}" is not in error state (current: ${status.stages[stageKey].status})`);
+    const err = new Error(
+      `Stage "${stageKey}" is not in error state (current: ${status.stages[stageKey].status})`,
+    );
     err.code = 'stage_not_error';
     throw err;
   }
@@ -384,19 +457,23 @@ export async function restartStage(worcaDir, stageKey, opts = {}) {
   status.stages[stageKey].status = 'pending';
   delete status.stages[stageKey].error;
   delete status.stages[stageKey].completed_at;
-  writeFileSync(statusPath, JSON.stringify(status, null, 2) + '\n', 'utf8');
+  writeFileSync(statusPath, `${JSON.stringify(status, null, 2)}\n`, 'utf8');
 
   // Spawn with --resume
   const env = { ...process.env };
   delete env.CLAUDECODE;
 
   return new Promise((resolve, reject) => {
-    const child = spawn('python', ['.claude/scripts/run_pipeline.py', '--resume'], {
-      detached: true,
-      stdio: 'ignore',
-      cwd,
-      env,
-    });
+    const child = spawn(
+      'python',
+      ['.claude/scripts/run_pipeline.py', '--resume'],
+      {
+        detached: true,
+        stdio: 'ignore',
+        cwd,
+        env,
+      },
+    );
 
     const timeout = setTimeout(() => {
       cleanup();

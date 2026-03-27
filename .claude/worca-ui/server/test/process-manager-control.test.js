@@ -1,13 +1,22 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { spawn } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { pausePipeline, stopPipeline } from '../process-manager.js';
 
 function makeTmpDir() {
-  const d = join(tmpdir(), `worca-ctrl-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const d = join(
+    tmpdir(),
+    `worca-ctrl-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(d, { recursive: true });
   return d;
 }
@@ -17,12 +26,16 @@ function makeTmpDir() {
 describe('pausePipeline', () => {
   let worcaDir;
 
-  beforeEach(() => { worcaDir = makeTmpDir(); });
+  beforeEach(() => {
+    worcaDir = makeTmpDir();
+  });
   afterEach(() => rmSync(worcaDir, { recursive: true, force: true }));
 
   it('writes control.json with action=pause and source=ui', () => {
     pausePipeline(worcaDir, 'run-abc');
-    const data = JSON.parse(readFileSync(join(worcaDir, 'runs', 'run-abc', 'control.json'), 'utf8'));
+    const data = JSON.parse(
+      readFileSync(join(worcaDir, 'runs', 'run-abc', 'control.json'), 'utf8'),
+    );
     expect(data.action).toBe('pause');
     expect(data.source).toBe('ui');
   });
@@ -41,7 +54,9 @@ describe('pausePipeline', () => {
     const before = Date.now();
     pausePipeline(worcaDir, 'run-ts');
     const after = Date.now();
-    const data = JSON.parse(readFileSync(join(worcaDir, 'runs', 'run-ts', 'control.json'), 'utf8'));
+    const data = JSON.parse(
+      readFileSync(join(worcaDir, 'runs', 'run-ts', 'control.json'), 'utf8'),
+    );
     expect(typeof data.requested_at).toBe('string');
     const t = new Date(data.requested_at).getTime();
     expect(t).toBeGreaterThanOrEqual(before);
@@ -51,7 +66,10 @@ describe('pausePipeline', () => {
   it('overwrites an existing control.json', () => {
     const runDir = join(worcaDir, 'runs', 'run-ow');
     mkdirSync(runDir, { recursive: true });
-    writeFileSync(join(runDir, 'control.json'), JSON.stringify({ action: 'stop', requested_at: 'old', source: 'cli' }));
+    writeFileSync(
+      join(runDir, 'control.json'),
+      JSON.stringify({ action: 'stop', requested_at: 'old', source: 'cli' }),
+    );
 
     pausePipeline(worcaDir, 'run-ow');
 
@@ -74,16 +92,22 @@ describe('stopPipeline writes control.json', () => {
     });
     child.unref();
     children.push(child);
-    await new Promise(resolve => setTimeout(resolve, 80));
+    await new Promise((resolve) => setTimeout(resolve, 80));
     return child;
   }
 
-  beforeEach(() => { worcaDir = makeTmpDir(); });
+  beforeEach(() => {
+    worcaDir = makeTmpDir();
+  });
 
   afterEach(() => {
     rmSync(worcaDir, { recursive: true, force: true });
     for (const c of children) {
-      try { process.kill(c.pid, 'SIGKILL'); } catch { /* already dead */ }
+      try {
+        process.kill(c.pid, 'SIGKILL');
+      } catch {
+        /* already dead */
+      }
     }
     children.length = 0;
   });

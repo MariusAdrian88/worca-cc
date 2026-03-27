@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, appendFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { appendFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { attachWsServer } from './ws.js';
 
@@ -10,11 +10,15 @@ function waitForWsEvent(ws, type, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Timed out waiting for WS event "${type}"`)),
-      timeoutMs
+      timeoutMs,
     );
     function onMessage(data) {
       let msg;
-      try { msg = JSON.parse(data.toString()); } catch { return; }
+      try {
+        msg = JSON.parse(data.toString());
+      } catch {
+        return;
+      }
       if (msg.type === type) {
         clearTimeout(timer);
         ws.off('message', onMessage);
@@ -33,7 +37,7 @@ describe('log-line events include server-side timestamp', () => {
   beforeEach(async () => {
     worcaDir = join(
       tmpdir(),
-      `worca-ts-${Date.now()}-${Math.random().toString(36).slice(2)}`
+      `worca-ts-${Date.now()}-${Math.random().toString(36).slice(2)}`,
     );
     const runId = 'test-run';
     const runDir = join(worcaDir, 'runs', runId);
@@ -42,7 +46,7 @@ describe('log-line events include server-side timestamp', () => {
     writeFileSync(join(worcaDir, 'active_run'), runId);
     writeFileSync(
       join(runDir, 'status.json'),
-      JSON.stringify({ run_id: runId, stages: {} })
+      JSON.stringify({ run_id: runId, stages: {} }),
     );
     writeFileSync(join(logsDir, 'orchestrator.log'), '');
 
@@ -52,12 +56,12 @@ describe('log-line events include server-side timestamp', () => {
       settingsPath: join(worcaDir, 'settings.json'),
       prefsPath: join(worcaDir, 'prefs.json'),
     });
-    await new Promise(resolve => httpServer.listen(0, resolve));
+    await new Promise((resolve) => httpServer.listen(0, resolve));
     port = httpServer.address().port;
   });
 
   afterEach(async () => {
-    await new Promise(resolve => httpServer.close(resolve));
+    await new Promise((resolve) => httpServer.close(resolve));
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
@@ -68,10 +72,16 @@ describe('log-line events include server-side timestamp', () => {
       ws.on('error', reject);
     });
 
-    ws.send(JSON.stringify({ id: 'sub-1', type: 'subscribe-log', payload: { stage: null } }));
+    ws.send(
+      JSON.stringify({
+        id: 'sub-1',
+        type: 'subscribe-log',
+        payload: { stage: null },
+      }),
+    );
     await waitForWsEvent(ws, 'subscribe-log');
 
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
 
     const logsDir = join(worcaDir, 'runs', 'test-run', 'logs');
     appendFileSync(join(logsDir, 'orchestrator.log'), 'hello from test\n');

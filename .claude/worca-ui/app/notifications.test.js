@@ -1,13 +1,13 @@
 /**
  * Unit tests for notification event detector functions.
  */
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
+  detectApprovalNeeded,
+  detectLoopLimitWarning,
   detectRunCompleted,
   detectRunFailed,
-  detectApprovalNeeded,
   detectTestFailures,
-  detectLoopLimitWarning,
 } from './notifications.js';
 
 function makeRun(overrides = {}) {
@@ -23,7 +23,10 @@ function makeRun(overrides = {}) {
 describe('detectRunCompleted', () => {
   it('detects run completion (active→inactive, no errors)', () => {
     const prev = makeRun({ active: true });
-    const next = makeRun({ active: false, stages: { plan: { status: 'completed' }, test: { status: 'completed' } } });
+    const next = makeRun({
+      active: false,
+      stages: { plan: { status: 'completed' }, test: { status: 'completed' } },
+    });
     const result = detectRunCompleted('run-1', next, prev);
     expect(result).not.toBeNull();
     expect(result.event).toBe('run_completed');
@@ -33,7 +36,10 @@ describe('detectRunCompleted', () => {
 
   it('returns null when run has errors', () => {
     const prev = makeRun({ active: true });
-    const next = makeRun({ active: false, stages: { plan: { status: 'completed' }, test: { status: 'error' } } });
+    const next = makeRun({
+      active: false,
+      stages: { plan: { status: 'completed' }, test: { status: 'error' } },
+    });
     expect(detectRunCompleted('run-1', next, prev)).toBeNull();
   });
 
@@ -51,7 +57,10 @@ describe('detectRunCompleted', () => {
 describe('detectRunFailed', () => {
   it('detects run failure with stage name', () => {
     const prev = makeRun({ active: true });
-    const next = makeRun({ active: false, stages: { plan: { status: 'completed' }, test: { status: 'error' } } });
+    const next = makeRun({
+      active: false,
+      stages: { plan: { status: 'completed' }, test: { status: 'error' } },
+    });
     const result = detectRunFailed('run-1', next, prev);
     expect(result).not.toBeNull();
     expect(result.event).toBe('run_failed');
@@ -60,13 +69,19 @@ describe('detectRunFailed', () => {
 
   it('returns null when no errors', () => {
     const prev = makeRun({ active: true });
-    const next = makeRun({ active: false, stages: { plan: { status: 'completed' } } });
+    const next = makeRun({
+      active: false,
+      stages: { plan: { status: 'completed' } },
+    });
     expect(detectRunFailed('run-1', next, prev)).toBeNull();
   });
 
   it('returns null when run is still active', () => {
     const prev = makeRun({ active: true });
-    const next = makeRun({ active: true, stages: { plan: { status: 'error' } } });
+    const next = makeRun({
+      active: true,
+      stages: { plan: { status: 'error' } },
+    });
     expect(detectRunFailed('run-1', next, prev)).toBeNull();
   });
 });
@@ -98,8 +113,14 @@ describe('detectApprovalNeeded', () => {
 
 describe('detectTestFailures', () => {
   it('detects new failed test iteration', () => {
-    const prev = makeRun({ stages: { test: { status: 'in_progress', iterations: [] } } });
-    const next = makeRun({ stages: { test: { status: 'in_progress', iterations: [{ result: 'failed' }] } } });
+    const prev = makeRun({
+      stages: { test: { status: 'in_progress', iterations: [] } },
+    });
+    const next = makeRun({
+      stages: {
+        test: { status: 'in_progress', iterations: [{ result: 'failed' }] },
+      },
+    });
     const result = detectTestFailures('run-1', next, prev);
     expect(result).not.toBeNull();
     expect(result.event).toBe('test_failures');
@@ -107,14 +128,28 @@ describe('detectTestFailures', () => {
   });
 
   it('does not trigger for passed test', () => {
-    const prev = makeRun({ stages: { test: { status: 'in_progress', iterations: [] } } });
-    const next = makeRun({ stages: { test: { status: 'in_progress', iterations: [{ result: 'passed' }] } } });
+    const prev = makeRun({
+      stages: { test: { status: 'in_progress', iterations: [] } },
+    });
+    const next = makeRun({
+      stages: {
+        test: { status: 'in_progress', iterations: [{ result: 'passed' }] },
+      },
+    });
     expect(detectTestFailures('run-1', next, prev)).toBeNull();
   });
 
   it('does not trigger when no new iteration', () => {
-    const prev = makeRun({ stages: { test: { status: 'in_progress', iterations: [{ result: 'failed' }] } } });
-    const next = makeRun({ stages: { test: { status: 'in_progress', iterations: [{ result: 'failed' }] } } });
+    const prev = makeRun({
+      stages: {
+        test: { status: 'in_progress', iterations: [{ result: 'failed' }] },
+      },
+    });
+    const next = makeRun({
+      stages: {
+        test: { status: 'in_progress', iterations: [{ result: 'failed' }] },
+      },
+    });
     expect(detectTestFailures('run-1', next, prev)).toBeNull();
   });
 });
@@ -124,8 +159,21 @@ describe('detectLoopLimitWarning', () => {
     const warnedLoops = new Set();
     const settings = { worca: { loops: { implement_test: 3 } } };
     const prev = makeRun();
-    const next = makeRun({ stages: { implement: { status: 'in_progress', iterations: [{ result: 'done' }, { result: 'done' }] } } });
-    const result = detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops);
+    const next = makeRun({
+      stages: {
+        implement: {
+          status: 'in_progress',
+          iterations: [{ result: 'done' }, { result: 'done' }],
+        },
+      },
+    });
+    const result = detectLoopLimitWarning(
+      'run-1',
+      next,
+      prev,
+      settings,
+      warnedLoops,
+    );
     expect(result).not.toBeNull();
     expect(result.event).toBe('loop_limit_warning');
     expect(result.body).toContain('2/3');
@@ -135,17 +183,32 @@ describe('detectLoopLimitWarning', () => {
     const warnedLoops = new Set();
     const settings = { worca: { loops: { implement_test: 3 } } };
     const prev = makeRun();
-    const next = makeRun({ stages: { implement: { status: 'in_progress', iterations: [{ result: 'done' }] } } });
-    expect(detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops)).toBeNull();
+    const next = makeRun({
+      stages: {
+        implement: { status: 'in_progress', iterations: [{ result: 'done' }] },
+      },
+    });
+    expect(
+      detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops),
+    ).toBeNull();
   });
 
   it('deduplicates warnings per stage per run', () => {
     const warnedLoops = new Set();
     const settings = { worca: { loops: { implement_test: 3 } } };
     const prev = makeRun();
-    const next = makeRun({ stages: { implement: { status: 'in_progress', iterations: [{ result: 'done' }, { result: 'done' }] } } });
+    const next = makeRun({
+      stages: {
+        implement: {
+          status: 'in_progress',
+          iterations: [{ result: 'done' }, { result: 'done' }],
+        },
+      },
+    });
 
     detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops);
-    expect(detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops)).toBeNull();
+    expect(
+      detectLoopLimitWarning('run-1', next, prev, settings, warnedLoops),
+    ).toBeNull();
   });
 });

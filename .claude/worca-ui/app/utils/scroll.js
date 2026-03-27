@@ -11,7 +11,8 @@ export function scrollOnExpand(e) {
   if (!panel) return;
 
   // Find the scroll container (closest ancestor with overflow auto/scroll)
-  const container = panel.closest('.main-content') || panel.closest('.run-detail-layout__logs');
+  const container =
+    panel.closest('.main-content') || panel.closest('.run-detail-layout__logs');
   if (!container) {
     // Fallback: use scrollIntoView on the element itself
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -24,7 +25,8 @@ export function scrollOnExpand(e) {
   // If the bottom of the panel is below the container's visible area, scroll
   if (panelRect.bottom > containerRect.bottom) {
     // Scroll so the panel header sits near the top of the container
-    const scrollTop = container.scrollTop + (panelRect.top - containerRect.top) - 12;
+    const scrollTop =
+      container.scrollTop + (panelRect.top - containerRect.top) - 12;
     container.scrollTo({ top: scrollTop, behavior: 'smooth' });
   }
 }

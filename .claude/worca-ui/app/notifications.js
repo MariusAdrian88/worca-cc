@@ -14,7 +14,7 @@ export const NOTIFICATION_EVENTS = [
   'run_failed',
   'approval_needed',
   'test_failures',
-  'loop_limit_warning'
+  'loop_limit_warning',
 ];
 
 const EVENT_CONFIG = {
@@ -54,7 +54,7 @@ export function detectRunCompleted(runId, newRun, prevRun) {
   if (!wasActive || !nowInactive) return null;
 
   const stages = newRun.stages || {};
-  const hasError = Object.values(stages).some(s => s.status === 'error');
+  const hasError = Object.values(stages).some((s) => s.status === 'error');
   if (hasError) return null;
 
   const runTitle = getRunTitle(newRun);
@@ -75,7 +75,9 @@ export function detectRunFailed(runId, newRun, prevRun) {
   if (!wasActive || !nowInactive) return null;
 
   const stages = newRun.stages || {};
-  const failedStage = Object.entries(stages).find(([, s]) => s.status === 'error');
+  const failedStage = Object.entries(stages).find(
+    ([, s]) => s.status === 'error',
+  );
   if (!failedStage) return null;
 
   const runTitle = getRunTitle(newRun);
@@ -92,7 +94,7 @@ export function detectRunFailed(runId, newRun, prevRun) {
 export function detectApprovalNeeded(runId, newRun, prevRun) {
   if (!newRun) return null;
   const newStages = newRun.stages || {};
-  const prevStages = (prevRun && prevRun.stages) || {};
+  const prevStages = prevRun?.stages || {};
 
   for (const [key, stage] of Object.entries(newStages)) {
     if (stage.status === 'waiting_approval') {
@@ -120,7 +122,7 @@ export function detectTestFailures(runId, newRun, prevRun) {
   if (!testStage) return null;
 
   const newIters = testStage.iterations || [];
-  const prevIters = (prevRun?.stages?.test?.iterations) || [];
+  const prevIters = prevRun?.stages?.test?.iterations || [];
 
   if (newIters.length > prevIters.length) {
     const latest = newIters[newIters.length - 1];
@@ -139,7 +141,13 @@ export function detectTestFailures(runId, newRun, prevRun) {
   return null;
 }
 
-export function detectLoopLimitWarning(runId, newRun, prevRun, settings, warnedLoops) {
+export function detectLoopLimitWarning(
+  runId,
+  newRun,
+  _prevRun,
+  settings,
+  warnedLoops,
+) {
   if (!newRun || !settings) return null;
   const loops = settings?.worca?.loops;
   if (!loops) return null;
@@ -184,7 +192,7 @@ export function detectLoopLimitWarning(runId, newRun, prevRun, settings, warnedL
 function getRunTitle(run) {
   const raw = run?.work_request?.title || run?.id || 'Pipeline';
   const firstLine = raw.split('\n')[0];
-  return firstLine.length > 60 ? firstLine.slice(0, 60) + '\u2026' : firstLine;
+  return firstLine.length > 60 ? `${firstLine.slice(0, 60)}\u2026` : firstLine;
 }
 
 // --- Sound ---
@@ -222,8 +230,9 @@ const DEFAULT_NOTIFICATION_PREFS = {
   },
 };
 
-export function createNotificationManager({ store, ws, getSettings }) {
-  let permissionState = typeof Notification !== 'undefined' ? Notification.permission : 'denied';
+export function createNotificationManager({ store, ws: _ws, getSettings }) {
+  let permissionState =
+    typeof Notification !== 'undefined' ? Notification.permission : 'denied';
   const warnedLoops = new Set();
   let bannerDismissed = false;
   let rerender = null;
@@ -257,7 +266,14 @@ export function createNotificationManager({ store, ws, getSettings }) {
     };
   }
 
-  function fireNotification({ event, title, body, tag, requireInteraction, runId }) {
+  function fireNotification({
+    event,
+    title,
+    body,
+    tag,
+    requireInteraction,
+    runId,
+  }) {
     if (typeof Notification === 'undefined') return;
     const n = new Notification(title, {
       body,
@@ -302,7 +318,13 @@ export function createNotificationManager({ store, ws, getSettings }) {
     }
 
     // Loop limit warning needs settings and warnedLoops set
-    const loopDescriptor = detectLoopLimitWarning(runId, newRun, prevRun, settings, warnedLoops);
+    const loopDescriptor = detectLoopLimitWarning(
+      runId,
+      newRun,
+      prevRun,
+      settings,
+      warnedLoops,
+    );
     if (loopDescriptor && prefs.events[loopDescriptor.event]) {
       fireNotification(loopDescriptor);
     }

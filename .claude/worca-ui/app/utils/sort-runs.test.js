@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { sortByStartDesc } from './sort-runs.js';
 
 describe('sortByStartDesc', () => {
@@ -9,7 +9,7 @@ describe('sortByStartDesc', () => {
       { id: 'c', started_at: '2026-03-02T10:00:00Z' },
     ];
     const sorted = sortByStartDesc(runs);
-    expect(sorted.map(r => r.id)).toEqual(['b', 'c', 'a']);
+    expect(sorted.map((r) => r.id)).toEqual(['b', 'c', 'a']);
   });
 
   it('places runs with missing started_at at the end', () => {

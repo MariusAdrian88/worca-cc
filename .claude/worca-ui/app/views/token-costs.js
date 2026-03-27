@@ -1,7 +1,7 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Coins, Clock, Cpu, Zap, Timer } from '../utils/icons.js';
-import { formatDuration, elapsed, formatTimestamp } from '../utils/duration.js';
+import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
+import { Clock, Coins, Cpu, iconSvg, Timer, Zap } from '../utils/icons.js';
 
 function _sumCosts(runs) {
   let total = 0;
@@ -16,7 +16,10 @@ function _sumCosts(runs) {
 }
 
 function _sumTokens(tokenData) {
-  let input = 0, output = 0, cacheRead = 0, cacheWrite = 0;
+  let input = 0,
+    output = 0,
+    cacheRead = 0,
+    cacheWrite = 0;
   for (const run of Object.values(tokenData)) {
     for (const stage of Object.values(run)) {
       for (const iter of stage) {
@@ -40,7 +43,6 @@ function _runCost(run) {
   return total;
 }
 
-
 function _runDuration(run) {
   if (run.started_at) {
     const end = run.completed_at || _lastStageEnd(run.stages);
@@ -49,12 +51,12 @@ function _runDuration(run) {
   return 0;
 }
 
-
 function _lastStageEnd(stages) {
   if (!stages) return null;
   let latest = null;
   for (const s of Object.values(stages)) {
-    if (s.completed_at && (!latest || s.completed_at > latest)) latest = s.completed_at;
+    if (s.completed_at && (!latest || s.completed_at > latest))
+      latest = s.completed_at;
   }
   return latest;
 }
@@ -73,7 +75,9 @@ function _formatTokens(n) {
 }
 
 function timingStripView(startedAt, completedAt) {
-  const dur = startedAt ? formatDuration(elapsed(startedAt, completedAt || null)) : '';
+  const dur = startedAt
+    ? formatDuration(elapsed(startedAt, completedAt || null))
+    : '';
   return html`
     <div class="timing-strip">
       ${startedAt ? html`<span class="timing-strip-item"><span class="meta-label">Started:</span> <span class="meta-value">${formatTimestamp(startedAt)}</span></span>` : nothing}
@@ -86,14 +90,17 @@ function timingStripView(startedAt, completedAt) {
 function _stageOrder(stages) {
   const order = ['plan', 'coordinate', 'implement', 'test', 'review', 'pr'];
   const keys = Object.keys(stages || {});
-  return order.filter(k => keys.includes(k)).concat(keys.filter(k => !order.includes(k)));
+  return order
+    .filter((k) => keys.includes(k))
+    .concat(keys.filter((k) => !order.includes(k)));
 }
 
 function summaryCards(runs, tokenData) {
   const totalCost = _sumCosts(runs);
   const avgCost = runs.length > 0 ? totalCost / runs.length : 0;
   const tokens = _sumTokens(tokenData);
-  const totalTokens = tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
+  const totalTokens =
+    tokens.input + tokens.output + tokens.cacheRead + tokens.cacheWrite;
 
   return html`
     <div class="costs-stats">
@@ -131,13 +138,15 @@ function summaryCards(runs, tokenData) {
 
 function costBreakdownBar(stages) {
   const stageNames = _stageOrder(stages);
-  const costs = stageNames.map(name => {
-    let cost = 0;
-    for (const iter of stages[name]?.iterations || []) {
-      cost += iter.cost_usd || 0;
-    }
-    return { name, cost };
-  }).filter(s => s.cost > 0);
+  const costs = stageNames
+    .map((name) => {
+      let cost = 0;
+      for (const iter of stages[name]?.iterations || []) {
+        cost += iter.cost_usd || 0;
+      }
+      return { name, cost };
+    })
+    .filter((s) => s.cost > 0);
 
   const total = costs.reduce((sum, s) => sum + s.cost, 0);
   if (total === 0) return nothing;
@@ -154,14 +163,14 @@ function costBreakdownBar(stages) {
   return html`
     <div class="cost-bar-container">
       <div class="cost-bar">
-        ${costs.map(s => {
-          const pct = (s.cost / total * 100).toFixed(1);
+        ${costs.map((s) => {
+          const pct = ((s.cost / total) * 100).toFixed(1);
           const color = colors[s.name] || 'var(--muted)';
           return html`<div class="cost-bar-segment" style="width:${pct}%;background:${color}" title="${s.name}: ${_formatCost(s.cost)} (${pct}%)"></div>`;
         })}
       </div>
       <div class="cost-bar-legend">
-        ${costs.map(s => {
+        ${costs.map((s) => {
           const color = colors[s.name] || 'var(--muted)';
           return html`<span class="cost-legend-item"><span class="cost-legend-dot" style="background:${color}"></span>${s.name} ${_formatCost(s.cost)}</span>`;
         })}
@@ -176,7 +185,8 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
   const dur = _runDuration(run);
   const title = run.work_request?.title || 'Untitled';
   const firstLine = title.split('\n')[0];
-  const displayTitle = firstLine.length > 60 ? firstLine.slice(0, 60) + '\u2026' : firstLine;
+  const displayTitle =
+    firstLine.length > 60 ? `${firstLine.slice(0, 60)}\u2026` : firstLine;
   const endTime = run.completed_at || _lastStageEnd(run.stages);
   const isExpanded = expandedRun === run.id;
   const stageNames = _stageOrder(run.stages);
@@ -186,14 +196,16 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
     <div class="cost-run-row ${isExpanded ? 'expanded' : ''}">
       <div class="cost-run-summary" @click=${() => onToggleRun(run.id)}>
         <span class="cost-run-title">${displayTitle}</span>
-        <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : (run.active ? 'running\u2026' : 'interrupted')}</span>
+        <span class="cost-run-date">${unsafeHTML(iconSvg(Clock, 12))} ${endTime ? formatTimestamp(endTime) : run.active ? 'running\u2026' : 'interrupted'}</span>
         <span class="cost-run-cost">${unsafeHTML(iconSvg(Coins, 12))} ${_formatCost(cost)}</span>
 
         <span class="cost-run-duration">${unsafeHTML(iconSvg(Timer, 12))} ${dur > 0 ? formatDuration(dur) : '-'}</span>
 
         <span class="cost-run-chevron">${isExpanded ? '\u25BC' : '\u25B6'}</span>
       </div>
-      ${isExpanded ? html`
+      ${
+        isExpanded
+          ? html`
         <div class="cost-run-detail">
           ${timingStripView(run.started_at, run.completed_at || _lastStageEnd(run.stages))}
           ${costBreakdownBar(run.stages)}
@@ -213,7 +225,7 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
               </tr>
             </thead>
             <tbody>
-              ${stageNames.map(name => {
+              ${stageNames.map((name) => {
                 const stage = run.stages[name];
                 const iters = stage?.iterations || [];
                 const stageTokens = runTokens[name] || [];
@@ -241,14 +253,19 @@ function runRow(run, tokenData, expandedRun, { onToggleRun }) {
             </tbody>
           </table>
         </div>
-      ` : nothing}
+      `
+          : nothing
+      }
     </div>
   `;
 }
 
-export function tokenCostsView(state, { expandedRun, tokenData, onToggleRun } = {}) {
+export function tokenCostsView(
+  state,
+  { expandedRun, tokenData, onToggleRun } = {},
+) {
   const runs = Object.values(state.runs)
-    .filter(r => r.stages && Object.keys(r.stages).length > 0)
+    .filter((r) => r.stages && Object.keys(r.stages).length > 0)
     .sort((a, b) => (b.started_at || '').localeCompare(a.started_at || ''));
 
   return html`
@@ -256,11 +273,15 @@ export function tokenCostsView(state, { expandedRun, tokenData, onToggleRun } = 
       ${summaryCards(runs, tokenData || {})}
 
       <h3 class="costs-section-title">Cost by Run</h3>
-      ${runs.length > 0 ? html`
+      ${
+        runs.length > 0
+          ? html`
         <div class="cost-run-list">
-          ${runs.map(run => runRow(run, tokenData || {}, expandedRun, { onToggleRun: onToggleRun || (() => {}) }))}
+          ${runs.map((run) => runRow(run, tokenData || {}, expandedRun, { onToggleRun: onToggleRun || (() => {}) }))}
         </div>
-      ` : html`<div class="empty-state">No runs with cost data</div>`}
+      `
+          : html`<div class="empty-state">No runs with cost data</div>`
+      }
     </div>
   `;
 }

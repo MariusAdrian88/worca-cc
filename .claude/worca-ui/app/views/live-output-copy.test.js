@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { liveOutputView } from './live-output.js';
 
 function renderToString(template) {
@@ -15,7 +15,7 @@ function renderToString(template) {
       else if (typeof v === 'number') result += String(v);
       else if (typeof v === 'boolean') result += '';
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
     }
   });
   return result;

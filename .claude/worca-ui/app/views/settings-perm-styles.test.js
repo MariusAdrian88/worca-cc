@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'fs';
-import { resolve } from 'path';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
 
 const css = readFileSync(resolve(__dirname, '../styles.css'), 'utf-8');
 
@@ -17,7 +17,9 @@ describe('editable permission CSS styles', () => {
   });
 
   it('has sl-input flex rule inside editable item', () => {
-    const match = css.match(/\.settings-perm-item--editable\s+sl-input\s*\{([^}]+)\}/);
+    const match = css.match(
+      /\.settings-perm-item--editable\s+sl-input\s*\{([^}]+)\}/,
+    );
     expect(match).not.toBeNull();
     expect(match[1]).toContain('flex: 1');
   });

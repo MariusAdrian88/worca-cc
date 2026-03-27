@@ -1,8 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readLastLines, resolveLogPath, resolveIterationLogPath, listIterationFiles, listLogFiles } from './log-tailer.js';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import {
+  listIterationFiles,
+  listLogFiles,
+  readLastLines,
+  resolveIterationLogPath,
+  resolveLogPath,
+} from './log-tailer.js';
 
 describe('log-tailer', () => {
   let dir;
@@ -58,7 +64,7 @@ describe('log-tailer', () => {
     writeFileSync(join(stageDir, 'iter-3.log'), 'data3\n');
     writeFileSync(join(stageDir, 'iter-2.log'), 'data2\n');
     const iters = listIterationFiles(dir, 'implement');
-    expect(iters.map(i => i.iteration)).toEqual([1, 2, 3]);
+    expect(iters.map((i) => i.iteration)).toEqual([1, 2, 3]);
   });
 
   it('listIterationFiles returns empty for missing stage dir', () => {
@@ -74,9 +80,9 @@ describe('log-tailer', () => {
     writeFileSync(join(stageDir, 'iter-2.log'), 'impl2\n');
     const files = listLogFiles(dir);
     expect(files.length).toBe(3);
-    const orch = files.find(f => f.stage === 'orchestrator');
+    const orch = files.find((f) => f.stage === 'orchestrator');
     expect(orch).toBeDefined();
-    const impls = files.filter(f => f.stage === 'implement');
+    const impls = files.filter((f) => f.stage === 'implement');
     expect(impls.length).toBe(2);
     expect(impls[0].iteration).toBe(1);
     expect(impls[1].iteration).toBe(2);

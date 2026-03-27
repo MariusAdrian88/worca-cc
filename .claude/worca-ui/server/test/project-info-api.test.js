@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { createServer } from 'node:http';
+import { describe, expect, it } from 'vitest';
 import { createApp } from '../app.js';
 
 function startServer(projectRoot) {

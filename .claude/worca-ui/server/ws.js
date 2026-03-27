@@ -2,16 +2,44 @@
  * WebSocket server for worca-ui pipeline monitoring.
  * Handles client connections, message routing, file watching, and log tailing.
  */
-import { WebSocketServer } from 'ws';
-import { watch, existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+
+import {
+  existsSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  watch,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
-import { stopPipeline as pmStopPipeline, startPipeline as pmStartPipeline, pausePipeline as pmPausePipeline, reconcileStatus } from './process-manager.js';
-import { isRequest, makeOk, makeError } from '../app/protocol.js';
-import { discoverRuns, watchEvents } from './watcher.js';
-import { listIssues, listIssuesByLabel, listUnlinkedIssues, listDistinctRunLabels, countIssuesByRunLabel, getIssue, dbExists as beadsDbExists } from './beads-reader.js';
-import { readLastLines, resolveLogPath, resolveIterationLogPath, countLines, readLinesFrom, listLogFiles, listIterationFiles } from './log-tailer.js';
-import { readSettings } from './settings-reader.js';
+import { WebSocketServer } from 'ws';
+import { isRequest, makeError, makeOk } from '../app/protocol.js';
+import {
+  dbExists as beadsDbExists,
+  countIssuesByRunLabel,
+  getIssue,
+  listDistinctRunLabels,
+  listIssues,
+  listIssuesByLabel,
+  listUnlinkedIssues,
+} from './beads-reader.js';
+import {
+  countLines,
+  listIterationFiles,
+  listLogFiles,
+  readLastLines,
+  readLinesFrom,
+  resolveIterationLogPath,
+  resolveLogPath,
+} from './log-tailer.js';
 import { readPreferences, writePreferences } from './preferences.js';
+import {
+  pausePipeline as pmPausePipeline,
+  startPipeline as pmStartPipeline,
+  stopPipeline as pmStopPipeline,
+  reconcileStatus,
+} from './process-manager.js';
+import { readSettings } from './settings-reader.js';
+import { discoverRuns, watchEvents } from './watcher.js';
 
 /**
  * Resolve the active run directory for a given worca base dir.
@@ -27,7 +55,9 @@ export function resolveActiveRunDir(worcaDir) {
     try {
       const runId = readFileSync(activeRunPath, 'utf8').trim();
       if (runId) return join(worcaDir, 'runs', runId);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
   return worcaDir; // legacy fallback
 }
@@ -49,8 +79,11 @@ const REFRESH_DEBOUNCE_MS = 75;
 function matchesGlob(pattern, str) {
   const regexStr = pattern
     .split('**')
-    .map(part =>
-      part.split('*').map(s => s.replace(/[.+^${}()|[\]\\]/g, '\\$&')).join('[^.]*')
+    .map((part) =>
+      part
+        .split('*')
+        .map((s) => s.replace(/[.+^${}()|[\]\\]/g, '\\$&'))
+        .join('[^.]*'),
     )
     .join('.*');
   return new RegExp(`^${regexStr}$`).test(str);
@@ -133,13 +166,23 @@ export function attachWsServer(httpServer, config) {
       if (s?.eventsRunId === runId) return; // still in use
     }
     const w = eventWatchers.get(runId);
-    if (w) { try { w.close(); } catch { /* ignore */ } eventWatchers.delete(runId); }
+    if (w) {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+      eventWatchers.delete(runId);
+    }
   }
 
   /**
    * Read and filter events from a run's events.jsonl file.
    */
-  function readEventsFromFile(runId, { since_event_id, event_types, limit = 100 } = {}) {
+  function readEventsFromFile(
+    runId,
+    { since_event_id, event_types, limit = 100 } = {},
+  ) {
     const eventsPath = join(resolveRunDirById(runId), 'events.jsonl');
     if (!existsSync(eventsPath)) return [];
     try {
@@ -147,17 +190,25 @@ export function attachWsServer(httpServer, config) {
       let events = [];
       for (const line of content.split('\n')) {
         if (!line.trim()) continue;
-        try { events.push(JSON.parse(line)); } catch { /* skip malformed */ }
+        try {
+          events.push(JSON.parse(line));
+        } catch {
+          /* skip malformed */
+        }
       }
       if (since_event_id) {
-        const idx = events.findIndex(e => e.event_id === since_event_id);
+        const idx = events.findIndex((e) => e.event_id === since_event_id);
         if (idx >= 0) events = events.slice(idx + 1);
       }
       if (event_types && event_types.length > 0) {
-        events = events.filter(e => event_types.some(p => matchesGlob(p, e.event_type)));
+        events = events.filter((e) =>
+          event_types.some((p) => matchesGlob(p, e.event_type)),
+        );
       }
       return events.slice(0, limit);
-    } catch { return []; }
+    } catch {
+      return [];
+    }
   }
 
   function broadcast(type, payload) {
@@ -165,7 +216,7 @@ export function attachWsServer(httpServer, config) {
       id: `evt-${Date.now()}`,
       ok: true,
       type,
-      payload
+      payload,
     });
     for (const ws of wss.clients) {
       if (ws.readyState === ws.OPEN) {
@@ -179,7 +230,7 @@ export function attachWsServer(httpServer, config) {
       id: `evt-${Date.now()}`,
       ok: true,
       type,
-      payload
+      payload,
     });
     for (const ws of wss.clients) {
       if (ws.readyState !== ws.OPEN) continue;
@@ -195,7 +246,7 @@ export function attachWsServer(httpServer, config) {
       id: `evt-${Date.now()}`,
       ok: true,
       type,
-      payload
+      payload,
     });
     for (const ws of wss.clients) {
       if (ws.readyState !== ws.OPEN) continue;
@@ -218,7 +269,11 @@ export function attachWsServer(httpServer, config) {
     REFRESH_TIMER = setTimeout(() => {
       REFRESH_TIMER = null;
       let settings = {};
-      try { settings = readSettings(settingsPath); } catch { /* ignore */ }
+      try {
+        settings = readSettings(settingsPath);
+      } catch {
+        /* ignore */
+      }
       try {
         const runs = discoverRuns(worcaDir);
         // Broadcast run-snapshot to all subscribed runs (not just active)
@@ -237,9 +292,18 @@ export function attachWsServer(httpServer, config) {
             const prevStatus = lastPipelineStatus.get(run.id);
             if (prevStatus !== undefined && prevStatus !== currStatus) {
               if (currStatus === 'paused') {
-                broadcastToSubscribers(run.id, 'pipeline-paused', { runId: run.id, pipeline_status: currStatus });
-              } else if (currStatus === 'running' && (prevStatus === 'paused' || prevStatus === 'resuming')) {
-                broadcastToSubscribers(run.id, 'pipeline-resumed', { runId: run.id, pipeline_status: currStatus });
+                broadcastToSubscribers(run.id, 'pipeline-paused', {
+                  runId: run.id,
+                  pipeline_status: currStatus,
+                });
+              } else if (
+                currStatus === 'running' &&
+                (prevStatus === 'paused' || prevStatus === 'resuming')
+              ) {
+                broadcastToSubscribers(run.id, 'pipeline-resumed', {
+                  runId: run.id,
+                  pipeline_status: currStatus,
+                });
               }
             }
             lastPipelineStatus.set(run.id, currStatus);
@@ -247,7 +311,9 @@ export function attachWsServer(httpServer, config) {
         }
         // Broadcast updated runs list so list views auto-update
         broadcast('runs-list', { runs, settings });
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }, REFRESH_DEBOUNCE_MS);
   }
 
@@ -260,7 +326,10 @@ export function attachWsServer(httpServer, config) {
   let watchedRunDir = null;
 
   function setupStatusWatcher() {
-    if (statusWatcher) { statusWatcher.close(); statusWatcher = null; }
+    if (statusWatcher) {
+      statusWatcher.close();
+      statusWatcher = null;
+    }
     const runDir = resolveActiveRunDir();
     // When the active run changes, close stale log watchers so fresh ones
     // are created for the new run's files (fixes logWatchers.has() guard).
@@ -273,11 +342,15 @@ export function attachWsServer(httpServer, config) {
       if (statusWatcher) return; // already established
       try {
         if (existsSync(runDir)) {
-          statusWatcher = watch(runDir, { recursive: false }, (_eventType, filename) => {
-            if (!filename || filename === 'status.json') {
-              scheduleRefresh();
-            }
-          });
+          statusWatcher = watch(
+            runDir,
+            { recursive: false },
+            (_eventType, filename) => {
+              if (!filename || filename === 'status.json') {
+                scheduleRefresh();
+              }
+            },
+          );
         } else {
           // Run directory not created yet — retry after a short delay.
           // Self-cancels if the active run has changed by then.
@@ -285,7 +358,9 @@ export function attachWsServer(httpServer, config) {
             if (resolveActiveRunDir() === runDir) tryWatch();
           }, 500);
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
 
     tryWatch();
@@ -296,18 +371,28 @@ export function attachWsServer(httpServer, config) {
   let activeRunWatcher = null;
   try {
     if (existsSync(worcaDir)) {
-      activeRunWatcher = watch(worcaDir, { recursive: false }, (_eventType, filename) => {
-        if (!filename || filename === 'active_run' || filename === 'status.json') {
-          // Re-setup status watcher if active run changed
-          const newRunDir = resolveActiveRunDir();
-          if (newRunDir !== watchedRunDir) {
-            setupStatusWatcher();
+      activeRunWatcher = watch(
+        worcaDir,
+        { recursive: false },
+        (_eventType, filename) => {
+          if (
+            !filename ||
+            filename === 'active_run' ||
+            filename === 'status.json'
+          ) {
+            // Re-setup status watcher if active run changed
+            const newRunDir = resolveActiveRunDir();
+            if (newRunDir !== watchedRunDir) {
+              setupStatusWatcher();
+            }
+            scheduleRefresh();
           }
-          scheduleRefresh();
-        }
-      });
+        },
+      );
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // Track line counts per log file so we only send new lines
   const logLineCounts = new Map();
@@ -319,7 +404,11 @@ export function attachWsServer(httpServer, config) {
    */
   function clearLogWatchers() {
     for (const w of logWatchers.values()) {
-      try { w.close(); } catch { /* ignore */ }
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
     }
     logWatchers.clear();
     logLineCounts.clear();
@@ -327,7 +416,10 @@ export function attachWsServer(httpServer, config) {
 
   // Start watching a single log file
   function watchSingleLogFile(stage, filePath, iteration) {
-    const key = iteration != null ? `${stage}__iter${iteration}` : (stage || '__orchestrator__');
+    const key =
+      iteration != null
+        ? `${stage}__iter${iteration}`
+        : stage || '__orchestrator__';
     if (logWatchers.has(key)) return;
     try {
       if (!existsSync(filePath)) return;
@@ -341,19 +433,28 @@ export function attachWsServer(httpServer, config) {
             if (newLines.length > 0) {
               logLineCounts.set(key, prevCount + newLines.length);
               for (const line of newLines) {
-                broadcastToLogSubscribers(stage, 'log-line', {
-                  stage: stage || 'orchestrator',
-                  iteration: iteration ?? undefined,
-                  line,
-                  timestamp: new Date().toISOString(),
-                }, watcherRunId);
+                broadcastToLogSubscribers(
+                  stage,
+                  'log-line',
+                  {
+                    stage: stage || 'orchestrator',
+                    iteration: iteration ?? undefined,
+                    line,
+                    timestamp: new Date().toISOString(),
+                  },
+                  watcherRunId,
+                );
               }
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
       });
       logWatchers.set(key, watcher);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Set up a directory watcher for a stage directory (watches for new iteration files)
@@ -361,9 +462,9 @@ export function attachWsServer(httpServer, config) {
     const dirKey = `${stage}__dir`;
     if (logWatchers.has(dirKey)) return;
     try {
-      const dirWatcher = watch(stageDir, (eventType, filename) => {
+      const dirWatcher = watch(stageDir, (_eventType, filename) => {
         if (filename && /^iter-\d+\.log$/.test(filename)) {
-          const iterNum = parseInt(filename.match(/\d+/)[0]);
+          const iterNum = parseInt(filename.match(/\d+/)[0], 10);
           const iterPath = join(stageDir, filename);
           watchSingleLogFile(stage, iterPath, iterNum);
         }
@@ -377,7 +478,9 @@ export function attachWsServer(httpServer, config) {
       for (const { iteration, path } of backfill) {
         watchSingleLogFile(stage, path, iteration);
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Resolve the logs base dir for the active run
@@ -452,11 +555,15 @@ export function attachWsServer(httpServer, config) {
               // Watch for new iteration files
               watchStageDir(filename, stagePath);
             }
-          } catch { /* ignore */ }
+          } catch {
+            /* ignore */
+          }
         }
       });
       logWatchers.set(dirKey, dirWatcher);
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Beads database watcher — watch the directory, not just beads.db,
@@ -473,17 +580,25 @@ export function attachWsServer(httpServer, config) {
       BEADS_REFRESH_TIMER = null;
       try {
         const issues = listIssues(beadsDbPath);
-        broadcast('beads-update', { issues, dbExists: true, dbPath: beadsDbPath });
-      } catch { /* ignore */ }
+        broadcast('beads-update', {
+          issues,
+          dbExists: true,
+          dbPath: beadsDbPath,
+        });
+      } catch {
+        /* ignore */
+      }
     }, BEADS_DEBOUNCE_MS);
   }
 
   if (existsSync(beadsDir)) {
     try {
       beadsWatcher = watch(beadsDir, (_event, filename) => {
-        if (filename && filename.startsWith('beads.db')) scheduleBeadsRefresh();
+        if (filename?.startsWith('beads.db')) scheduleBeadsRefresh();
       });
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Heartbeat
@@ -526,7 +641,13 @@ export function attachWsServer(httpServer, config) {
     if (beadsWatcher) beadsWatcher.close();
     for (const w of logWatchers.values()) w.close();
     logWatchers.clear();
-    for (const w of eventWatchers.values()) { try { w.close(); } catch { /* ignore */ } }
+    for (const w of eventWatchers.values()) {
+      try {
+        w.close();
+      } catch {
+        /* ignore */
+      }
+    }
     eventWatchers.clear();
   });
 
@@ -537,17 +658,25 @@ export function attachWsServer(httpServer, config) {
         const stageDir = join(archivedLogDir, stage);
         if (existsSync(stageDir) && statSync(stageDir).isDirectory()) {
           const files = readdirSync(stageDir)
-            .filter(f => /^iter-\d+\.log$/.test(f))
-            .sort((a, b) => parseInt(a.match(/\d+/)[0]) - parseInt(b.match(/\d+/)[0]));
+            .filter((f) => /^iter-\d+\.log$/.test(f))
+            .sort(
+              (a, b) =>
+                parseInt(a.match(/\d+/)[0], 10) -
+                parseInt(b.match(/\d+/)[0], 10),
+            );
           for (const f of files) {
-            const iterNum = parseInt(f.match(/\d+/)[0]);
+            const iterNum = parseInt(f.match(/\d+/)[0], 10);
             if (iteration != null && iterNum !== iteration) continue;
             const lines = readLastLines(join(stageDir, f), 200);
             if (lines.length > 0) {
-              ws.send(JSON.stringify({
-                id: `evt-${Date.now()}-iter${iterNum}`, ok: true, type: 'log-bulk',
-                payload: { stage, iteration: iterNum, lines },
-              }));
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}-iter${iterNum}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: { stage, iteration: iterNum, lines },
+                }),
+              );
             }
           }
         } else {
@@ -555,10 +684,14 @@ export function attachWsServer(httpServer, config) {
           const logPath = join(archivedLogDir, `${stage}.log`);
           const lines = readLastLines(logPath, 200);
           if (lines.length > 0) {
-            ws.send(JSON.stringify({
-              id: `evt-${Date.now()}`, ok: true, type: 'log-bulk',
-              payload: { stage, lines },
-            }));
+            ws.send(
+              JSON.stringify({
+                id: `evt-${Date.now()}`,
+                ok: true,
+                type: 'log-bulk',
+                payload: { stage, lines },
+              }),
+            );
           }
         }
       } else {
@@ -569,39 +702,56 @@ export function attachWsServer(httpServer, config) {
             const s2 = entry.name.replace('.log', '');
             const lines = readLastLines(join(archivedLogDir, entry.name), 200);
             if (lines.length > 0) {
-              ws.send(JSON.stringify({
-                id: `evt-${Date.now()}-${s2}`, ok: true, type: 'log-bulk',
-                payload: { stage: s2, lines },
-              }));
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}-${s2}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: { stage: s2, lines },
+                }),
+              );
             }
           } else if (entry.isDirectory()) {
             const stageDir2 = join(archivedLogDir, entry.name);
             const iterFiles = readdirSync(stageDir2)
-              .filter(f => /^iter-\d+\.log$/.test(f))
-              .sort((a, b) => parseInt(a.match(/\d+/)[0]) - parseInt(b.match(/\d+/)[0]));
+              .filter((f) => /^iter-\d+\.log$/.test(f))
+              .sort(
+                (a, b) =>
+                  parseInt(a.match(/\d+/)[0], 10) -
+                  parseInt(b.match(/\d+/)[0], 10),
+              );
             for (const f of iterFiles) {
-              const iterNum = parseInt(f.match(/\d+/)[0]);
+              const iterNum = parseInt(f.match(/\d+/)[0], 10);
               const lines = readLastLines(join(stageDir2, f), 200);
               if (lines.length > 0) {
-                ws.send(JSON.stringify({
-                  id: `evt-${Date.now()}-${entry.name}-iter${iterNum}`, ok: true, type: 'log-bulk',
-                  payload: { stage: entry.name, iteration: iterNum, lines },
-                }));
+                ws.send(
+                  JSON.stringify({
+                    id: `evt-${Date.now()}-${entry.name}-iter${iterNum}`,
+                    ok: true,
+                    type: 'log-bulk',
+                    payload: { stage: entry.name, iteration: iterNum, lines },
+                  }),
+                );
               }
             }
           }
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
   }
 
   // Legacy fallback prefixes — only used when status.json lacks a stored prompt
   const STAGE_PROMPT_PREFIX = {
     plan: 'Create a detailed implementation plan for the following work request. Write the plan to the designated plan file.\n\nWork request: ',
-    coordinate: 'Decompose the following work request into Beads tasks with dependencies. Do NOT implement anything — only create tasks using `bd create`.\n\nWork request: ',
-    implement: 'Implement the code changes described in the work request. Follow the plan and complete the tasks assigned to you.\n\nWork request: ',
+    coordinate:
+      'Decompose the following work request into Beads tasks with dependencies. Do NOT implement anything — only create tasks using `bd create`.\n\nWork request: ',
+    implement:
+      'Implement the code changes described in the work request. Follow the plan and complete the tasks assigned to you.\n\nWork request: ',
     test: 'Review and test the implementation for the following work request. Run tests and report results. Do NOT modify code.\n\nWork request: ',
-    review: 'Review the code changes for the following work request. Check for correctness, style, and adherence to the plan. Do NOT modify code.\n\nWork request: ',
+    review:
+      'Review the code changes for the following work request. Check for correctness, style, and adherence to the plan. Do NOT modify code.\n\nWork request: ',
     pr: 'Create a pull request for the following work request. Summarize the changes and ensure the commit history is clean.\n\nWork request: ',
   };
 
@@ -615,18 +765,26 @@ export function attachWsServer(httpServer, config) {
     try {
       json = JSON.parse(data.toString());
     } catch {
-      ws.send(JSON.stringify({
-        id: 'unknown', ok: false, type: 'bad-json',
-        error: { code: 'bad_json', message: 'Invalid JSON' }
-      }));
+      ws.send(
+        JSON.stringify({
+          id: 'unknown',
+          ok: false,
+          type: 'bad-json',
+          error: { code: 'bad_json', message: 'Invalid JSON' },
+        }),
+      );
       return;
     }
 
     if (!isRequest(json)) {
-      ws.send(JSON.stringify({
-        id: 'unknown', ok: false, type: 'bad-request',
-        error: { code: 'bad_request', message: 'Invalid request envelope' }
-      }));
+      ws.send(
+        JSON.stringify({
+          id: 'unknown',
+          ok: false,
+          type: 'bad-request',
+          error: { code: 'bad_request', message: 'Invalid request envelope' },
+        }),
+      );
       return;
     }
 
@@ -644,14 +802,24 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'get-agent-prompt') {
       const { runId, stage } = req.payload || {};
       if (!runId || !stage) {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId and payload.stage required')));
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'payload.runId and payload.stage required',
+            ),
+          ),
+        );
         return;
       }
       // Find the run to get agent name and work request prompt
       const runs = discoverRuns(worcaDir);
-      const run = runs.find(r => r.id === runId);
+      const run = runs.find((r) => r.id === runId);
       if (!run) {
-        ws.send(JSON.stringify(makeError(req, 'NOT_FOUND', `Run ${runId} not found`)));
+        ws.send(
+          JSON.stringify(makeError(req, 'NOT_FOUND', `Run ${runId} not found`)),
+        );
         return;
       }
       const agentName = run.stages?.[stage]?.agent || stage;
@@ -671,13 +839,16 @@ export function attachWsServer(httpServer, config) {
         fallbackPrompt = storedPrompt;
         promptSource = 'actual';
       } else {
-        const rawPrompt = run.work_request?.description || run.work_request?.title || '';
+        const rawPrompt =
+          run.work_request?.description || run.work_request?.title || '';
         fallbackPrompt = _buildStagePrompt(stage, rawPrompt);
         promptSource = 'reconstructed';
       }
 
       // If no iteration has a stored prompt, use the fallback for all
-      const hasIterationPrompts = iterationPrompts.some(ip => ip.prompt != null);
+      const hasIterationPrompts = iterationPrompts.some(
+        (ip) => ip.prompt != null,
+      );
       if (!hasIterationPrompts) {
         for (const ip of iterationPrompts) {
           ip.prompt = fallbackPrompt;
@@ -687,22 +858,42 @@ export function attachWsServer(httpServer, config) {
       // Try to read rendered agent .md from run dir, then results dir
       let agentInstructions = null;
       const candidates = [
-        join(worcaDir, 'runs', run.run_id || runId, 'agents', `${agentName}.md`),
-        join(worcaDir, 'results', run.run_id || runId, 'agents', `${agentName}.md`),
+        join(
+          worcaDir,
+          'runs',
+          run.run_id || runId,
+          'agents',
+          `${agentName}.md`,
+        ),
+        join(
+          worcaDir,
+          'results',
+          run.run_id || runId,
+          'agents',
+          `${agentName}.md`,
+        ),
       ];
       for (const p of candidates) {
         if (existsSync(p)) {
-          try { agentInstructions = readFileSync(p, 'utf8'); } catch { /* ignore */ }
+          try {
+            agentInstructions = readFileSync(p, 'utf8');
+          } catch {
+            /* ignore */
+          }
           break;
         }
       }
-      ws.send(JSON.stringify(makeOk(req, {
-        agentInstructions,
-        userPrompt: fallbackPrompt, // backward compat
-        iterationPrompts,
-        promptSource,
-        agent: agentName,
-      })));
+      ws.send(
+        JSON.stringify(
+          makeOk(req, {
+            agentInstructions,
+            userPrompt: fallbackPrompt, // backward compat
+            iterationPrompts,
+            promptSource,
+            agent: agentName,
+          }),
+        ),
+      );
       return;
     }
 
@@ -710,21 +901,30 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'subscribe-run') {
       const { runId } = req.payload || {};
       if (typeof runId !== 'string') {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
         return;
       }
       const s = ensureSubs(ws);
       s.runId = runId;
       // Send current snapshot and seed lastPipelineStatus for change detection
       const runs = discoverRuns(worcaDir);
-      const run = runs.find(r => r.id === runId);
+      const run = runs.find((r) => r.id === runId);
       if (run) {
-        if (run.pipeline_status !== undefined && !lastPipelineStatus.has(runId)) {
+        if (
+          run.pipeline_status !== undefined &&
+          !lastPipelineStatus.has(runId)
+        ) {
           lastPipelineStatus.set(runId, run.pipeline_status);
         }
         ws.send(JSON.stringify(makeOk(req, run)));
       } else {
-        ws.send(JSON.stringify(makeError(req, 'NOT_FOUND', `Run ${runId} not found`)));
+        ws.send(
+          JSON.stringify(makeError(req, 'NOT_FOUND', `Run ${runId} not found`)),
+        );
       }
       return;
     }
@@ -762,10 +962,14 @@ export function attachWsServer(httpServer, config) {
             const logPath = resolveIterationLogPath(logsBase, stage, iteration);
             const lines = readLastLines(logPath, 200);
             if (lines.length > 0) {
-              ws.send(JSON.stringify({
-                id: `evt-${Date.now()}`, ok: true, type: 'log-bulk',
-                payload: { stage, iteration, lines },
-              }));
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: { stage, iteration, lines },
+                }),
+              );
             }
           } else {
             // All iterations for this stage
@@ -775,10 +979,14 @@ export function attachWsServer(httpServer, config) {
               for (const { iteration: iterNum, path } of iters) {
                 const lines = readLastLines(path, 200);
                 if (lines.length > 0) {
-                  ws.send(JSON.stringify({
-                    id: `evt-${Date.now()}-iter${iterNum}`, ok: true, type: 'log-bulk',
-                    payload: { stage, iteration: iterNum, lines },
-                  }));
+                  ws.send(
+                    JSON.stringify({
+                      id: `evt-${Date.now()}-iter${iterNum}`,
+                      ok: true,
+                      type: 'log-bulk',
+                      payload: { stage, iteration: iterNum, lines },
+                    }),
+                  );
                 }
               }
             } else {
@@ -786,10 +994,14 @@ export function attachWsServer(httpServer, config) {
               const logPath = join(logsBase, 'logs', `${stage}.log`);
               const lines = readLastLines(logPath, 200);
               if (lines.length > 0) {
-                ws.send(JSON.stringify({
-                  id: `evt-${Date.now()}`, ok: true, type: 'log-bulk',
-                  payload: { stage, lines },
-                }));
+                ws.send(
+                  JSON.stringify({
+                    id: `evt-${Date.now()}`,
+                    ok: true,
+                    type: 'log-bulk',
+                    payload: { stage, lines },
+                  }),
+                );
               }
             }
           }
@@ -799,10 +1011,18 @@ export function attachWsServer(httpServer, config) {
           for (const { stage: s2, iteration: iterNum, path } of logFiles) {
             const lines = readLastLines(path, 200);
             if (lines.length > 0) {
-              ws.send(JSON.stringify({
-                id: `evt-${Date.now()}-${s2}-${iterNum || 0}`, ok: true, type: 'log-bulk',
-                payload: { stage: s2, iteration: iterNum ?? undefined, lines },
-              }));
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}-${s2}-${iterNum || 0}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: {
+                    stage: s2,
+                    iteration: iterNum ?? undefined,
+                    lines,
+                  },
+                }),
+              );
             }
           }
           watchAllLogFiles();
@@ -843,7 +1063,11 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'pause-run') {
       const { runId } = req.payload || {};
       if (typeof runId !== 'string') {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
         return;
       }
       try {
@@ -866,7 +1090,12 @@ export function attachWsServer(httpServer, config) {
         const pollInterval = setInterval(() => {
           checks++;
           let alive = false;
-          try { process.kill(result.pid, 0); alive = true; } catch { /* dead */ }
+          try {
+            process.kill(result.pid, 0);
+            alive = true;
+          } catch {
+            /* dead */
+          }
           if (!alive || checks >= maxChecks) {
             clearInterval(pollInterval);
             reconcileStatus(worcaDir);
@@ -876,7 +1105,9 @@ export function attachWsServer(httpServer, config) {
         pollInterval.unref?.();
       } catch (e) {
         scheduleRefresh();
-        ws.send(JSON.stringify(makeError(req, e.code || 'not_running', e.message)));
+        ws.send(
+          JSON.stringify(makeError(req, e.code || 'not_running', e.message)),
+        );
       }
       return;
     }
@@ -886,7 +1117,9 @@ export function attachWsServer(httpServer, config) {
       const { runId } = req.payload || {};
       try {
         const result = await pmStartPipeline(worcaDir, { resume: true, runId });
-        ws.send(JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })));
+        ws.send(
+          JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })),
+        );
       } catch (e) {
         ws.send(JSON.stringify(makeError(req, e.code || 'error', e.message)));
       }
@@ -896,11 +1129,19 @@ export function attachWsServer(httpServer, config) {
     // list-beads-issues
     if (req.type === 'list-beads-issues') {
       if (!beadsDbExists(beadsDbPath)) {
-        ws.send(JSON.stringify(makeOk(req, { issues: [], dbExists: false, dbPath: beadsDbPath })));
+        ws.send(
+          JSON.stringify(
+            makeOk(req, { issues: [], dbExists: false, dbPath: beadsDbPath }),
+          ),
+        );
         return;
       }
       const issues = listIssues(beadsDbPath);
-      ws.send(JSON.stringify(makeOk(req, { issues, dbExists: true, dbPath: beadsDbPath })));
+      ws.send(
+        JSON.stringify(
+          makeOk(req, { issues, dbExists: true, dbPath: beadsDbPath }),
+        ),
+      );
       return;
     }
 
@@ -941,14 +1182,18 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'list-beads-by-run') {
       const { runId } = req.payload || {};
       if (!runId) {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
         return;
       }
       if (!beadsDbExists(beadsDbPath)) {
         ws.send(JSON.stringify(makeOk(req, { issues: [], runId })));
         return;
       }
-      const issues = listIssuesByLabel(beadsDbPath, 'run:' + runId);
+      const issues = listIssuesByLabel(beadsDbPath, `run:${runId}`);
       ws.send(JSON.stringify(makeOk(req, { issues, runId })));
       return;
     }
@@ -957,25 +1202,59 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'start-beads-issue') {
       const { issueId } = req.payload || {};
       if (!Number.isInteger(issueId) || issueId <= 0) {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.issueId (positive integer) required')));
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'payload.issueId (positive integer) required',
+            ),
+          ),
+        );
         return;
       }
       const issue = getIssue(beadsDbPath, issueId);
       if (!issue) {
-        ws.send(JSON.stringify(makeError(req, 'not_found', `Issue ${issueId} not found`)));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'not_found', `Issue ${issueId} not found`),
+          ),
+        );
         return;
       }
       if (issue.status !== 'open') {
-        ws.send(JSON.stringify(makeError(req, 'not_ready', `Issue ${issueId} is not open (status: ${issue.status})`)));
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'not_ready',
+              `Issue ${issueId} is not open (status: ${issue.status})`,
+            ),
+          ),
+        );
         return;
       }
       if (issue.blocked_by.length > 0) {
-        ws.send(JSON.stringify(makeError(req, 'blocked', `Issue ${issueId} is blocked by: ${issue.blocked_by.join(', ')}`)));
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'blocked',
+              `Issue ${issueId} is blocked by: ${issue.blocked_by.join(', ')}`,
+            ),
+          ),
+        );
         return;
       }
       try {
-        const prompt = `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
-        const result = await pmStartPipeline(worcaDir, { inputType: 'prompt', inputValue: prompt, msize: 1, mloops: 1 });
+        const prompt =
+          `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
+        const result = await pmStartPipeline(worcaDir, {
+          inputType: 'prompt',
+          inputValue: prompt,
+          msize: 1,
+          mloops: 1,
+        });
         broadcast('run-started', { pid: result.pid });
         ws.send(JSON.stringify(makeOk(req, { pid: result.pid, issueId })));
       } catch (e) {
@@ -988,10 +1267,18 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'get-events') {
       const { runId, since_event_id, event_types, limit } = req.payload || {};
       if (typeof runId !== 'string') {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
         return;
       }
-      const events = readEventsFromFile(runId, { since_event_id, event_types, limit });
+      const events = readEventsFromFile(runId, {
+        since_event_id,
+        event_types,
+        limit,
+      });
       ws.send(JSON.stringify(makeOk(req, { events })));
       return;
     }
@@ -1000,14 +1287,20 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'subscribe-events') {
       const { runId } = req.payload || {};
       if (typeof runId !== 'string') {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'payload.runId required')));
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
         return;
       }
       const s = ensureSubs(ws);
       s.eventsRunId = runId;
       if (!eventWatchers.has(runId)) {
         const runDir = resolveRunDirById(runId);
-        const w = watchEvents(runDir, (event) => broadcastPipelineEvent(runId, event));
+        const w = watchEvents(runDir, (event) =>
+          broadcastPipelineEvent(runId, event),
+        );
         eventWatchers.set(runId, w);
       }
       ws.send(JSON.stringify(makeOk(req, { subscribed: true })));
@@ -1027,10 +1320,21 @@ export function attachWsServer(httpServer, config) {
     // get-webhook-inbox
     if (req.type === 'get-webhook-inbox') {
       if (!webhookInbox) {
-        ws.send(JSON.stringify(makeOk(req, { events: [], controlAction: 'continue' })));
+        ws.send(
+          JSON.stringify(
+            makeOk(req, { events: [], controlAction: 'continue' }),
+          ),
+        );
         return;
       }
-      ws.send(JSON.stringify(makeOk(req, { events: webhookInbox.list(), controlAction: webhookInbox.getControlAction() })));
+      ws.send(
+        JSON.stringify(
+          makeOk(req, {
+            events: webhookInbox.list(),
+            controlAction: webhookInbox.getControlAction(),
+          }),
+        ),
+      );
       return;
     }
 
@@ -1038,7 +1342,15 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'set-webhook-control') {
       const { action } = req.payload || {};
       if (!webhookInbox || !['continue', 'pause', 'abort'].includes(action)) {
-        ws.send(JSON.stringify(makeError(req, 'bad_request', 'action must be "continue", "pause", or "abort"')));
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'action must be "continue", "pause", or "abort"',
+            ),
+          ),
+        );
         return;
       }
       webhookInbox.setControlAction(action);
@@ -1056,7 +1368,11 @@ export function attachWsServer(httpServer, config) {
     }
 
     // Unknown type
-    ws.send(JSON.stringify(makeError(req, 'unknown_type', `Unknown message type: ${req.type}`)));
+    ws.send(
+      JSON.stringify(
+        makeError(req, 'unknown_type', `Unknown message type: ${req.type}`),
+      ),
+    );
   }
 
   return { wss, broadcast, scheduleRefresh };

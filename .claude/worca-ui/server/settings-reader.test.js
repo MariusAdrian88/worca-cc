@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readSettings } from './settings-reader.js';
-import { writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { readSettings } from './settings-reader.js';
 
 describe('settings-reader', () => {
   let dir;
@@ -16,8 +16,8 @@ describe('settings-reader', () => {
     const settings = {
       worca: {
         agents: { planner: { model: 'opus', max_turns: 40 } },
-        loops: { implement_test: 10 }
-      }
+        loops: { implement_test: 10 },
+      },
     };
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
     const result = readSettings(join(dir, 'settings.json'));
@@ -36,8 +36,8 @@ describe('settings-reader', () => {
   it('reads optional UI stage config', () => {
     const settings = {
       worca: {
-        ui: { stages: { deploy: { label: 'Deploy', icon: 'rocket' } } }
-      }
+        ui: { stages: { deploy: { label: 'Deploy', icon: 'rocket' } } },
+      },
     };
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
     const result = readSettings(join(dir, 'settings.json'));
@@ -46,7 +46,7 @@ describe('settings-reader', () => {
 
   it('returns learnEnabled true when learn stage is enabled', () => {
     const settings = {
-      worca: { stages: { learn: { enabled: true, agent: 'learner' } } }
+      worca: { stages: { learn: { enabled: true, agent: 'learner' } } },
     };
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
     const result = readSettings(join(dir, 'settings.json'));
@@ -55,7 +55,7 @@ describe('settings-reader', () => {
 
   it('returns learnEnabled false when learn stage is disabled', () => {
     const settings = {
-      worca: { stages: { learn: { enabled: false, agent: 'learner' } } }
+      worca: { stages: { learn: { enabled: false, agent: 'learner' } } },
     };
     writeFileSync(join(dir, 'settings.json'), JSON.stringify(settings));
     const result = readSettings(join(dir, 'settings.json'));

@@ -1,7 +1,13 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  MESSAGE_TYPES, nextId, makeRequest, makeOk, makeError,
-  isMessageType, isRequest, decodeRequest
+  decodeRequest,
+  isMessageType,
+  isRequest,
+  MESSAGE_TYPES,
+  makeError,
+  makeOk,
+  makeRequest,
+  nextId,
 } from './protocol.js';
 
 describe('protocol', () => {

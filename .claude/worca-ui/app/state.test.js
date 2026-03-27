@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createStore } from './state.js';
 
 describe('state store', () => {
@@ -9,7 +9,11 @@ describe('state store', () => {
     expect(s.projectName).toBe('');
     expect(s.runs).toEqual({});
     expect(s.logLines).toEqual([]);
-    expect(s.preferences).toEqual({ theme: 'light', sidebarCollapsed: false, notifications: null });
+    expect(s.preferences).toEqual({
+      theme: 'light',
+      sidebarCollapsed: false,
+      notifications: null,
+    });
   });
 
   it('accepts projectName initial override', () => {
@@ -27,7 +31,9 @@ describe('state store', () => {
   });
 
   it('accepts initial overrides', () => {
-    const store = createStore({ preferences: { theme: 'dark', sidebarCollapsed: true } });
+    const store = createStore({
+      preferences: { theme: 'dark', sidebarCollapsed: true },
+    });
     expect(store.getState().preferences.theme).toBe('dark');
   });
 

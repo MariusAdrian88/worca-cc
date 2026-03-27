@@ -85,6 +85,14 @@ This project follows **TDD (Test-Driven Development)**:
 
 Implementer agents read this section to determine the testing methodology.
 
+## Linting
+
+```bash
+ruff check .                                              # Python lint
+cd .claude/worca-ui && npm run lint                       # UI lint (biome)
+cd .claude/worca-ui && npm run lint:fix                   # Auto-fix UI lint issues
+```
+
 ## Testing
 
 ```bash
@@ -101,7 +109,7 @@ Test naming: `tests/test_<module>.py` mirrors source module names. Pre-existing 
 ## Governance
 
 - Only the **guardian** agent may run `git commit` (enforced by pre_tool_use hook checking `WORCA_AGENT` env var)
-- Source file writes are blocked until `MASTER_PLAN.md` exists (plan_check hook)
+- Source file writes are blocked until `MASTER_PLAN.md` exists (plan_check hook, only active when `WORCA_AGENT` is set)
 - The post_tool_use hook has a test gate: 2 consecutive pytest failures block further tool calls
 - Subagent dispatch is restricted per agent role (tracking hook)
 

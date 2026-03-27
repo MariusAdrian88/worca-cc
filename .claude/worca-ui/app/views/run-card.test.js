@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { runCardView } from './run-card.js';
 
 function renderToString(template) {
@@ -13,7 +13,7 @@ function renderToString(template) {
       if (typeof v === 'string') result += v;
       else if (typeof v === 'number') result += String(v);
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
       // unsafeHTML directives / functions — skip
     }
   });
@@ -22,31 +22,57 @@ function renderToString(template) {
 
 describe('runCardView - status class on card', () => {
   it('adds status-running class when pipeline_status is running', () => {
-    const run = { id: '1', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-running');
   });
 
   it('adds status-paused class when pipeline_status is paused', () => {
-    const run = { id: '1', pipeline_status: 'paused', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'paused',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-paused');
   });
 
   it('adds status-completed class when pipeline_status is completed', () => {
-    const run = { id: '1', pipeline_status: 'completed', active: false, started_at: '2026-01-01T00:00:00Z', completed_at: '2026-01-01T01:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'completed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+      completed_at: '2026-01-01T01:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-completed');
   });
 
   it('adds status-failed class when pipeline_status is failed', () => {
-    const run = { id: '1', pipeline_status: 'failed', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'failed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-failed');
   });
 
   it('adds status-resuming class when pipeline_status is resuming', () => {
-    const run = { id: '1', pipeline_status: 'resuming', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'resuming',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-resuming');
   });
@@ -58,7 +84,12 @@ describe('runCardView - status class on card', () => {
   });
 
   it('falls back to status-completed for inactive run without pipeline_status', () => {
-    const run = { id: '1', active: false, started_at: '2026-01-01T00:00:00Z', completed_at: '2026-01-01T01:00:00Z' };
+    const run = {
+      id: '1',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+      completed_at: '2026-01-01T01:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toContain('status-completed');
   });
@@ -67,9 +98,11 @@ describe('runCardView - status class on card', () => {
 describe('runCardView - status icon tooltip', () => {
   it('shows tooltip on status icon when status_changed_at is set', () => {
     const run = {
-      id: '1', pipeline_status: 'paused', active: false,
+      id: '1',
+      pipeline_status: 'paused',
+      active: false,
       started_at: '2026-01-01T00:00:00Z',
-      status_changed_at: '2026-01-01T00:00:00Z'
+      status_changed_at: '2026-01-01T00:00:00Z',
     };
     const output = renderToString(runCardView(run));
     expect(output).toContain('title=');
@@ -77,9 +110,11 @@ describe('runCardView - status icon tooltip', () => {
 
   it('shows tooltip with completed_at for completed runs', () => {
     const run = {
-      id: '1', pipeline_status: 'completed', active: false,
+      id: '1',
+      pipeline_status: 'completed',
+      active: false,
       started_at: '2026-01-01T00:00:00Z',
-      completed_at: '2026-01-01T01:00:00Z'
+      completed_at: '2026-01-01T01:00:00Z',
     };
     const output = renderToString(runCardView(run));
     expect(output).toContain('title=');
@@ -87,8 +122,10 @@ describe('runCardView - status icon tooltip', () => {
 
   it('shows tooltip for running runs using started_at', () => {
     const run = {
-      id: '1', pipeline_status: 'running', active: true,
-      started_at: '2026-01-01T00:00:00Z'
+      id: '1',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
     };
     const output = renderToString(runCardView(run));
     expect(output).toContain('title=');
@@ -103,25 +140,45 @@ describe('runCardView - status icon tooltip', () => {
 
 describe('runCardView - quick-action buttons', () => {
   it('shows pause button with btn-quick-pause when running and onPause provided', () => {
-    const run = { id: '1', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run, { onPause: () => {} }));
     expect(output).toContain('btn-quick-pause');
   });
 
   it('shows resume button with btn-quick-resume when paused and onResume provided', () => {
-    const run = { id: '1', pipeline_status: 'paused', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'paused',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run, { onResume: () => {} }));
     expect(output).toContain('btn-quick-resume');
   });
 
   it('shows resume button when failed and onResume provided', () => {
-    const run = { id: '1', pipeline_status: 'failed', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'failed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run, { onResume: () => {} }));
     expect(output).toContain('btn-quick-resume');
   });
 
   it('does not show pause button when running but no onPause', () => {
-    const run = { id: '1', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).not.toContain('btn-quick-pause');
   });
@@ -141,14 +198,24 @@ describe('runCardView - quick-action buttons', () => {
 
 describe('runCardView - border-left via statusClass on card div', () => {
   it('run-card div includes status class for CSS border-left targeting', () => {
-    const run = { id: '1', pipeline_status: 'running', active: true, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'running',
+      active: true,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     // The class "run-card status-running" on the outer div enables border-left via CSS
     expect(output).toMatch(/class="run-card\s+status-running"/);
   });
 
   it('paused run card has status-paused on outer div', () => {
-    const run = { id: '1', pipeline_status: 'paused', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const run = {
+      id: '1',
+      pipeline_status: 'paused',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const output = renderToString(runCardView(run));
     expect(output).toMatch(/class="run-card\s+status-paused"/);
   });

@@ -1,9 +1,16 @@
-import { describe, it, expect, afterEach } from 'vitest';
-import Database from 'better-sqlite3';
 import { mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { dbExists, listIssues, listIssuesByLabel, listUnlinkedIssues, listDistinctRunLabels, getIssue } from './beads-reader.js';
+import { join } from 'node:path';
+import Database from 'better-sqlite3';
+import { afterEach, describe, expect, it } from 'vitest';
+import {
+  dbExists,
+  getIssue,
+  listDistinctRunLabels,
+  listIssues,
+  listIssuesByLabel,
+  listUnlinkedIssues,
+} from './beads-reader.js';
 
 let tmpDir, dbPath;
 
@@ -13,18 +20,27 @@ function setupDb(rows = [], deps = [], labels = []) {
   const db = new Database(dbPath);
   db.prepare(`CREATE TABLE issues (id TEXT PRIMARY KEY, title TEXT, description TEXT,
       status TEXT, priority INTEGER, created_at TEXT, external_ref TEXT)`).run();
-  db.prepare(`CREATE TABLE dependencies (issue_id TEXT, depends_on_id TEXT)`).run();
-  db.prepare(`CREATE TABLE labels (issue_id TEXT NOT NULL, label TEXT NOT NULL, PRIMARY KEY (issue_id, label))`).run();
+  db.prepare(
+    `CREATE TABLE dependencies (issue_id TEXT, depends_on_id TEXT)`,
+  ).run();
+  db.prepare(
+    `CREATE TABLE labels (issue_id TEXT NOT NULL, label TEXT NOT NULL, PRIMARY KEY (issue_id, label))`,
+  ).run();
   const insertIssue = db.prepare(
-    'INSERT INTO issues (id, title, description, status, priority, created_at, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO issues (id, title, description, status, priority, created_at, external_ref) VALUES (?, ?, ?, ?, ?, ?, ?)',
   );
-  const insertDep = db.prepare(
-    'INSERT INTO dependencies VALUES (?, ?)'
-  );
-  const insertLabel = db.prepare(
-    'INSERT INTO labels VALUES (?, ?)'
-  );
-  for (const r of rows) insertIssue.run(r.id, r.title, r.body || '', r.status, r.priority, r.created_at || '', r.external_ref || null);
+  const insertDep = db.prepare('INSERT INTO dependencies VALUES (?, ?)');
+  const insertLabel = db.prepare('INSERT INTO labels VALUES (?, ?)');
+  for (const r of rows)
+    insertIssue.run(
+      r.id,
+      r.title,
+      r.body || '',
+      r.status,
+      r.priority,
+      r.created_at || '',
+      r.external_ref || null,
+    );
   for (const d of deps) insertDep.run(d.issue_id, d.depends_on_id);
   for (const l of labels) insertLabel.run(l.issue_id, l.label);
   db.close();
@@ -55,7 +71,13 @@ describe('listIssues', () => {
     setupDb([
       { id: '1', title: 'Open', body: '', status: 'open', priority: 2 },
       { id: '2', title: 'Closed', body: '', status: 'closed', priority: 2 },
-      { id: '3', title: 'Tombstone', body: '', status: 'tombstone', priority: 3 },
+      {
+        id: '3',
+        title: 'Tombstone',
+        body: '',
+        status: 'tombstone',
+        priority: 3,
+      },
     ]);
     const issues = listIssues(dbPath);
     expect(issues.length).toBe(1);
@@ -68,23 +90,29 @@ describe('listIssues', () => {
         { id: '1', title: 'A', body: '', status: 'open', priority: 2 },
         { id: '2', title: 'B', body: '', status: 'open', priority: 2 },
       ],
-      [{ issue_id: '2', depends_on_id: '1' }]
+      [{ issue_id: '2', depends_on_id: '1' }],
     );
     const issues = listIssues(dbPath);
-    const issueB = issues.find(i => i.id === '2');
+    const issueB = issues.find((i) => i.id === '2');
     expect(issueB.depends_on).toEqual(['1']);
   });
 
   it('issue with closed dependency has blocked_by = []', () => {
     setupDb(
       [
-        { id: '1', title: 'Closed dep', body: '', status: 'closed', priority: 2 },
+        {
+          id: '1',
+          title: 'Closed dep',
+          body: '',
+          status: 'closed',
+          priority: 2,
+        },
         { id: '2', title: 'B', body: '', status: 'open', priority: 2 },
       ],
-      [{ issue_id: '2', depends_on_id: '1' }]
+      [{ issue_id: '2', depends_on_id: '1' }],
     );
     const issues = listIssues(dbPath);
-    const issueB = issues.find(i => i.id === '2');
+    const issueB = issues.find((i) => i.id === '2');
     expect(issueB.blocked_by).toEqual([]);
   });
 
@@ -94,10 +122,10 @@ describe('listIssues', () => {
         { id: '1', title: 'Open dep', body: '', status: 'open', priority: 2 },
         { id: '2', title: 'B', body: '', status: 'open', priority: 2 },
       ],
-      [{ issue_id: '2', depends_on_id: '1' }]
+      [{ issue_id: '2', depends_on_id: '1' }],
     );
     const issues = listIssues(dbPath);
-    const issueB = issues.find(i => i.id === '2');
+    const issueB = issues.find((i) => i.id === '2');
     expect(issueB.blocked_by).toEqual(['1']);
   });
 
@@ -122,19 +150,29 @@ describe('listIssues', () => {
 
 describe('getIssue', () => {
   it('returns null for non-existent ID', () => {
-    setupDb([
-      { id: '1', title: 'A', body: '', status: 'open', priority: 2 },
-    ]);
+    setupDb([{ id: '1', title: 'A', body: '', status: 'open', priority: 2 }]);
     expect(getIssue(dbPath, '999')).toBeNull();
   });
 
   it('returns correct issue with depends_on and blocked_by', () => {
     setupDb(
       [
-        { id: '1', title: 'Dep', body: 'dep body', status: 'open', priority: 2 },
-        { id: '2', title: 'Main', body: 'main body', status: 'open', priority: 2 },
+        {
+          id: '1',
+          title: 'Dep',
+          body: 'dep body',
+          status: 'open',
+          priority: 2,
+        },
+        {
+          id: '2',
+          title: 'Main',
+          body: 'main body',
+          status: 'open',
+          priority: 2,
+        },
       ],
-      [{ issue_id: '2', depends_on_id: '1' }]
+      [{ issue_id: '2', depends_on_id: '1' }],
     );
     const issue = getIssue(dbPath, '2');
     expect(issue.title).toBe('Main');
@@ -148,7 +186,7 @@ describe('getIssue', () => {
         { id: '1', title: 'Closed', body: '', status: 'closed', priority: 2 },
         { id: '2', title: 'Main', body: '', status: 'open', priority: 2 },
       ],
-      [{ issue_id: '2', depends_on_id: '1' }]
+      [{ issue_id: '2', depends_on_id: '1' }],
     );
     const issue = getIssue(dbPath, '2');
     expect(issue.depends_on).toEqual(['1']);
@@ -178,18 +216,18 @@ describe('listIssuesByLabel', () => {
         { issue_id: '1', label: 'run:run-1' },
         { issue_id: '2', label: 'run:run-1' },
         { issue_id: '3', label: 'run:run-2' },
-      ]
+      ],
     );
     const issues = listIssuesByLabel(dbPath, 'run:run-1');
     expect(issues.length).toBe(2);
-    expect(issues.map(i => i.title).sort()).toEqual(['A', 'B']);
+    expect(issues.map((i) => i.title).sort()).toEqual(['A', 'B']);
   });
 
   it('returns [] when no issues match', () => {
     setupDb(
       [{ id: '1', title: 'A', body: '', status: 'open', priority: 2 }],
       [],
-      [{ issue_id: '1', label: 'run:run-1' }]
+      [{ issue_id: '1', label: 'run:run-1' }],
     );
     expect(listIssuesByLabel(dbPath, 'run:run-999')).toEqual([]);
   });
@@ -201,23 +239,44 @@ describe('listUnlinkedIssues', () => {
       [
         { id: '1', title: 'Linked', body: '', status: 'open', priority: 2 },
         { id: '2', title: 'Unlinked', body: '', status: 'open', priority: 2 },
-        { id: '3', title: 'Other label', body: '', status: 'open', priority: 2 },
+        {
+          id: '3',
+          title: 'Other label',
+          body: '',
+          status: 'open',
+          priority: 2,
+        },
       ],
       [],
       [
         { issue_id: '1', label: 'run:run-1' },
         { issue_id: '3', label: 'component:auth' },
-      ]
+      ],
     );
     const issues = listUnlinkedIssues(dbPath);
     expect(issues.length).toBe(2);
-    expect(issues.map(i => i.title).sort()).toEqual(['Other label', 'Unlinked']);
+    expect(issues.map((i) => i.title).sort()).toEqual([
+      'Other label',
+      'Unlinked',
+    ]);
   });
 
   it('excludes closed issues', () => {
     setupDb([
-      { id: '1', title: 'Closed unlinked', body: '', status: 'closed', priority: 2 },
-      { id: '2', title: 'Open unlinked', body: '', status: 'open', priority: 2 },
+      {
+        id: '1',
+        title: 'Closed unlinked',
+        body: '',
+        status: 'closed',
+        priority: 2,
+      },
+      {
+        id: '2',
+        title: 'Open unlinked',
+        body: '',
+        status: 'open',
+        priority: 2,
+      },
     ]);
     const issues = listUnlinkedIssues(dbPath);
     expect(issues.length).toBe(1);
@@ -238,16 +297,14 @@ describe('listDistinctRunLabels', () => {
         { issue_id: '1', label: 'run:run-1' },
         { issue_id: '2', label: 'run:run-1' },
         { issue_id: '3', label: 'run:run-2' },
-      ]
+      ],
     );
     const refs = listDistinctRunLabels(dbPath);
     expect(refs.sort()).toEqual(['run:run-1', 'run:run-2']);
   });
 
   it('returns [] when no run labels exist', () => {
-    setupDb([
-      { id: '1', title: 'A', body: '', status: 'open', priority: 2 },
-    ]);
+    setupDb([{ id: '1', title: 'A', body: '', status: 'open', priority: 2 }]);
     expect(listDistinctRunLabels(dbPath)).toEqual([]);
   });
 
@@ -255,7 +312,7 @@ describe('listDistinctRunLabels', () => {
     setupDb(
       [{ id: '1', title: 'A', body: '', status: 'open', priority: 2 }],
       [],
-      [{ issue_id: '1', label: 'component:auth' }]
+      [{ issue_id: '1', label: 'component:auth' }],
     );
     expect(listDistinctRunLabels(dbPath)).toEqual([]);
   });

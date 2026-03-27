@@ -1,8 +1,16 @@
 import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
-import { iconSvg, Lock, Loader, Circle, CircleCheck, CircleAlert, GitBranch, Hash } from '../utils/icons.js';
-import { runCardView } from './run-card.js';
+import {
+  Circle,
+  CircleCheck,
+  GitBranch,
+  Hash,
+  iconSvg,
+  Loader,
+  Lock,
+} from '../utils/icons.js';
 import { sortByStartDesc } from '../utils/sort-runs.js';
+import { runCardView } from './run-card.js';
 
 export function priorityVariant(priority) {
   if (priority === 0 || priority === 1) return 'danger';
@@ -25,10 +33,10 @@ export function beadsStatusClass(issue) {
 
 // Status icon data for beads (maps bead status to lucide icon + CSS color var)
 const BEAD_STATUS_ICON = {
-  open:        { icon: Circle,      color: 'var(--status-completed)' },
-  in_progress: { icon: Loader,      color: 'var(--status-in-progress)' },
-  closed:      { icon: CircleCheck,  color: 'var(--status-completed)' },
-  blocked:     { icon: Lock,         color: 'var(--status-blocked)' },
+  open: { icon: Circle, color: 'var(--status-completed)' },
+  in_progress: { icon: Loader, color: 'var(--status-in-progress)' },
+  closed: { icon: CircleCheck, color: 'var(--status-completed)' },
+  blocked: { icon: Lock, color: 'var(--status-blocked)' },
 };
 
 function beadDepStatusIcon(depId, issuesById) {
@@ -41,8 +49,8 @@ function beadDepStatusIcon(depId, issuesById) {
 }
 
 function computeLayers(issues) {
-  const ids = new Set(issues.map(i => i.id));
-  const layer = new Map(issues.map(i => [i.id, 0]));
+  const ids = new Set(issues.map((i) => i.id));
+  const layer = new Map(issues.map((i) => [i.id, 0]));
   let changed = true;
   while (changed) {
     changed = false;
@@ -63,8 +71,12 @@ function computeLayers(issues) {
 export function beadsDependencyGraph(issues) {
   if (!issues || issues.length === 0) return '';
 
-  const NODE_W = 140, NODE_H = 40, H_GAP = 60, V_GAP = 24, PADDING = 16;
-  const issuesById = new Map(issues.map(i => [i.id, i]));
+  const NODE_W = 140,
+    NODE_H = 40,
+    H_GAP = 60,
+    V_GAP = 24,
+    PADDING = 16;
+  const issuesById = new Map(issues.map((i) => [i.id, i]));
   const layers = computeLayers(issues);
   const maxLayer = Math.max(...layers.values(), 0);
 
@@ -75,7 +87,10 @@ export function beadsDependencyGraph(issues) {
     layerGroups.get(l).push(issue);
   }
 
-  const maxPerLayer = Math.max(...[...layerGroups.values()].map(g => g.length), 1);
+  const maxPerLayer = Math.max(
+    ...[...layerGroups.values()].map((g) => g.length),
+    1,
+  );
   const svgW = Math.round(PADDING * 2 + (maxLayer + 1) * (NODE_W + H_GAP));
   const svgH = Math.round(PADDING * 2 + maxPerLayer * (NODE_H + V_GAP));
 
@@ -84,7 +99,7 @@ export function beadsDependencyGraph(issues) {
     for (let i = 0; i < group.length; i++) {
       positions.set(group[i].id, {
         x: Math.round(PADDING + l * (NODE_W + H_GAP)),
-        y: Math.round(PADDING + i * (NODE_H + V_GAP))
+        y: Math.round(PADDING + i * (NODE_H + V_GAP)),
       });
     }
   }
@@ -104,8 +119,12 @@ export function beadsDependencyGraph(issues) {
       const cx = Math.round((x1 + x2) / 2);
       const dep = issuesById.get(depId);
       const isSatisfied = dep && dep.status === 'closed';
-      const cls = isSatisfied ? 'beads-graph-edge beads-graph-edge--satisfied' : 'beads-graph-edge beads-graph-edge--blocking';
-      const marker = isSatisfied ? 'url(#beads-arrow-satisfied)' : 'url(#beads-arrow-blocking)';
+      const cls = isSatisfied
+        ? 'beads-graph-edge beads-graph-edge--satisfied'
+        : 'beads-graph-edge beads-graph-edge--blocking';
+      const marker = isSatisfied
+        ? 'url(#beads-arrow-satisfied)'
+        : 'url(#beads-arrow-blocking)';
       edges += `<path class="${cls}" d="M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}" marker-end="${marker}"/>`;
     }
   }
@@ -117,7 +136,7 @@ export function beadsDependencyGraph(issues) {
     if (!pos) continue;
     const sc = beadsStatusClass(issue);
     const title = issue.title || '';
-    const label = title.length > 18 ? title.slice(0, 18) + '...' : title;
+    const label = title.length > 18 ? `${title.slice(0, 18)}...` : title;
     nodes += `<g class="beads-graph-node beads-graph-node--${sc}" transform="translate(${pos.x},${pos.y})">
       <rect width="${NODE_W}" height="${NODE_H}" rx="6"/>
       <text x="8" y="14" class="beads-graph-node-id">#${issue.id}</text>
@@ -140,10 +159,14 @@ export function beadsDependencyGraph(issues) {
 }
 
 function escapeXml(str) {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
-function beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
+function _beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
   const isClosed = issue.status === 'closed';
   const isBlocked = issue.blocked_by && issue.blocked_by.length > 0;
   const canStart = issue.status === 'open' && !isBlocked && starting === null;
@@ -156,11 +179,20 @@ function beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
       <div class="beads-issue-body">
         <div class="beads-issue-title">${issue.title}</div>
         ${issue.body ? html`<div class="beads-issue-excerpt">${(issue.body || '').slice(0, 120)}</div>` : ''}
-        ${issue.depends_on && issue.depends_on.length > 0 ? html`
+        ${
+          issue.depends_on && issue.depends_on.length > 0
+            ? html`
           <div class="beads-issue-deps">
-            ${issue.depends_on.map(depId => {
-              const depSc = issuesById ? beadsStatusClass(issuesById.get(depId) || { status: 'open' }) : 'open';
-              const chipClass = depSc === 'blocked' || depSc === 'open' || depSc === 'in_progress' ? 'beads-dep-chip--blocking' : 'beads-dep-chip--satisfied';
+            ${issue.depends_on.map((depId) => {
+              const depSc = issuesById
+                ? beadsStatusClass(issuesById.get(depId) || { status: 'open' })
+                : 'open';
+              const chipClass =
+                depSc === 'blocked' ||
+                depSc === 'open' ||
+                depSc === 'in_progress'
+                  ? 'beads-dep-chip--blocking'
+                  : 'beads-dep-chip--satisfied';
               return html`
                 <span class="beads-dep-chip ${chipClass}">
                   ${unsafeHTML(beadDepStatusIcon(depId, issuesById || new Map()))}
@@ -169,9 +201,13 @@ function beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
               `;
             })}
           </div>
-        ` : ''}
+        `
+            : ''
+        }
       </div>
-      ${!isClosed ? html`
+      ${
+        !isClosed
+          ? html`
         <div class="beads-issue-actions">
           <sl-button variant="primary" size="small"
             ?disabled=${!canStart}
@@ -180,7 +216,9 @@ function beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
             ${isStarting ? 'Starting...' : 'Start Pipeline'}
           </sl-button>
         </div>
-      ` : html`<div class="beads-issue-actions"></div>`}
+      `
+          : html`<div class="beads-issue-actions"></div>`
+      }
     </div>
   `;
 }
@@ -189,8 +227,8 @@ function beadsIssueRow(issue, { starting, onStartIssue, issuesById }) {
 
 export function beadsRunListView(runs, { onSelectRun, beadsCounts = {} }) {
   const all = runs || [];
-  const active = sortByStartDesc(all.filter(r => r.active));
-  const inactive = sortByStartDesc(all.filter(r => !r.active));
+  const active = sortByStartDesc(all.filter((r) => r.active));
+  const inactive = sortByStartDesc(all.filter((r) => !r.active));
   const sorted = [...active, ...inactive];
 
   if (sorted.length === 0) {
@@ -199,24 +237,29 @@ export function beadsRunListView(runs, { onSelectRun, beadsCounts = {} }) {
 
   return html`
     <div class="run-list">
-      ${sorted.map(run => runCardView(run, {
-        onClick: onSelectRun,
-        beadsCount: beadsCounts[run.id] || 0,
-      }))}
+      ${sorted.map((run) =>
+        runCardView(run, {
+          onClick: onSelectRun,
+          beadsCount: beadsCounts[run.id] || 0,
+        }),
+      )}
     </div>
   `;
 }
 
 // --- Kanban board view ---
 
-function beadsKanbanView(issues, { starting, onStartIssue }) {
-  const issuesById = new Map(issues.map(i => [i.id, i]));
+function beadsKanbanView(
+  issues,
+  { starting: _starting, onStartIssue: _onStartIssue },
+) {
+  const issuesById = new Map(issues.map((i) => [i.id, i]));
   const columns = [
     { key: 'open', label: 'Open', items: [] },
     { key: 'in_progress', label: 'In Progress', items: [] },
     { key: 'closed', label: 'Closed', items: [] },
   ];
-  const colMap = new Map(columns.map(c => [c.key, c]));
+  const colMap = new Map(columns.map((c) => [c.key, c]));
 
   for (const issue of issues) {
     const col = colMap.get(issue.status) || colMap.get('open');
@@ -230,16 +273,21 @@ function beadsKanbanView(issues, { starting, onStartIssue }) {
 
   return html`
     <div class="beads-kanban">
-      ${columns.map(col => html`
+      ${columns.map(
+        (col) => html`
         <div class="beads-kanban-column">
           <div class="beads-kanban-header beads-kanban-header--${col.key}">
             ${col.label}
             <sl-badge variant="neutral" pill>${col.items.length}</sl-badge>
           </div>
-          ${col.items.length === 0 ? html`
+          ${
+            col.items.length === 0
+              ? html`
             <div class="beads-kanban-empty">No issues</div>
-          ` : ''}
-          ${col.items.map(issue => {
+          `
+              : ''
+          }
+          ${col.items.map((issue) => {
             const isBlocked = issue.blocked_by && issue.blocked_by.length > 0;
             return html`
               <div class="beads-kanban-card ${isBlocked ? 'beads-kanban-card--blocked' : ''}">
@@ -248,32 +296,50 @@ function beadsKanbanView(issues, { starting, onStartIssue }) {
                   <span class="beads-kanban-card-id">#${issue.id}</span>
                 </div>
                 <div class="beads-kanban-card-title">${issue.title}</div>
-                ${isBlocked ? html`
+                ${
+                  isBlocked
+                    ? html`
                   <div class="beads-kanban-card-deps">
-                    ${issue.blocked_by.map(depId => html`
+                    ${issue.blocked_by.map(
+                      (depId) => html`
                       <span class="beads-dep-chip beads-dep-chip--blocking">
                         ${unsafeHTML(beadDepStatusIcon(depId, issuesById))}
                         #${depId}
                       </span>
-                    `)}
+                    `,
+                    )}
                   </div>
-                ` : ''}
+                `
+                    : ''
+                }
               </div>
             `;
           })}
         </div>
-      `)}
+      `,
+      )}
     </div>
   `;
 }
 
 // --- Main panel view (kanban for a single run) ---
 
-export function beadsPanelView(issues, {
-  statusFilter, priorityFilter, starting, startError,
-  onStatusFilter, onPriorityFilter, onStartIssue, onDismissError,
-  loading = false, run, runId,
-}) {
+export function beadsPanelView(
+  issues,
+  {
+    statusFilter,
+    priorityFilter,
+    starting,
+    startError,
+    onStatusFilter,
+    onPriorityFilter,
+    onStartIssue,
+    onDismissError,
+    loading = false,
+    run,
+    runId,
+  },
+) {
   if (loading) {
     return html`<div class="empty-state">Loading issues...</div>`;
   }
@@ -282,30 +348,43 @@ export function beadsPanelView(issues, {
 
   // Apply status and priority filters
   let filtered = displayIssues;
-  if (statusFilter !== 'all') filtered = filtered.filter(i => i.status === statusFilter);
-  if (priorityFilter !== 'all') filtered = filtered.filter(i => String(i.priority) === priorityFilter);
+  if (statusFilter !== 'all')
+    filtered = filtered.filter((i) => i.status === statusFilter);
+  if (priorityFilter !== 'all')
+    filtered = filtered.filter((i) => String(i.priority) === priorityFilter);
 
   const branch = run?.branch || run?.work_request?.branch || '';
   const displayRunId = runId || run?.run_id || '';
   const pr = run?.pr_url || null;
 
-  const metaStripView = (branch || displayRunId) ? html`
+  const metaStripView =
+    branch || displayRunId
+      ? html`
     <div class="run-info-section">
-      ${displayRunId ? html`
+      ${
+        displayRunId
+          ? html`
         <div class="run-branch">
           <span class="stage-meta-icon">${unsafeHTML(iconSvg(Hash, 14))}</span>
           <span>Run ${displayRunId}</span>
         </div>
-      ` : nothing}
-      ${branch ? html`
+      `
+          : nothing
+      }
+      ${
+        branch
+          ? html`
         <div class="run-branch">
           <span class="stage-meta-icon">${unsafeHTML(iconSvg(GitBranch, 14))}</span>
           <span>${branch}</span>
           ${pr ? html`<a class="run-pr-link" href="${pr}" target="_blank">View PR</a>` : nothing}
         </div>
-      ` : nothing}
+      `
+          : nothing
+      }
     </div>
-  ` : nothing;
+  `
+      : nothing;
 
   const filtersView = html`
     <div class="beads-filters">
@@ -342,14 +421,18 @@ export function beadsPanelView(issues, {
       ${metaStripView}
       ${filtersView}
       ${beadsKanbanView(filtered, { starting, onStartIssue })}
-      ${startError ? html`
+      ${
+        startError
+          ? html`
         <sl-dialog label="Could Not Start Pipeline" open @sl-after-hide=${onDismissError}>
           <p>${startError}</p>
           <sl-button slot="footer" variant="primary" @click=${() => document.querySelector('sl-dialog[label="Could Not Start Pipeline"]')?.hide()}>
             OK
           </sl-button>
         </sl-dialog>
-      ` : ''}
+      `
+          : ''
+      }
     </div>
   `;
 }

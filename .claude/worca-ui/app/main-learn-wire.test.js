@@ -4,7 +4,7 @@
  * main.js passes run?.stages?.learn (the full stage object) to learningsSectionView.
  * The view derives its state from learnStage.status and learnStage.iterations[0].output.
  */
-import { describe, it, expect, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { learningsSectionView } from './views/learnings-panel.js';
 
 function renderToString(template) {
@@ -20,7 +20,7 @@ function renderToString(template) {
       else if (typeof v === 'number') result += String(v);
       else if (typeof v === 'boolean') result += '';
       else if (Array.isArray(v)) result += v.map(renderToString).join('');
-      else if (v && v.strings) result += renderToString(v);
+      else if (v?.strings) result += renderToString(v);
     }
   });
   return result;
@@ -34,21 +34,32 @@ describe('main.js learnings wiring contracts', () => {
         stages: {
           learn: {
             status: 'completed',
-            iterations: [{
-              number: 1,
-              output: {
-                observations: [{ category: 'test_loop', importance: 'high', description: 'test', evidence: 'e' }],
-                suggestions: [],
-                recurring_patterns: {},
-                run_summary: { termination: 'success', total_iterations: 3 },
+            iterations: [
+              {
+                number: 1,
+                output: {
+                  observations: [
+                    {
+                      category: 'test_loop',
+                      importance: 'high',
+                      description: 'test',
+                      evidence: 'e',
+                    },
+                  ],
+                  suggestions: [],
+                  recurring_patterns: {},
+                  run_summary: { termination: 'success', total_iterations: 3 },
+                },
               },
-            }],
+            ],
           },
         },
       };
 
       const learnStage = run?.stages?.learn;
-      const html = renderToString(learningsSectionView(learnStage, { onRunLearn: () => {} }));
+      const html = renderToString(
+        learningsSectionView(learnStage, { onRunLearn: () => {} }),
+      );
 
       // Should render with data, not the empty state
       expect(html).not.toContain('learnings-empty');
@@ -60,7 +71,9 @@ describe('main.js learnings wiring contracts', () => {
       const run = { stages: { learn: { status: 'skipped' } } };
       const learnStage = run?.stages?.learn;
 
-      const html = renderToString(learningsSectionView(learnStage, { onRunLearn: () => {} }));
+      const html = renderToString(
+        learningsSectionView(learnStage, { onRunLearn: () => {} }),
+      );
       expect(html).toContain('learnings-empty');
     });
 
@@ -68,7 +81,9 @@ describe('main.js learnings wiring contracts', () => {
       const run = { stages: { plan: { status: 'completed' } } };
       const learnStage = run?.stages?.learn;
 
-      const html = renderToString(learningsSectionView(learnStage, { onRunLearn: () => {} }));
+      const html = renderToString(
+        learningsSectionView(learnStage, { onRunLearn: () => {} }),
+      );
       expect(html).toContain('learnings-empty');
     });
 
@@ -78,12 +93,20 @@ describe('main.js learnings wiring contracts', () => {
           learn: {
             status: 'in_progress',
             started_at: new Date().toISOString(),
-            iterations: [{ number: 1, status: 'in_progress', started_at: new Date().toISOString() }],
+            iterations: [
+              {
+                number: 1,
+                status: 'in_progress',
+                started_at: new Date().toISOString(),
+              },
+            ],
           },
         },
       };
       const learnStage = run?.stages?.learn;
-      const html = renderToString(learningsSectionView(learnStage, { onRunLearn: () => {} }));
+      const html = renderToString(
+        learningsSectionView(learnStage, { onRunLearn: () => {} }),
+      );
       expect(html).toContain('learnings-in-progress');
       expect(html).toContain('Learning analysis in progress');
     });
@@ -100,7 +123,9 @@ describe('main.js learnings wiring contracts', () => {
 
       async function doRunLearn() {
         try {
-          const res = await mockFetch(`/api/runs/${runId}/learn`, { method: 'POST' });
+          const res = await mockFetch(`/api/runs/${runId}/learn`, {
+            method: 'POST',
+          });
           const data = await res.json();
           if (!data.ok) {
             showActionError(data.error || 'Failed to run learning analysis');
@@ -112,7 +137,9 @@ describe('main.js learnings wiring contracts', () => {
 
       await doRunLearn();
 
-      expect(mockFetch).toHaveBeenCalledWith('/api/runs/run-20260318/learn', { method: 'POST' });
+      expect(mockFetch).toHaveBeenCalledWith('/api/runs/run-20260318/learn', {
+        method: 'POST',
+      });
       expect(showActionError).not.toHaveBeenCalled();
     });
 
@@ -123,9 +150,12 @@ describe('main.js learnings wiring contracts', () => {
 
       async function doRunLearn() {
         try {
-          const res = await mockFetch('/api/runs/test/learn', { method: 'POST' });
+          const res = await mockFetch('/api/runs/test/learn', {
+            method: 'POST',
+          });
           const data = await res.json();
-          if (!data.ok) showActionError(data.error || 'Failed to run learning analysis');
+          if (!data.ok)
+            showActionError(data.error || 'Failed to run learning analysis');
         } catch (err) {
           showActionError(err?.message || 'Failed to run learning analysis');
         }
@@ -139,21 +169,30 @@ describe('main.js learnings wiring contracts', () => {
       const showActionError = vi.fn();
 
       const mockFetch = vi.fn().mockResolvedValue({
-        json: () => Promise.resolve({ ok: false, error: 'Learning analysis is already running' }),
+        json: () =>
+          Promise.resolve({
+            ok: false,
+            error: 'Learning analysis is already running',
+          }),
       });
 
       async function doRunLearn() {
         try {
-          const res = await mockFetch('/api/runs/test/learn', { method: 'POST' });
+          const res = await mockFetch('/api/runs/test/learn', {
+            method: 'POST',
+          });
           const data = await res.json();
-          if (!data.ok) showActionError(data.error || 'Failed to run learning analysis');
+          if (!data.ok)
+            showActionError(data.error || 'Failed to run learning analysis');
         } catch (err) {
           showActionError(err?.message || 'Failed to run learning analysis');
         }
       }
 
       await doRunLearn();
-      expect(showActionError).toHaveBeenCalledWith('Learning analysis is already running');
+      expect(showActionError).toHaveBeenCalledWith(
+        'Learning analysis is already running',
+      );
     });
   });
 
@@ -163,9 +202,11 @@ describe('main.js learnings wiring contracts', () => {
     });
 
     it('renders with onRunLearn option', () => {
-      const html = renderToString(learningsSectionView(null, {
-        onRunLearn: () => {},
-      }));
+      const html = renderToString(
+        learningsSectionView(null, {
+          onRunLearn: () => {},
+        }),
+      );
       expect(html).toContain('learnings-section');
       expect(html).toContain('Run Learning Analysis');
     });
