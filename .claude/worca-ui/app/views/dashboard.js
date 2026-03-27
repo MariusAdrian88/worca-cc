@@ -51,8 +51,8 @@ export function dashboardView(
   const runningGroup = sortByStartDesc(
     _activeGroup(active, ['running', 'resuming']),
   );
-  const pausedGroup = sortByStartDesc(_activeGroup(active, ['paused']));
-  const failedGroup = sortByStartDesc(_activeGroup(active, ['failed']));
+  const pausedGroup = sortByStartDesc(_activeGroup(runs, ['paused']));
+  const failedGroup = sortByStartDesc(_activeGroup(runs, ['failed']));
 
   return html`
     <div class="dashboard">

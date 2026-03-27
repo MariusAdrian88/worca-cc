@@ -42,6 +42,7 @@ const { broadcast, scheduleRefresh } = attachWsServer(server, {
   settingsPath,
   prefsPath: join(homedir(), '.worca', 'preferences.json'),
   webhookInbox,
+  projectRoot,
 });
 
 // Expose broadcast and scheduleRefresh to REST route handlers

@@ -96,7 +96,8 @@ function matchesGlob(pattern, str) {
  * @param {{ worcaDir: string, settingsPath: string, prefsPath: string }} config
  */
 export function attachWsServer(httpServer, config) {
-  const { worcaDir, settingsPath, prefsPath, webhookInbox } = config;
+  const { worcaDir, settingsPath, prefsPath, webhookInbox, projectRoot } =
+    config;
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
   /** @type {WeakMap<import('ws').WebSocket, { runId: string | null, logStage: string | null, eventsRunId: string | null }>} */
@@ -1116,7 +1117,11 @@ export function attachWsServer(httpServer, config) {
     if (req.type === 'resume-run') {
       const { runId } = req.payload || {};
       try {
-        const result = await pmStartPipeline(worcaDir, { resume: true, runId });
+        const result = await pmStartPipeline(worcaDir, {
+          resume: true,
+          runId,
+          projectRoot,
+        });
         ws.send(
           JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })),
         );
@@ -1254,6 +1259,7 @@ export function attachWsServer(httpServer, config) {
           inputValue: prompt,
           msize: 1,
           mloops: 1,
+          projectRoot,
         });
         broadcast('run-started', { pid: result.pid });
         ws.send(JSON.stringify(makeOk(req, { pid: result.pid, issueId })));

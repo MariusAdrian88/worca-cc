@@ -243,3 +243,59 @@ describe('dashboardView - quick-action buttons', () => {
     expect(output).not.toContain('btn-quick-resume');
   });
 });
+
+// ─── Inactive failed/paused runs ─────────────────────────────────────────────
+
+describe('dashboardView - inactive failed/paused runs', () => {
+  it('shows failed run in failed group even when active is false', () => {
+    const inactiveFailed = {
+      id: 'if1',
+      pipeline_status: 'failed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
+    const state = { runs: { if1: inactiveFailed } };
+    const output = renderToString(dashboardView(state));
+    expect(output).toContain('active-group-failed');
+    expect(output).toContain('1 failed');
+  });
+
+  it('shows resume button on inactive failed run when onResume provided', () => {
+    const inactiveFailed = {
+      id: 'if1',
+      pipeline_status: 'failed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
+    const state = { runs: { if1: inactiveFailed } };
+    const output = renderToString(dashboardView(state, { onResume: () => {} }));
+    expect(output).toContain('btn-quick-resume');
+  });
+
+  it('shows paused run in paused group even when active is false', () => {
+    const inactivePaused = {
+      id: 'ip1',
+      pipeline_status: 'paused',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
+    const state = { runs: { ip1: inactivePaused } };
+    const output = renderToString(dashboardView(state));
+    expect(output).toContain('active-group-paused');
+    expect(output).toContain('1 paused');
+  });
+
+  it('does not show inactive completed run in any active group', () => {
+    const inactiveCompleted = {
+      id: 'ic1',
+      pipeline_status: 'completed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
+    const state = { runs: { ic1: inactiveCompleted } };
+    const output = renderToString(dashboardView(state));
+    expect(output).not.toContain('active-group-running');
+    expect(output).not.toContain('active-group-paused');
+    expect(output).not.toContain('active-group-failed');
+  });
+});

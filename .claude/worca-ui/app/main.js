@@ -1149,7 +1149,10 @@ function mainContentView() {
   }
 
   if (route.section === 'history') {
-    return runListView(runs, 'history', { onSelectRun: handleSelectRun });
+    return runListView(runs, 'history', {
+      onSelectRun: handleSelectRun,
+      onResume: handleResumeRun,
+    });
   }
 
   if (route.section === 'active') {
@@ -1158,7 +1161,10 @@ function mainContentView() {
       navigate('active', activeRuns[0].id);
       return html``;
     }
-    return runListView(runs, 'active', { onSelectRun: handleSelectRun });
+    return runListView(runs, 'active', {
+      onSelectRun: handleSelectRun,
+      onResume: handleResumeRun,
+    });
   }
 
   return dashboardView(state, {
