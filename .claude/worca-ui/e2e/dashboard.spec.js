@@ -1,9 +1,5 @@
-// TODO: Rewrite e2e tests — commit 31f6e58 refactored control buttons and
-// subsequent commits (3c7c21d, 338d69a) changed dashboard grouping/filtering.
-// Tests target stale selectors (.active-group-running, .btn-quick-pause, etc.).
 import { test, expect } from '@playwright/test';
-test.skip(true, 'stale selectors after control-buttons-to-header refactor (31f6e58)');
-import { startServer, seedRun } from './fixtures.js';
+import { startServer, seedRun, writePipelinePid } from './fixtures.js';
 
 const GOTO_OPTS = { waitUntil: 'domcontentloaded' };
 
@@ -32,6 +28,7 @@ test.describe('dashboard — active run groups', () => {
   test('shows running group for pipeline_status=running', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-running');
       seedRun(ctx.worcaDir, '20260101-dash-running', {
         pipeline_status: 'running',
         work_request: { title: 'Running test' },
@@ -80,6 +77,7 @@ test.describe('dashboard — active run groups', () => {
   test('running and paused groups coexist', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-multi-run');
       seedRun(ctx.worcaDir, '20260101-dash-multi-run', {
         pipeline_status: 'running',
         work_request: { title: 'Multi: running' },
@@ -101,21 +99,21 @@ test.describe('dashboard — active run groups', () => {
 // ─── Count badges ─────────────────────────────────────────────────────────────
 
 test.describe('dashboard — count badges', () => {
-  test('running group count shows correct number for 2 runs', async ({ page }) => {
+  test('group count shows correct number for 2 paused runs', async ({ page }) => {
     const ctx = await startServer();
     try {
-      seedRun(ctx.worcaDir, '20260101-dash-count-r1', {
-        pipeline_status: 'running',
-        work_request: { title: 'Running count 1' },
+      seedRun(ctx.worcaDir, '20260101-dash-count-p2a', {
+        pipeline_status: 'paused',
+        work_request: { title: 'Paused count 1' },
       });
-      seedRun(ctx.worcaDir, '20260101-dash-count-r2', {
-        pipeline_status: 'running',
-        work_request: { title: 'Running count 2' },
+      seedRun(ctx.worcaDir, '20260101-dash-count-p2b', {
+        pipeline_status: 'paused',
+        work_request: { title: 'Paused count 2' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running')).toBeVisible();
-      const countText = await page.locator('.active-group-running .active-group-count').textContent();
-      expect(countText).toContain('2 running');
+      await expect(page.locator('.active-group-paused')).toBeVisible();
+      const countText = await page.locator('.active-group-paused .active-group-count').textContent();
+      expect(countText).toContain('2 paused');
     } finally {
       await ctx.close();
     }
@@ -160,6 +158,7 @@ test.describe('dashboard — quick-action buttons', () => {
   test('running card shows quick-pause button', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-qpause-vis');
       seedRun(ctx.worcaDir, '20260101-dash-qpause-vis', {
         pipeline_status: 'running',
         work_request: { title: 'Quick pause visible' },
@@ -205,6 +204,7 @@ test.describe('dashboard — quick-action buttons', () => {
   test('running card has no resume button', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-no-resume');
       seedRun(ctx.worcaDir, '20260101-dash-no-resume', {
         pipeline_status: 'running',
         work_request: { title: 'No resume on running' },
@@ -221,6 +221,7 @@ test.describe('dashboard — quick-action buttons', () => {
     const ctx = await startServer();
     try {
       const runId = '20260101-dash-qpause-req';
+      writePipelinePid(ctx.worcaDir, runId);
       seedRun(ctx.worcaDir, runId, {
         pipeline_status: 'running',
         work_request: { title: 'Quick pause API' },
