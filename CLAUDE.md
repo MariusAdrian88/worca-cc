@@ -159,12 +159,12 @@ Issues must follow this structure so the pipeline can auto-detect plan files whe
 
 ## Plan
 
-- [W-NNN-short-description.md](docs/plans/W-NNN-short-description.md)
+- [docs/plans/W-NNN-short-description.md](https://github.com/SinishaDjukic/worca-cc/blob/master/docs/plans/W-NNN-short-description.md)
 ```
 
 **Key rules:**
 - Title format: `W-NNN: Short Description`
 - Labels: one of `area:cc` / `area:ui` + one of `P0`-`P4`
-- The `## Plan` section must contain a markdown link to `docs/plans/*.md` — the pipeline parses this link and skips the PLAN stage when the file exists
+- The `## Plan` section must contain a markdown link to `docs/plans/*.md` using an absolute blob URL (e.g. `https://github.com/SinishaDjukic/worca-cc/blob/main/docs/plans/W-NNN.md`) — the pipeline parses this link and skips the PLAN stage when the file exists
 - If no plan link is present, the pipeline runs the Planner to generate one
 - Plan files use the naming convention `W-NNN-short-description.md` in `docs/plans/`

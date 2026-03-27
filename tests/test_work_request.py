@@ -464,6 +464,19 @@ class TestExtractPlanPath:
         )
         assert _extract_plan_path(body) == "docs/plans/W-001-first.md"
 
+    def test_extracts_plan_link_from_absolute_blob_url(self, tmp_path, monkeypatch):
+        plan = tmp_path / "docs" / "plans"
+        plan.mkdir(parents=True)
+        (plan / "W-023-batch.md").write_text("# Plan")
+        monkeypatch.chdir(tmp_path)
+
+        body = "## Plan\n\n- [docs/plans/W-023-batch.md](https://github.com/SinishaDjukic/worca-cc/blob/main/docs/plans/W-023-batch.md)"
+        assert _extract_plan_path(body) == "docs/plans/W-023-batch.md"
+
+    def test_absolute_url_returns_none_when_file_missing(self):
+        body = "## Plan\n\n- [docs/plans/W-099-missing.md](https://github.com/SinishaDjukic/worca-cc/blob/main/docs/plans/W-099-missing.md)"
+        assert _extract_plan_path(body) is None
+
     def test_ignores_non_plan_links(self):
         body = "See [README](README.md) and [docs](docs/other.md)"
         assert _extract_plan_path(body) is None

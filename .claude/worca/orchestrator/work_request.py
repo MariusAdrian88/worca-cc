@@ -9,7 +9,8 @@ from typing import Optional
 from worca.utils.env import get_env
 
 # Matches markdown links to plan files: [text](docs/plans/something.md)
-_PLAN_LINK_RE = re.compile(r"\[.*?\]\((docs/plans/[^\)]+\.md)\)")
+# Supports both relative paths and absolute GitHub blob URLs.
+_PLAN_LINK_RE = re.compile(r"\[.*?\]\([^)]*?(docs/plans/[^\)]+\.md)\)")
 # Matches GitHub issue URLs: https://github.com/owner/repo/issues/42
 _GH_ISSUE_URL_RE = re.compile(r"https?://github\.com/[^/]+/[^/]+/issues/(\d+)$")
 
