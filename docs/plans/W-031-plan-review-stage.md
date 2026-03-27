@@ -47,6 +47,10 @@ With default 2:
 
 **mloops multiplier** applies as with all other loops.
 
+**Counter increment timing:** The loop counter increments only on the **revise** path (not on every PLAN_REVIEW entry). An approve-on-first-review does not consume a count.
+
+**Error_classifier interaction:** If the agent produces malformed output and error_classifier retries are exhausted, the fail-closed default (`"revise"`) applies and counts against the plan_review loop counter. When both error_classifier retries and the plan_review loop limit are exhausted, the pipeline proceeds to COORDINATE with a warning.
+
 ### 3. Plan Reviewer Agent
 
 **New file:** `.claude/agents/core/plan_reviewer.md`
@@ -80,12 +84,12 @@ With default 2:
 **Governance enforcement (required changes):**
 - Add `"plan_reviewer"` to `read_only_agents` tuple in `guard.py` to enforce read-only at the hook level
 - Add `"plan_reviewer"` entry to `DISPATCH_RULES` in `tracking.py` (empty set — no subagent dispatch allowed)
-- Add `"plan_reviewer"` to the test-execution block list in `guard.py` (alongside planner/coordinator)
+- Add `"plan_reviewer"` to the test-execution block list in `guard.py` — this is a **separate tuple** from `read_only_agents` (the test block at `guard.py:213` checks `agent in ("planner", "coordinator")` independently); both must be updated
 - Audit `pre_tool_use.py` to confirm MCP tools (context7, WebSearch, WebFetch) are permitted for the `plan_reviewer` agent; add to allowed tools if blocked
 
 **Issue categories:** `completeness`, `feasibility`, `test_strategy`, `architecture`, `decomposition`, `risk`, `api_assumption`
 
-**Severity gating:** Only `critical` and `major` issues trigger `revise` outcome. `minor` issues are logged but treated as `approve` (same pattern as REVIEW stage code review).
+**Severity gating:** Only `critical` and `major` issues trigger `revise` outcome. `minor` and `suggestion` issues are logged but treated as `approve` (same pattern as REVIEW stage code review).
 
 ### 4. Schema
 
@@ -93,8 +97,11 @@ With default 2:
 
 ```json
 {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "plan_review",
   "type": "object",
   "required": ["outcome", "issues", "summary"],
+  "additionalProperties": false,
   "properties": {
     "outcome": {
       "type": "string",
@@ -105,6 +112,7 @@ With default 2:
       "items": {
         "type": "object",
         "required": ["category", "severity", "description"],
+        "additionalProperties": false,
         "properties": {
           "category": {
             "type": "string",
@@ -112,7 +120,7 @@ With default 2:
           },
           "severity": {
             "type": "string",
-            "enum": ["critical", "major", "minor"]
+            "enum": ["critical", "major", "minor", "suggestion"]
           },
           "description": {
             "type": "string"
@@ -133,12 +141,14 @@ With default 2:
 }
 ```
 
+Note: This schema adds `$schema`, `title`, `additionalProperties: false`, and the `suggestion` severity level to align with the existing `review.json` conventions. The `required` fields on issue items are an intentional improvement over `review.json` (which has no required fields on items) to catch malformed agent output early.
+
 ### 5. Prompt Builder
 
 **New method: `_build_plan_review(iteration)`**
 
 Content:
-- The plan file content (from `plan_approach` context or reads MASTER_PLAN.md)
+- The full plan file content — read directly from `MASTER_PLAN.md` on disk (not from the `plan_approach` context key, which only stores a short summary). This is a deliberate deviation from the context-key-only pattern used by other `_build_*` methods, since plan content can be large and should not bloat the persisted context.
 - The original work request for cross-reference
 - Instructions to use MCP tools for external API/library validation
 - On iteration > 0: includes `plan_review_history` showing previous review attempts so the reviewer checks whether prior issues were addressed
@@ -147,11 +157,12 @@ Content:
 
 The trigger value `"plan_review_revise"` is passed to `_build_plan` via a context key (e.g., `plan_revision_mode=True`), since `_build_plan(iteration)` only takes an iteration parameter. The method checks this context key to switch between initial and revision prompts, consistent with how `_build_implement` uses context keys (`test_failures`, `review_issues`) to distinguish modes.
 
-When `plan_revision_mode` context key is set:
-- Switches to a revision prompt (like `_build_implement_retry` pattern)
-- Includes `plan_review_issues` — the specific critical/major issues to address
-- Includes `plan_review_history` — cumulative review history
-- Instructs: "Revise the plan to address these issues. Do NOT start from scratch."
+When `plan_revision_mode` context key is set, `_build_plan` **concretely** does the following:
+- Switches to a revision prompt header: "The plan reviewer has identified issues that must be addressed. Revise the existing plan — do NOT start from scratch."
+- Injects `plan_review_issues` as a numbered list of critical/major issues, each with category, description, suggestion, and evidence fields
+- Includes `plan_review_history` as context showing prior revision attempts and their outcomes
+- Re-reads `MASTER_PLAN.md` to include the current plan text as the baseline for revision
+- Closes with: "Address each issue above. Preserve all parts of the plan that were not flagged."
 
 **New context keys:**
 
@@ -163,7 +174,7 @@ When `plan_revision_mode` context key is set:
 
 **Context lifecycle:**
 - On **revise**: set `plan_review_issues`, `plan_review_history`, `plan_revision_mode=True`, then call `prompt_builder.save_context()` before looping back (required for crash/resume support)
-- On **approve**: clear `plan_review_issues` and `plan_revision_mode` to prevent leaking into later PLAN re-runs (e.g., if REVIEW loops back to PLAN later), then call `prompt_builder.save_context()`
+- On **approve**: **delete** (pop) `plan_review_issues`, `plan_revision_mode`, and `plan_review_history` from context to prevent leaking into later PLAN re-runs (e.g., if REVIEW loops back to PLAN later). Use `pop`/`del` — do NOT set to `None`, as `None` serializes to `null` in `prompt_context.json` and persists. Then call `prompt_builder.save_context()`.
 
 ### 6. Runner Integration
 
@@ -175,65 +186,89 @@ Must also add `Stage.PLAN_REVIEW` entry to `_STAGE_PROMPT_PREFIX` dict.
 elif current_stage == Stage.PLAN_REVIEW:
     # Validate structured output against schema before acting on it.
     # On schema validation failure, treat as agent error (retry via error_classifier).
-    # If retries exhausted, default to "revise" (fail-closed), NOT "approve".
+    # If error_classifier retries also exhausted, default to "revise" (fail-closed),
+    # which counts against the plan_review loop counter. When both are exhausted,
+    # proceed to COORDINATE with warning (consistent with loop-exhaustion behavior).
     outcome = result.get("outcome", "revise")  # fail-closed default
     issues = result.get("issues", [])
     critical_issues = [i for i in issues if i.get("severity") in ("critical", "major")]
 
     # Record iteration (required for status.json, UI, and resume)
-    complete_iteration(status, Stage.PLAN_REVIEW, result, iteration=pb_iteration)
-    update_stage(status, Stage.PLAN_REVIEW, "completed")
+    # NOTE: use .value for string keys — update_stage/complete_iteration expect strings
+    stage_key = current_stage.value  # "plan_review"
+    complete_iteration(status, stage_key, result, iteration=pb_iteration)
+    update_stage(status, stage_key, "completed")
     save_status(status, status_path)
     if ctx:
-        emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(Stage.PLAN_REVIEW, result))
+        emit_event(ctx, STAGE_COMPLETED, stage_completed_payload(stage_key, result))
 
-    if outcome == "revise" and critical_issues:
+    # Revise gate: outcome == "revise" OR fail-closed (missing outcome).
+    # Important: check outcome independently of critical_issues to maintain
+    # fail-closed semantics. If outcome == "revise" but issues list is empty/missing,
+    # still treat as revise (not silent approve).
+    should_revise = (outcome == "revise") and (critical_issues or not issues)
+
+    if should_revise:
         # Thread review feedback — only critical/major issues to limit context growth
         prev_history = prompt_builder.get_context("plan_review_history") or []
         prev_history.append({"attempt": len(prev_history) + 1, "issues": critical_issues})
         prompt_builder.update_context("plan_review_history", prev_history)
         prompt_builder.update_context("plan_review_issues", critical_issues)
         prompt_builder.update_context("plan_revision_mode", True)
-        prompt_builder.save_context()
 
-        # Check loop limit
+        # Update ALL counters before saving — single save to avoid inconsistent state
         loop_counters["plan_review"] = loop_counters.get("plan_review", 0) + 1
-        status["loop_counters"] = dict(loop_counters)
-        save_status(status, status_path)
         loop_counters[f"{Stage.PLAN_REVIEW.value}_iteration"] = \
             loop_counters.get(f"{Stage.PLAN_REVIEW.value}_iteration", 0) + 1
+        status["loop_counters"] = dict(loop_counters)
 
         if check_loop_limit("plan_review", loop_counters["plan_review"],
                             settings_path, mloops=mloops):
             if ctx:
                 emit_event(ctx, LOOP_TRIGGERED,
                            loop_triggered_payload("plan_review", loop_counters["plan_review"]))
-            # Reset PLAN stage status and plan_approved milestone for re-run
-            update_stage(status, Stage.PLAN, "pending")
-            status.get("milestones", {}).pop("plan_approved", None)
-            save_status(status, status_path)
 
+            # --- Atomic loop-back sequence (all state persisted before in-memory jumps) ---
+            # 1. Reset PLAN stage status, clear skipped flag, and plan_approved milestone
+            update_stage(status, Stage.PLAN.value, "pending", skipped=False)
+            status.get("milestones", {}).pop("plan_approved", None)
+            # 2. Persist context + status in one batch before any in-memory transitions
+            prompt_builder.save_context()
+            save_status(status, status_path)
+            # 3. In-memory transitions (lost on crash, but context keys drive behavior on resume)
             _next_trigger[Stage.PLAN.value] = "plan_review_revise"
             stage_idx = stage_order.index(Stage.PLAN)
             continue  # Loop back to PLAN
         else:
+            prompt_builder.save_context()
+            save_status(status, status_path)
             if ctx:
                 emit_event(ctx, LOOP_EXHAUSTED, ...)
             _log("Plan review loop exhausted -- proceeding to COORDINATE", "warn")
-            # Fall through to advance to COORDINATE
+            # Advance stage_idx to COORDINATE (fall-through)
+            stage_idx = stage_order.index(Stage.PLAN_REVIEW) + 1
+            continue
     else:
-        # Clear cross-context keys to prevent leaking into later PLAN re-runs
-        prompt_builder.update_context("plan_review_issues", None)
-        prompt_builder.update_context("plan_revision_mode", None)
+        # Approve path — delete (pop) cross-context keys to prevent leaking
+        prompt_builder.pop_context("plan_review_issues")
+        prompt_builder.pop_context("plan_revision_mode")
+        prompt_builder.pop_context("plan_review_history")
         prompt_builder.save_context()
 
-        if not critical_issues and issues:
+        if outcome == "revise" and not critical_issues and issues:
+            # outcome was "revise" but only minor/suggestion issues — treat as approve
+            _log(f"Plan approved with {len(issues)} minor issues (logged)", "ok")
+        elif issues:
             _log(f"Plan approved with {len(issues)} minor issues (logged)", "ok")
         else:
             _log("Plan approved by reviewer", "ok")
 ```
 
-**Resume support:** No special handling needed. Existing `find_resume_point()` checks stage completion status in STAGE_ORDER. PLAN_REVIEW works naturally as a first-class stage.
+**Note on `prompt_builder.pop_context(key)`:** If no `pop_context` method exists, add one (delegates to `self._context.pop(key, None)`) — this avoids the `None`-serialization issue of `update_context(key, None)`.
+
+**Note on PLAN handler and `plan_approved` milestone:** When PLAN runs in revision mode (triggered by `plan_review_revise`), the PLAN handler's `plan_approved` milestone gate must be aware of this. Options: (a) the planner agent always emits `"approved": true` in its JSON (revision prompt should instruct this), or (b) the PLAN handler skips the milestone gate when `plan_revision_mode` context key is set. Option (a) is simpler — add to the revision prompt instructions.
+
+**Resume support:** The atomic loop-back sequence above persists all context keys and status to disk before any in-memory transitions (`_next_trigger`, `stage_idx`). On crash and resume, `_next_trigger` is lost (in-memory only), but `plan_revision_mode` context key (persisted via `save_context`) is the actual behavioral driver — `_build_plan` checks this key, not the trigger value. The trigger value only affects the iteration record label, which will log as `"initial"` instead of `"plan_review_revise"` after a crash — this is a minor inaccuracy, not a behavioral bug.
 
 **Event emissions:** Standard `STAGE_STARTED`, `STAGE_COMPLETED`, `LOOP_TRIGGERED`, `LOOP_EXHAUSTED` events. No new event types needed.
 
@@ -275,19 +310,20 @@ Users can:
 | File | Change |
 |------|--------|
 | `.claude/worca/orchestrator/stages.py` | Add `PLAN_REVIEW` to enum, `STAGE_ORDER`, `TRANSITIONS`, `STAGE_AGENT_MAP`, `STAGE_SCHEMA_MAP` |
-| `.claude/worca/orchestrator/runner.py` | Add PLAN_REVIEW handler block in stage loop, thread context to prompt builder |
-| `.claude/worca/orchestrator/prompt_builder.py` | Add `_build_plan_review()`, amend `_build_plan()` for `plan_review_revise` trigger |
+| `.claude/worca/orchestrator/runner.py` | Add PLAN_REVIEW handler block in stage loop, thread context to prompt builder, add `Stage.PLAN_REVIEW` to `_STAGE_PROMPT_PREFIX` dict |
+| `.claude/worca/orchestrator/prompt_builder.py` | Add `_build_plan_review()`, amend `_build_plan()` for revision mode, add `pop_context(key)` method (delegates to `self._context.pop(key, None)`) |
 | `.claude/settings.json` | Add `stages.plan_review`, `agents.plan_reviewer`, `loops.plan_review: 2` |
 | `.claude/agents/core/plan_reviewer.md` | New agent template |
 | `.claude/worca/schemas/plan_review.json` | New output schema |
-| `.claude/worca-ui/app/views/settings.js` | Add `PLAN_REVIEW` to hardcoded `STAGE_ORDER` array and `STAGE_AGENT_MAP` dict so the settings page shows the new stage's toggles |
-| `.claude/worca/hooks/guard.py` | Add `"plan_reviewer"` to `read_only_agents` tuple and test-execution block list |
+| `.claude/worca-ui/app/views/settings.js` | Add `PLAN_REVIEW` to hardcoded `STAGE_ORDER` array, `STAGE_AGENT_MAP` dict, and `AGENT_NAMES` array so the settings page shows the new stage's toggles and agent dropdown |
+| `.claude/worca-ui/server/log-tailer.js` | Add `plan_review` to `STAGE_ORDER` array (line 5-14) so logs for the new stage sort correctly instead of falling to position 999 |
+| `.claude/worca/hooks/guard.py` | Add `"plan_reviewer"` to `read_only_agents` tuple and test-execution block list (separate tuple) |
 | `.claude/worca/hooks/tracking.py` | Add `"plan_reviewer"` entry to `DISPATCH_RULES` (empty set) |
 | `tests/` | New tests for plan_review stage, loop mechanics, prompt builder methods (see test scenarios below) |
 
 ## Files NOT Changed
 
-- `resume.py` — works automatically with new stage in STAGE_ORDER (note: `find_resume_point()` always resumes from PREFLIGHT and skips completed stages, so PLAN_REVIEW works naturally; however, a crash during a PLAN_REVIEW→PLAN loop-back may re-enter PLAN_REVIEW with stale plan data if PLAN was marked completed in a prior iteration — the loop-back handler above resets PLAN stage status to mitigate this)
+- `resume.py` — works automatically with new stage in STAGE_ORDER. `find_resume_point()` always resumes from PREFLIGHT and skips completed stages. The loop-back handler uses an atomic persist sequence (save context keys + status to disk before in-memory transitions) so that on crash: (a) `plan_revision_mode` context key drives PLAN's prompt builder to use revision mode, and (b) PLAN stage status + `skipped=False` reset ensures PLAN re-runs. The only minor inaccuracy after crash-resume is that the iteration record logs trigger as `"initial"` instead of `"plan_review_revise"` (since `_next_trigger` is in-memory only), which is cosmetic.
 - `error_classifier.py` — generic, no stage-specific logic
 - Other agent templates — no changes needed
 
@@ -315,15 +351,17 @@ Users can:
 - `STAGE_SCHEMA_MAP[Stage.PLAN_REVIEW]` == `"plan_review.json"`
 
 *runner.py — PLAN_REVIEW handler:*
-- **Approve path**: outcome=approve → advances to COORDINATE, clears `plan_review_issues` and `plan_revision_mode` context
-- **Revise path**: outcome=revise with critical issues → loops back to PLAN, sets `plan_review_issues`/`plan_review_history`/`plan_revision_mode` context, increments `loop_counters["plan_review"]`, persists to `status["loop_counters"]`, resets PLAN stage status and `plan_approved` milestone
-- **Revise with minor only**: outcome=revise but only minor issues → treated as approve (no loop-back)
-- **Loop exhaustion**: loop counter exceeds limit → proceeds to COORDINATE with warning, emits `LOOP_EXHAUSTED`
-- **Schema validation failure**: malformed agent output → treated as agent error (retry), not silent approve
+- **Approve path**: outcome=approve → advances to COORDINATE, **deletes** (pops) `plan_review_issues`, `plan_revision_mode`, and `plan_review_history` from context
+- **Revise path**: outcome=revise with critical issues → loops back to PLAN, sets context, increments counter, resets PLAN stage status (with `skipped=False`) and `plan_approved` milestone
+- **Revise with minor only**: outcome=revise but only minor/suggestion issues → treated as approve (no loop-back)
+- **Revise with empty issues**: outcome=revise but issues list empty/missing → still treated as revise (fail-closed), not silent approve
+- **Loop exhaustion**: loop counter exceeds limit → proceeds to COORDINATE with warning, emits `LOOP_EXHAUSTED`, sets `stage_idx` to advance
+- **Schema validation failure**: malformed agent output → treated as agent error (retry via error_classifier); if retries also exhausted, counts as revise against loop counter
 - **Fail-closed default**: missing `outcome` field → defaults to `"revise"`
 - **Context accumulation**: history stores only critical/major issues (not all issues)
 - **Event emissions**: `STAGE_COMPLETED` emitted on both approve and revise paths; `LOOP_TRIGGERED` emitted on successful loop-back; all `emit_event` calls guarded with `if ctx:`
-- **`complete_iteration`/`update_stage`/`save_status`** called before loop-back
+- **`complete_iteration`/`update_stage`/`save_status`** called before loop-back; all counters updated in single batch before `save_status`
+- **Atomic loop-back**: all state persisted to disk before in-memory transitions (`_next_trigger`, `stage_idx`)
 
 *prompt_builder.py:*
 - `_build_plan_review(iteration=0)`: includes plan content and work request
@@ -336,4 +374,28 @@ Users can:
 
 *Resume:*
 - Crash during PLAN_REVIEW → resumes from PREFLIGHT, skips completed stages, re-enters PLAN_REVIEW
-- Crash during loop-back (PLAN_REVIEW→PLAN) → PLAN stage status was reset, so PLAN re-runs correctly
+- Crash during loop-back (PLAN_REVIEW→PLAN) → PLAN stage status was reset (with `skipped=False`), context keys persisted, so PLAN re-runs correctly in revision mode
+- Loop counter persisted in status.json before loop-back → counter survives crash and resume
+
+*Governance:*
+- Write operations blocked for plan_reviewer via `read_only_agents` in guard.py
+- Test execution blocked for plan_reviewer via separate test-block tuple in guard.py
+- Subagent dispatch blocked via empty set in `DISPATCH_RULES` in tracking.py
+- MCP tools (context7, WebSearch, WebFetch) permitted for plan_reviewer in pre_tool_use.py
+
+*Settings propagation:*
+- Custom model/max_turns settings correctly propagated to plan_reviewer agent invocation
+- `stages.plan_review.enabled: false` prevents stage from appearing in `get_enabled_stages()`
+
+*MCP tool failure:*
+- context7/WebSearch/WebFetch timeout or error → agent proceeds with codebase-only validation
+- All MCP tools unavailable → review still produces valid output based on codebase analysis
+
+*Integration (round-trip):*
+- Full PLAN → PLAN_REVIEW (revise) → PLAN (revision) → PLAN_REVIEW (approve) → COORDINATE path
+- Full PLAN → PLAN_REVIEW (revise) → PLAN → PLAN_REVIEW (revise) → PLAN → PLAN_REVIEW (exhausted) → COORDINATE path
+
+*Edge cases:*
+- `_build_plan_review` when MASTER_PLAN.md is missing or empty → agent should report as critical issue
+- Revise with empty revision feedback (empty issues array) → still triggers revise path (fail-closed)
+- STAGE_AGENT_MAP/STAGE_SCHEMA_MAP point to files that exist on disk and schema is valid JSON Schema
