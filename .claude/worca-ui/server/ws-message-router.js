@@ -1,0 +1,716 @@
+/**
+ * WebSocket message router — handles all 24 request types.
+ * Delegates to other modules for state and side effects.
+ */
+
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import { isRequest, makeError, makeOk } from '../app/protocol.js';
+import {
+  dbExists as beadsDbExists,
+  countIssuesByRunLabel,
+  getIssue,
+  listDistinctRunLabels,
+  listIssues,
+  listIssuesByLabel,
+  listUnlinkedIssues,
+} from './beads-reader.js';
+import {
+  listIterationFiles,
+  listLogFiles,
+  readLastLines,
+  resolveIterationLogPath,
+  resolveLogPath,
+} from './log-tailer.js';
+import { readPreferences, writePreferences } from './preferences.js';
+import {
+  pausePipeline as pmPausePipeline,
+  startPipeline as pmStartPipeline,
+  stopPipeline as pmStopPipeline,
+  reconcileStatus,
+} from './process-manager.js';
+import { readSettings } from './settings-reader.js';
+import { discoverRuns } from './watcher.js';
+
+// Legacy fallback prefixes — only used when status.json lacks a stored prompt
+const STAGE_PROMPT_PREFIX = {
+  plan: 'Create a detailed implementation plan for the following work request. Write the plan to the designated plan file.\n\nWork request: ',
+  coordinate:
+    'Decompose the following work request into Beads tasks with dependencies. Do NOT implement anything — only create tasks using `bd create`.\n\nWork request: ',
+  implement:
+    'Implement the code changes described in the work request. Follow the plan and complete the tasks assigned to you.\n\nWork request: ',
+  test: 'Review and test the implementation for the following work request. Run tests and report results. Do NOT modify code.\n\nWork request: ',
+  review:
+    'Review the code changes for the following work request. Check for correctness, style, and adherence to the plan. Do NOT modify code.\n\nWork request: ',
+  pr: 'Create a pull request for the following work request. Summarize the changes and ensure the commit history is clean.\n\nWork request: ',
+};
+
+function _buildStagePrompt(stage, rawPrompt) {
+  const prefix = STAGE_PROMPT_PREFIX[stage];
+  return prefix ? prefix + rawPrompt : rawPrompt;
+}
+
+/**
+ * @param {{
+ *   worcaDir: string,
+ *   settingsPath: string,
+ *   prefsPath: string,
+ *   projectRoot: string,
+ *   webhookInbox: object,
+ *   clientManager: { ensureSubs: Function, getSubs: Function },
+ *   broadcaster: { broadcast: Function, broadcastToSubscribers: Function },
+ *   statusWatcher: { scheduleRefresh: Function, lastPipelineStatus: Map, resolveActiveRunDir: Function },
+ *   logWatcher: { watchLogFile: Function, watchAllLogFiles: Function, sendArchivedLogs: Function, resolveLogsBaseDir: Function },
+ *   beadsWatcher: { getBeadsDbPath: Function },
+ *   eventWatcher: { readEventsFromFile: Function, subscribeEvents: Function, maybeCloseEventWatcher: Function }
+ * }} deps
+ */
+export function createMessageRouter({
+  worcaDir,
+  settingsPath,
+  prefsPath,
+  projectRoot,
+  webhookInbox,
+  clientManager,
+  broadcaster,
+  statusWatcher,
+  logWatcher,
+  beadsWatcher,
+  eventWatcher,
+}) {
+  const beadsDbPath = beadsWatcher.getBeadsDbPath();
+
+  async function handleMessage(ws, data) {
+    let json;
+    try {
+      json = JSON.parse(data.toString());
+    } catch {
+      ws.send(
+        JSON.stringify({
+          id: 'unknown',
+          ok: false,
+          type: 'bad-json',
+          error: { code: 'bad_json', message: 'Invalid JSON' },
+        }),
+      );
+      return;
+    }
+
+    if (!isRequest(json)) {
+      ws.send(
+        JSON.stringify({
+          id: 'unknown',
+          ok: false,
+          type: 'bad-request',
+          error: { code: 'bad_request', message: 'Invalid request envelope' },
+        }),
+      );
+      return;
+    }
+
+    const req = json;
+
+    // list-runs
+    if (req.type === 'list-runs') {
+      const runs = discoverRuns(worcaDir);
+      const settings = readSettings(settingsPath);
+      ws.send(JSON.stringify(makeOk(req, { runs, settings })));
+      return;
+    }
+
+    // get-agent-prompt
+    if (req.type === 'get-agent-prompt') {
+      const { runId, stage } = req.payload || {};
+      if (!runId || !stage) {
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'payload.runId and payload.stage required',
+            ),
+          ),
+        );
+        return;
+      }
+      const runs = discoverRuns(worcaDir);
+      const run = runs.find((r) => r.id === runId);
+      if (!run) {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'NOT_FOUND', `Run ${runId} not found`),
+          ),
+        );
+        return;
+      }
+      const agentName = run.stages?.[stage]?.agent || stage;
+
+      const iterations = run.stages?.[stage]?.iterations || [];
+      const iterationPrompts = iterations.map((iter, idx) => {
+        const prompt = iter.prompt || null;
+        return { iteration: iter.number ?? idx, prompt };
+      });
+
+      const storedPrompt = run.stages?.[stage]?.prompt;
+      let fallbackPrompt;
+      let promptSource;
+      if (storedPrompt) {
+        fallbackPrompt = storedPrompt;
+        promptSource = 'actual';
+      } else {
+        const rawPrompt =
+          run.work_request?.description || run.work_request?.title || '';
+        fallbackPrompt = _buildStagePrompt(stage, rawPrompt);
+        promptSource = 'reconstructed';
+      }
+
+      const hasIterationPrompts = iterationPrompts.some(
+        (ip) => ip.prompt != null,
+      );
+      if (!hasIterationPrompts) {
+        for (const ip of iterationPrompts) {
+          ip.prompt = fallbackPrompt;
+        }
+      }
+
+      let agentInstructions = null;
+      const candidates = [
+        join(
+          worcaDir,
+          'runs',
+          run.run_id || runId,
+          'agents',
+          `${agentName}.md`,
+        ),
+        join(
+          worcaDir,
+          'results',
+          run.run_id || runId,
+          'agents',
+          `${agentName}.md`,
+        ),
+      ];
+      for (const p of candidates) {
+        if (existsSync(p)) {
+          try {
+            agentInstructions = readFileSync(p, 'utf8');
+          } catch {
+            /* ignore */
+          }
+          break;
+        }
+      }
+      ws.send(
+        JSON.stringify(
+          makeOk(req, {
+            agentInstructions,
+            userPrompt: fallbackPrompt,
+            iterationPrompts,
+            promptSource,
+            agent: agentName,
+          }),
+        ),
+      );
+      return;
+    }
+
+    // subscribe-run
+    if (req.type === 'subscribe-run') {
+      const { runId } = req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
+        return;
+      }
+      const s = clientManager.ensureSubs(ws);
+      s.runId = runId;
+      const runs = discoverRuns(worcaDir);
+      const run = runs.find((r) => r.id === runId);
+      if (run) {
+        if (
+          run.pipeline_status !== undefined &&
+          !statusWatcher.lastPipelineStatus.has(runId)
+        ) {
+          statusWatcher.lastPipelineStatus.set(runId, run.pipeline_status);
+        }
+        ws.send(JSON.stringify(makeOk(req, run)));
+      } else {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'NOT_FOUND', `Run ${runId} not found`),
+          ),
+        );
+      }
+      return;
+    }
+
+    // unsubscribe-run
+    if (req.type === 'unsubscribe-run') {
+      const s = clientManager.ensureSubs(ws);
+      s.runId = null;
+      ws.send(JSON.stringify(makeOk(req, { unsubscribed: true })));
+      return;
+    }
+
+    // subscribe-log
+    if (req.type === 'subscribe-log') {
+      const { stage, runId, iteration } = req.payload || {};
+      const s = clientManager.ensureSubs(ws);
+      s.logStage = stage || '*';
+      s.logRunId = runId || null;
+      ws.send(JSON.stringify(makeOk(req, { subscribed: true })));
+
+      const archivedLogDir = runId
+        ? join(worcaDir, 'results', runId)
+        : null;
+      const isArchived = archivedLogDir && existsSync(archivedLogDir);
+
+      if (isArchived) {
+        logWatcher.sendArchivedLogs(ws, archivedLogDir, stage, iteration);
+      } else {
+        const logsBase = logWatcher.resolveLogsBaseDir();
+        if (stage) {
+          if (iteration != null) {
+            const logPath = resolveIterationLogPath(
+              logsBase,
+              stage,
+              iteration,
+            );
+            const lines = readLastLines(logPath, 200);
+            if (lines.length > 0) {
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: { stage, iteration, lines },
+                }),
+              );
+            }
+          } else {
+            const stageDir = resolveLogPath(logsBase, stage);
+            if (
+              existsSync(stageDir) &&
+              statSync(stageDir).isDirectory()
+            ) {
+              const iters = listIterationFiles(logsBase, stage);
+              for (const { iteration: iterNum, path } of iters) {
+                const lines = readLastLines(path, 200);
+                if (lines.length > 0) {
+                  ws.send(
+                    JSON.stringify({
+                      id: `evt-${Date.now()}-iter${iterNum}`,
+                      ok: true,
+                      type: 'log-bulk',
+                      payload: { stage, iteration: iterNum, lines },
+                    }),
+                  );
+                }
+              }
+            } else {
+              const logPath = join(logsBase, 'logs', `${stage}.log`);
+              const lines = readLastLines(logPath, 200);
+              if (lines.length > 0) {
+                ws.send(
+                  JSON.stringify({
+                    id: `evt-${Date.now()}`,
+                    ok: true,
+                    type: 'log-bulk',
+                    payload: { stage, lines },
+                  }),
+                );
+              }
+            }
+          }
+          logWatcher.watchLogFile(stage);
+        } else {
+          const logFiles = listLogFiles(logsBase);
+          for (const { stage: s2, iteration: iterNum, path } of logFiles) {
+            const lines = readLastLines(path, 200);
+            if (lines.length > 0) {
+              ws.send(
+                JSON.stringify({
+                  id: `evt-${Date.now()}-${s2}-${iterNum || 0}`,
+                  ok: true,
+                  type: 'log-bulk',
+                  payload: {
+                    stage: s2,
+                    iteration: iterNum ?? undefined,
+                    lines,
+                  },
+                }),
+              );
+            }
+          }
+          logWatcher.watchAllLogFiles();
+        }
+      }
+      return;
+    }
+
+    // unsubscribe-log
+    if (req.type === 'unsubscribe-log') {
+      const s = clientManager.ensureSubs(ws);
+      s.logStage = null;
+      s.logRunId = null;
+      ws.send(JSON.stringify(makeOk(req, { unsubscribed: true })));
+      return;
+    }
+
+    // get-preferences
+    if (req.type === 'get-preferences') {
+      const prefs = readPreferences(prefsPath);
+      ws.send(JSON.stringify(makeOk(req, prefs)));
+      return;
+    }
+
+    // set-preferences
+    if (req.type === 'set-preferences') {
+      const prefs = req.payload || {};
+      const current = readPreferences(prefsPath);
+      const merged = { ...current, ...prefs };
+      writePreferences(merged, prefsPath);
+      broadcaster.broadcast('preferences', merged);
+      ws.send(JSON.stringify(makeOk(req, merged)));
+      return;
+    }
+
+    // pause-run
+    if (req.type === 'pause-run') {
+      const { runId } = req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
+        return;
+      }
+      try {
+        const result = pmPausePipeline(worcaDir, runId);
+        ws.send(JSON.stringify(makeOk(req, result)));
+      } catch (e) {
+        ws.send(
+          JSON.stringify(makeError(req, e.code || 'error', e.message)),
+        );
+      }
+      return;
+    }
+
+    // stop-run
+    if (req.type === 'stop-run') {
+      try {
+        const result = pmStopPipeline(worcaDir);
+        ws.send(JSON.stringify(makeOk(req, result)));
+        let checks = 0;
+        const maxChecks = 20;
+        const pollInterval = setInterval(() => {
+          checks++;
+          let alive = false;
+          try {
+            process.kill(result.pid, 0);
+            alive = true;
+          } catch {
+            /* dead */
+          }
+          if (!alive || checks >= maxChecks) {
+            clearInterval(pollInterval);
+            reconcileStatus(worcaDir);
+            statusWatcher.scheduleRefresh();
+          }
+        }, 500);
+        pollInterval.unref?.();
+      } catch (e) {
+        statusWatcher.scheduleRefresh();
+        ws.send(
+          JSON.stringify(
+            makeError(req, e.code || 'not_running', e.message),
+          ),
+        );
+      }
+      return;
+    }
+
+    // resume-run
+    if (req.type === 'resume-run') {
+      const { runId } = req.payload || {};
+      try {
+        const result = await pmStartPipeline(worcaDir, {
+          resume: true,
+          runId,
+          projectRoot,
+        });
+        ws.send(
+          JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })),
+        );
+      } catch (e) {
+        ws.send(
+          JSON.stringify(makeError(req, e.code || 'error', e.message)),
+        );
+      }
+      return;
+    }
+
+    // list-beads-issues
+    if (req.type === 'list-beads-issues') {
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(
+          JSON.stringify(
+            makeOk(req, {
+              issues: [],
+              dbExists: false,
+              dbPath: beadsDbPath,
+            }),
+          ),
+        );
+        return;
+      }
+      const issues = listIssues(beadsDbPath);
+      ws.send(
+        JSON.stringify(
+          makeOk(req, { issues, dbExists: true, dbPath: beadsDbPath }),
+        ),
+      );
+      return;
+    }
+
+    // list-beads-unlinked
+    if (req.type === 'list-beads-unlinked') {
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(
+          JSON.stringify(makeOk(req, { issues: [], dbExists: false })),
+        );
+        return;
+      }
+      const issues = listUnlinkedIssues(beadsDbPath);
+      ws.send(JSON.stringify(makeOk(req, { issues, dbExists: true })));
+      return;
+    }
+
+    // list-beads-refs
+    if (req.type === 'list-beads-refs') {
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(JSON.stringify(makeOk(req, { refs: [] })));
+        return;
+      }
+      const refs = listDistinctRunLabels(beadsDbPath);
+      ws.send(JSON.stringify(makeOk(req, { refs })));
+      return;
+    }
+
+    // list-beads-counts
+    if (req.type === 'list-beads-counts') {
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(JSON.stringify(makeOk(req, { counts: {} })));
+        return;
+      }
+      const counts = countIssuesByRunLabel(beadsDbPath);
+      ws.send(JSON.stringify(makeOk(req, { counts })));
+      return;
+    }
+
+    // list-beads-by-run
+    if (req.type === 'list-beads-by-run') {
+      const { runId } = req.payload || {};
+      if (!runId) {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
+        return;
+      }
+      if (!beadsDbExists(beadsDbPath)) {
+        ws.send(JSON.stringify(makeOk(req, { issues: [], runId })));
+        return;
+      }
+      const issues = listIssuesByLabel(beadsDbPath, `run:${runId}`);
+      ws.send(JSON.stringify(makeOk(req, { issues, runId })));
+      return;
+    }
+
+    // start-beads-issue
+    if (req.type === 'start-beads-issue') {
+      const { issueId } = req.payload || {};
+      if (!Number.isInteger(issueId) || issueId <= 0) {
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'payload.issueId (positive integer) required',
+            ),
+          ),
+        );
+        return;
+      }
+      const issue = getIssue(beadsDbPath, issueId);
+      if (!issue) {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'not_found', `Issue ${issueId} not found`),
+          ),
+        );
+        return;
+      }
+      if (issue.status !== 'open') {
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'not_ready',
+              `Issue ${issueId} is not open (status: ${issue.status})`,
+            ),
+          ),
+        );
+        return;
+      }
+      if (issue.blocked_by.length > 0) {
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'blocked',
+              `Issue ${issueId} is blocked by: ${issue.blocked_by.join(', ')}`,
+            ),
+          ),
+        );
+        return;
+      }
+      try {
+        const prompt =
+          `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
+        const result = await pmStartPipeline(worcaDir, {
+          inputType: 'prompt',
+          inputValue: prompt,
+          msize: 1,
+          mloops: 1,
+          projectRoot,
+        });
+        broadcaster.broadcast('run-started', { pid: result.pid });
+        ws.send(
+          JSON.stringify(makeOk(req, { pid: result.pid, issueId })),
+        );
+      } catch (e) {
+        ws.send(
+          JSON.stringify(makeError(req, 'start_failed', e.message)),
+        );
+      }
+      return;
+    }
+
+    // get-events
+    if (req.type === 'get-events') {
+      const { runId, since_event_id, event_types, limit } =
+        req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
+        return;
+      }
+      const events = eventWatcher.readEventsFromFile(runId, {
+        since_event_id,
+        event_types,
+        limit,
+      });
+      ws.send(JSON.stringify(makeOk(req, { events })));
+      return;
+    }
+
+    // subscribe-events
+    if (req.type === 'subscribe-events') {
+      const { runId } = req.payload || {};
+      if (typeof runId !== 'string') {
+        ws.send(
+          JSON.stringify(
+            makeError(req, 'bad_request', 'payload.runId required'),
+          ),
+        );
+        return;
+      }
+      const s = clientManager.ensureSubs(ws);
+      s.eventsRunId = runId;
+      eventWatcher.subscribeEvents(runId);
+      ws.send(JSON.stringify(makeOk(req, { subscribed: true })));
+      return;
+    }
+
+    // unsubscribe-events
+    if (req.type === 'unsubscribe-events') {
+      const s = clientManager.ensureSubs(ws);
+      const prevRunId = s.eventsRunId;
+      s.eventsRunId = null;
+      if (prevRunId) eventWatcher.maybeCloseEventWatcher(prevRunId);
+      ws.send(JSON.stringify(makeOk(req, { unsubscribed: true })));
+      return;
+    }
+
+    // get-webhook-inbox
+    if (req.type === 'get-webhook-inbox') {
+      if (!webhookInbox) {
+        ws.send(
+          JSON.stringify(
+            makeOk(req, { events: [], controlAction: 'continue' }),
+          ),
+        );
+        return;
+      }
+      ws.send(
+        JSON.stringify(
+          makeOk(req, {
+            events: webhookInbox.list(),
+            controlAction: webhookInbox.getControlAction(),
+          }),
+        ),
+      );
+      return;
+    }
+
+    // set-webhook-control
+    if (req.type === 'set-webhook-control') {
+      const { action } = req.payload || {};
+      if (
+        !webhookInbox ||
+        !['continue', 'pause', 'abort'].includes(action)
+      ) {
+        ws.send(
+          JSON.stringify(
+            makeError(
+              req,
+              'bad_request',
+              'action must be "continue", "pause", or "abort"',
+            ),
+          ),
+        );
+        return;
+      }
+      webhookInbox.setControlAction(action);
+      broadcaster.broadcast('webhook-control-changed', { action });
+      ws.send(JSON.stringify(makeOk(req, { action })));
+      return;
+    }
+
+    // clear-webhook-inbox
+    if (req.type === 'clear-webhook-inbox') {
+      if (webhookInbox) webhookInbox.clear();
+      broadcaster.broadcast('webhook-inbox-cleared', {});
+      ws.send(JSON.stringify(makeOk(req, { cleared: true })));
+      return;
+    }
+
+    // Unknown type
+    ws.send(
+      JSON.stringify(
+        makeError(req, 'unknown_type', `Unknown message type: ${req.type}`),
+      ),
+    );
+  }
+
+  return { handleMessage };
+}
