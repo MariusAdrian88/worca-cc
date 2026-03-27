@@ -6,8 +6,8 @@ import { createApp } from './app.js';
 import { attachWsServer } from './ws.js';
 
 // Parse argv
-let port = 3400;
-let host = '127.0.0.1';
+let port = parseInt(process.env.PORT, 10) || 3400;
+let host = process.env.HOST || '127.0.0.1';
 for (let i = 0; i < process.argv.length; i++) {
   if (process.argv[i] === '--port' && process.argv[i + 1])
     port = parseInt(process.argv[++i], 10);

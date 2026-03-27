@@ -123,6 +123,16 @@ cd .claude/worca-ui && npm run build
 
 This runs esbuild to produce `app/main.bundle.js`. Without rebuilding, changes won't take effect.
 
+### Running the UI
+
+```bash
+pnpm worca:ui                        # Default port 3400
+PORT=3401 pnpm worca:ui              # Custom port via env var
+pnpm worca:ui -- --port 3401         # Custom port via flag
+```
+
+The `--port` flag takes precedence over the `PORT` env var. `HOST` / `--host` works the same way (default `127.0.0.1`).
+
 ## Plans & Roadmap
 
 - Feature tracking lives in **GitHub Issues**: https://github.com/SinishaDjukic/worca-cc/issues
