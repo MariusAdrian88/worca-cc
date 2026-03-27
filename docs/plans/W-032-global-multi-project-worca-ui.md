@@ -296,3 +296,282 @@ Connect the two:
 3. **Remote monitoring:** Deferred. The webhook channel enables it later; auth/TLS/network binding are out of scope now.
 4. **Port strategy:** Global server uses 3400 exclusively; fails to start if occupied. Per-project servers auto-find available ports.
 5. **Packaging:** Phased — `--global` flag first (Phase 2), standalone npm package later (Phase 6).
+
+---
+
+## 9. Design Amendments
+
+The following amendments resolve design deficiencies identified during review. They supersede or extend the corresponding sections in the original plan.
+
+### 9.1 ws.js Decomposition (Amends Section 7)
+
+Before implementing multi-project watchers, decompose `server/ws.js` (1,385 lines, 12 concerns) into 7 focused modules:
+
+| New Module | Responsibility | Extracted From |
+|-----------|---------------|----------------|
+| `server/ws-client-manager.js` | Client subscriptions, heartbeat, WeakMap tracking | Lines ~100-160 |
+| `server/ws-broadcaster.js` | Message broadcasting, subscription-filtered delivery | Scattered broadcast functions |
+| `server/ws-status-watcher.js` | Status/active-run file watching, debounced refresh | Lines ~320-400 |
+| `server/ws-log-watcher.js` | Log file/stage/iteration watching, line counting | Lines ~420-560 |
+| `server/ws-beads-watcher.js` | Beads DB watching, debounced refresh | Lines ~570-600 |
+| `server/ws-event-watcher.js` | events.jsonl subscription management | Lines ~160-180, 1300+ |
+| `server/ws-message-router.js` | Message dispatch (23 handlers) | Lines ~650-1350 |
+
+`ws.js` becomes an orchestrator (~100 lines) that imports and wires these modules.
+
+**Effort:** 8-12 hours. **Risk:** Medium (many files but each is simple). **Prerequisite for:** Phase 1 multi-project watchers.
+
+### 9.2 State Management (Amends Section 7, `app/state.js`)
+
+Full rewrite to nested project-scoped structure:
+
+```javascript
+{
+  activeProject: "project-name",
+  projects: {
+    [name]: {
+      activeRunId: null,    // remove ghost field from per-project if unused
+      runs: { [id]: runObj },
+      logLines: [],
+      beads: { issues: [], dbExists: false, loading: false },
+      webhookInbox: { events: [], controlAction: 'continue' }
+    }
+  },
+  preferences: { theme, sidebarCollapsed, notifications }  // GLOBAL, not per-project
+}
+```
+
+**Impact:** ~23 files (19 source + 4 tests). All view components that call `store.getState()` must access `state.projects[state.activeProject].X`. Preferences remain global (one user, one theme). Remove unused `activeRunId` field.
+
+**Key files:** `state.js`, `main.js`, `notifications.js`, all `views/*.js`, `state.test.js`, `main-*.test.js`.
+
+### 9.3 REST API Scoping (Amends Section 7, `server/app.js`)
+
+Use URL path prefix pattern for project-scoped endpoints:
+
+```
+Project-scoped (23 endpoints):
+  /api/projects/:projectId/runs
+  /api/projects/:projectId/runs/:id/status
+  /api/projects/:projectId/settings
+  /api/projects/:projectId/beads/issues
+  /api/projects/:projectId/costs
+  /api/projects/:projectId/branches
+  /api/projects/:projectId/plan-files
+  /api/projects/:projectId/project-info
+  ... etc
+
+Global (unchanged):
+  /api/webhooks/test
+  /api/webhooks/inbox
+  /api/webhooks/inbox/control
+
+New global endpoints:
+  GET  /api/projects              — list registered projects
+  POST /api/projects              — register new project
+  DELETE /api/projects/:projectId — unregister project
+```
+
+**Implementation:** Create Express sub-router with `projectResolver` middleware that validates `:projectId` and injects `req.project = { worcaDir, projectRoot, settingsPath }`. Extract handler logic from closured values to `req.project` references.
+
+### 9.4 Process Manager (Amends Section 7, `server/process-manager.js`)
+
+Replace current stateless functions with a `ProcessManager` class:
+
+```javascript
+class ProcessManager {
+  constructor(projectRegistry) {
+    this.registry = projectRegistry;
+    this.processes = new Map(); // projectName → { pid, worcaDir, startTime }
+  }
+  startPipeline(projectName, opts) { ... }
+  stopPipeline(projectName) { ... }  // NO pgrep fallback
+  pausePipeline(projectName, runId) { ... }
+  restartStage(projectName, stageKey, opts) { ... }
+}
+```
+
+**Critical:** Remove the `pgrep -f run_pipeline.py` fallback (lines 285-301) that could kill the wrong project's pipeline. PID file is the sole source of truth. The class provides explicit project-to-process mapping needed for both W-032 and future W-030 multi-pipeline support.
+
+### 9.5 Project Registry Format (Amends Section 2)
+
+Replace single `~/.worca/projects.json` with directory-based registry:
+
+```
+~/.worca/projects.d/
+  worca-cc.json    → { "name": "worca-cc", "path": "/dev/worca-cc" }
+  my-api.json      → { "name": "my-api", "path": "/dev/my-api" }
+  frontend.json    → { "name": "frontend", "path": "/dev/frontend" }
+```
+
+**Rationale:** Eliminates race condition when multiple pipelines self-register simultaneously. Each pipeline writes its own file atomically via `tempfile.mkstemp()` + `os.rename()`. No file locking needed.
+
+**Server-side:** `project-registry.js` scans `projects.d/` to assemble project list. Watches directory for add/remove events.
+
+**Pipeline-side:** New `worca/utils/project_registry.py` with `auto_register_project(project_path)`.
+
+### 9.6 Watcher Lifecycle (Amends Section 4.1)
+
+Introduce `WatcherSet` class for per-project watcher lifecycle:
+
+```javascript
+class WatcherSet {
+  constructor(projectId, worcaDir) { ... }
+  create()   // Initialize statusWatcher, activeRunWatcher, beadsWatcher, logWatchers, eventWatchers
+  destroy()  // Close all watchers, clear all timers, set closed=true
+  isAlive()  // Check !closed && existsSync(worcaDir)
+}
+```
+
+**Global server manages:** `Map<projectName, WatcherSet>`. On project add: `new WatcherSet(name, dir).create()`. On project remove: `watcherSet.destroy()`.
+
+**Immediate fix:** Add `process.on('SIGTERM', cleanup)` and `process.on('exit', cleanup)` handlers to prevent orphaned watchers on shutdown.
+
+### 9.7 Port Strategy (Amends Section 2.4)
+
+Both modes default to 3400. Smart conflict detection before startup:
+
+1. Read PID file (extended format: `{ pid, port, host, mode: "global"|"per-project", projectPath, started_at }`)
+2. If port occupied by same mode: suggest `--port` flag
+3. If port occupied by different mode: explain what's running, suggest stop command or alternate port
+4. Fix hardcoded `http://localhost:3400` in `webhook-inbox.js` — derive URL from actual server port
+
+**No silent fallback.** Fail with clear error messages. User explicitly chooses resolution.
+
+### 9.8 Binary Distribution (Amends Section 6)
+
+**Accept status quo for Phases 1-5.** Run global mode from one project's `.claude/worca-ui/` copy. Document this in README: "For global mode, launch from any project: `cd /path/to/any-project && worca-ui start --global`."
+
+Phase 6 (standalone npm package) remains the proper fix. Not a blocker for Phases 1-5.
+
+### 9.9 Testing Strategy (New Section)
+
+Dual test approach for multi-project:
+
+**Test doubles** (API contract tests):
+- `FakeProjectRegistry` — in-memory project list
+- `FakeFileWatcher` — simulated file change events
+- `FakeProcessManager` — tracks spawn calls without real processes
+- Use for: endpoint scoping, state isolation, message routing
+
+**Test fixtures factory** (filesystem/WebSocket tests):
+- `createMultiProjectFixture([{ name, runs, settings }])` — generates temp directory trees with populated `.worca/` dirs
+- Matches existing `seedRun()` / `startServer()` patterns
+- Use for: watcher behavior, log tailing, beads isolation, e2e flows
+
+**New test files:**
+- `test/multi-project-fixtures.js` — reusable fixture factory
+- `test/multi-project-api.test.js` — project-scoped endpoints
+- `test/multi-project-isolation.test.js` — cross-project data isolation
+- `test/multi-project-websocket.test.js` — project-scoped subscriptions
+- `test/multi-project-process-manager.test.js` — ProcessManager class
+- `e2e/multi-project.spec.js` — browser-level project switching
+
+**Playwright:** Maintain `--workers=1` constraint. Multi-project e2e tests are even more sensitive to parallel execution.
+
+### 9.10 Webhook Strategy (Amends Section 1, Phase 3)
+
+**File-watching is the sole data mechanism.** Webhooks are entirely optional.
+
+- Global server uses file-watching (W-017 mechanism) for all data: logs, run state, beads, settings
+- No auto-injection of webhook config into project files
+- Projects that want sub-10ms updates can manually add webhook URL to their `settings.local.json`
+- Phase 3 (Webhook Supplementary Channel) becomes: "Add `/api/projects/inbox` endpoint that accepts optional webhook hints to trigger immediate refresh (bypasses 75ms debounce). Zero configuration required."
+
+**Rationale:** File-watching already provides complete data coverage. Webhooks add complexity (injection, lifecycle, cleanup) for marginal latency improvement (75ms → 5ms) that doesn't matter for pipeline monitoring UX.
+
+### 9.11 Watcher Budget (Amends Section 4.1)
+
+Add startup watcher budget calculation:
+
+```javascript
+function calculateWatcherBudget(projectCount, watchersPerProject = 19) {
+  const total = projectCount * watchersPerProject;
+  const LINUX_LIMIT = 8192;
+  if (total > LINUX_LIMIT * 0.6) {
+    console.warn(`Watcher budget: ${total}/${LINUX_LIMIT} (${(total/LINUX_LIMIT*100).toFixed(1)}%)`);
+  }
+  if (total > LINUX_LIMIT) {
+    throw new Error(`Watcher limit exceeded. Reduce projects or run: sysctl -w fs.inotify.max_user_watches=65536`);
+  }
+}
+```
+
+Log budget on startup. Warn at 60%. Refuse above 100% with actionable sysctl command.
+
+**Actual numbers:** 20 projects = 380 watchers (4.6% of limit). The 20-project default is conservative and safe.
+
+### 9.12 URL Routing (Amends Section 5)
+
+**Always require project in URL for global mode.** No "first project" fallback.
+
+```
+Global mode URLs:
+  #/dashboard                          — Cross-project overview
+  #/project/{slug}/active              — Project's active runs
+  #/project/{slug}/history             — Project's run history
+  #/project/{slug}/active?run={id}     — Specific run detail
+  #/project/{slug}/settings            — Project settings
+  #/project/{slug}/beads               — Project beads
+```
+
+**Legacy URL handling:** `#/active` or `#/history` → redirect to `#/dashboard` (project picker). No ambiguous "first project" resolution.
+
+**Per-project mode (unchanged):** Existing `#/active`, `#/history` URLs work as today. No project prefix needed when server monitors a single project.
+
+### 9.13 Dependency Strategy (Amends Section 6)
+
+**Decouple W-032 from W-017 and W-030.** Implement needed features directly within W-032, not as separate prerequisite phases.
+
+**Revised implementation sequence:**
+
+| Phase | Scope | Notes |
+|-------|-------|-------|
+| 0 | ws.js decomposition + state rewrite + REST scoping | Foundation work (Findings 1-3) |
+| 1 | Multi-project core | Project registry (projects.d/), project-scoped watchers (WatcherSet), ProcessManager class, URL routing, sidebar project picker, aggregated dashboard |
+| 2 | Global installation | `--global` flag, CLI commands, dynamic registration, pipeline self-registration, port conflict detection |
+| 3 | Webhook hints (optional) | `/api/projects/inbox` endpoint. No auto-injection. File-watching remains primary. |
+| 4 | W-030 parallel pipelines | Implement inline when needed. Run ID uniqueness, worktree lifecycle, registry, run_multi.py. |
+| 5 | W-030 integration | Three-level UI, worktree sub-watchers, multi-pipeline dashboard |
+| 6 | Standalone package | Extract to `@worca/ui` npm package |
+
+**Key change:** No dependency gates. W-017 tasks are absorbed into Phase 0-1. W-030 tasks are absorbed into Phase 4-5. Each phase is self-contained and shippable.
+
+### 9.14 Notification System (New Section)
+
+Phased implementation of cross-project attention management:
+
+**Phase 1 (with W-032 Phase 1, 3 days):** Enhanced desktop notifications
+- Add project name to notification title: `"[Project A] Pipeline Failed"`
+- Smart delivery: only `run_failed` and `approval_needed` trigger desktop notifications
+- Other events (test_failures, loop_limit_warning) are silent/feed-only
+- Notification tag includes project: `worca-${projectId}-${eventType}-${runId}`
+- Click navigates to `#/project/{slug}/active?run={id}`
+
+**Phase 2 (with W-032 Phase 2, 5-6 days):** Project status badges
+- Sidebar shows per-project status icons: green (idle), orange (running), red (error), yellow (approval needed)
+- Unread error count badge per project
+- Computed from all runs in project state
+
+**Phase 3 (if needed at scale):** Global notification feed
+- Persistent collapsible panel aggregating events across all projects
+- Filtering by severity, project, event type
+- Per-event and batch dismissal
+
+### 9.15 Resource Management (New Section)
+
+**SQLite connection pooling:**
+- Replace per-request `new Database()` / `db.close()` in `beads-reader.js` with persistent pool
+- 3-5 connections per project, reused across queries
+- Prepared statements for common queries
+- ~50% CPU reduction on beads operations
+
+**Activity-based tiering:**
+
+| Tier | Criteria | Resources |
+|------|----------|-----------|
+| Full | User viewing in UI OR pipeline running | All watchers, log tailing, beads polling, 75ms debounce |
+| Polling | Registered but inactive | Status watcher only, 5s debounce, no log watchers, no beads polling |
+| Archived | No activity for 24h+ | Read-only snapshots, no watchers |
+
+Projects start in Polling tier. Promote to Full when WebSocket client subscribes. Demote when no clients and no active pipeline.
