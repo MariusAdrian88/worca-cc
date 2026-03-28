@@ -476,6 +476,13 @@ export function createMessageRouter({
         ws.send(
           JSON.stringify(makeOk(req, { resumed: true, pid: result.pid })),
         );
+        // Give the pipeline process time to write its first status update,
+        // then force a refresh so the UI picks up the running state.
+        setTimeout(() => {
+          if (proj.wset.statusWatcher) {
+            proj.wset.statusWatcher.scheduleRefresh();
+          }
+        }, 500);
       } catch (e) {
         ws.send(JSON.stringify(makeError(req, e.code || 'error', e.message)));
       }

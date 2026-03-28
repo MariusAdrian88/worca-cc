@@ -135,8 +135,19 @@ export function createStatusWatcher({
           // Watch the file directly — on macOS, kqueue directory watchers
           // don't fire for in-place content modifications of existing files.
           // Watching the file itself ensures we detect status.json writes.
-          statusWatcher = watch(statusFile, (_eventType) => {
+          //
+          // IMPORTANT: On macOS kqueue, atomic writes (write-to-temp +
+          // rename-over) replace the inode.  After one 'rename' event the
+          // watcher goes dead because it tracked the old inode.  We
+          // re-establish the watcher on the new file after a short delay.
+          statusWatcher = watch(statusFile, (eventType) => {
             scheduleRefresh();
+            if (eventType === 'rename') {
+              // File replaced (atomic write) — re-watch the new inode
+              try { statusWatcher.close(); } catch { /* ignore */ }
+              statusWatcher = null;
+              setTimeout(() => tryWatch(), 50);
+            }
           });
         } else if (existsSync(runDir)) {
           // status.json doesn't exist yet — watch the directory for its creation,
