@@ -22,6 +22,7 @@ export function createStore(initial = {}) {
       events: [],
       controlAction: 'continue',
     },
+    addProjectDialogOpen: initial.addProjectDialogOpen ?? false,
   };
 
   const subs = new Set();
@@ -59,7 +60,8 @@ export function createStore(initial = {}) {
           state.preferences.sidebarCollapsed &&
         next.preferences.notifications === state.preferences.notifications &&
         next.beads === state.beads &&
-        next.webhookInbox === state.webhookInbox
+        next.webhookInbox === state.webhookInbox &&
+        next.addProjectDialogOpen === state.addProjectDialogOpen
       )
         return;
       state = next;
