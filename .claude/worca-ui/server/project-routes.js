@@ -101,6 +101,11 @@ export function createProjectRoutes({ prefsDir, projectRoot }) {
     if (!validation.valid) {
       return res.status(400).json({ ok: false, error: validation.error });
     }
+    if (!existsSync(entry.path)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: `directory does not exist: ${entry.path}` });
+    }
     try {
       writeProject(prefsDir, entry);
       res.status(201).json({ ok: true, project: entry });

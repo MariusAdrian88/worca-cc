@@ -136,7 +136,7 @@ describe('project-routes', () => {
       const app = await createTestApp(prefsDir, projectRoot);
       const { status, body } = await request(app, 'POST', '/api/projects', {
         name: 'new-proj',
-        path: '/some/path',
+        path: projectRoot,
       });
       expect(status).toBe(201);
       expect(body.ok).toBe(true);
@@ -156,9 +156,19 @@ describe('project-routes', () => {
     it('returns 400 on missing name', async () => {
       const app = await createTestApp(prefsDir, projectRoot);
       const { status } = await request(app, 'POST', '/api/projects', {
-        path: '/some/path',
+        path: projectRoot,
       });
       expect(status).toBe(400);
+    });
+
+    it('returns 400 on non-existent path', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'POST', '/api/projects', {
+        name: 'ghost',
+        path: '/no/such/directory',
+      });
+      expect(status).toBe(400);
+      expect(body.error).toMatch(/does not exist/i);
     });
   });
 
