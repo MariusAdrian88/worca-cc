@@ -266,5 +266,22 @@ export function attachWsServer(httpServer, config) {
     watcherSets.clear();
   });
 
-  return { wss, broadcast: broadcaster.broadcast, scheduleRefresh };
+  /**
+   * Resolve which project a run belongs to by checking watcherSets.
+   * @param {string} runId
+   * @returns {string|null} projectId or null
+   */
+  function resolveRunProject(runId) {
+    if (!runId) return null;
+    for (const [projectId, wset] of watcherSets) {
+      const runsPath = join(wset.worcaDir, 'runs', runId);
+      const resultsPath = join(wset.worcaDir, 'results', runId);
+      if (existsSync(runsPath) || existsSync(resultsPath)) {
+        return projectId;
+      }
+    }
+    return null;
+  }
+
+  return { wss, broadcast: broadcaster.broadcast, scheduleRefresh, resolveRunProject };
 }

@@ -8,6 +8,7 @@ import {
   List,
   Plus,
   Settings,
+  SlidersHorizontal,
   Zap,
 } from '../utils/icons.js';
 
@@ -17,11 +18,15 @@ import {
  * @param {object} runs - { [runId]: run }
  * @returns {'idle'|'running'|'error'|'paused'}
  */
-export function projectStatus(projectId, runs) {
+export function projectStatus(projectId, runs, currentProjectId) {
   const runList = Object.values(runs);
-  // Check project-scoped runs (if run has a project field matching, or all runs for single-project)
+  // In multi-project mode, runs in state belong to currentProjectId.
+  // For other projects we have no data — return idle.
   const projectRuns = projectId
-    ? runList.filter((r) => r.project === projectId || !r.project)
+    ? runList.filter((r) =>
+        r.project === projectId ||
+        (!r.project && (!currentProjectId || currentProjectId === projectId)),
+      )
     : runList;
 
   let hasRunning = false;
@@ -104,7 +109,7 @@ export function sidebarView(
             @sl-change=${(e) => onProjectChange?.(e.target.value)}
           >
             ${projects.map((p) => {
-              const pStatus = projectStatus(p.name, runs);
+              const pStatus = projectStatus(p.name, runs, currentProjectId);
               const dotClass = statusDotClass(pStatus);
               return html`
                 <sl-option value=${p.name}>
@@ -182,6 +187,17 @@ export function sidebarView(
             <span>Webhooks</span>
           </span>
           ${(state.webhookInbox?.events?.length || 0) > 0 ? html`<sl-badge variant="warning" pill>${state.webhookInbox.events.length}</sl-badge>` : ''}
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Configuration</div>
+        <div class="sidebar-item ${route.section === 'project-settings' ? 'active' : ''}"
+             @click=${() => onNavigate('project-settings')}>
+          <span class="sidebar-item-left">
+            ${unsafeHTML(iconSvg(SlidersHorizontal, 16))}
+            <span>Project Settings</span>
+          </span>
         </div>
       </div>
 

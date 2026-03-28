@@ -88,7 +88,7 @@ server.on('error', (err) => {
   process.exit(1);
 });
 
-const { broadcast, scheduleRefresh } = attachWsServer(server, {
+const { broadcast, scheduleRefresh, resolveRunProject } = attachWsServer(server, {
   worcaDir,
   settingsPath,
   prefsPath: join(homedir(), '.worca', 'preferences.json'),
@@ -97,9 +97,10 @@ const { broadcast, scheduleRefresh } = attachWsServer(server, {
   projectRoot,
 });
 
-// Expose broadcast and scheduleRefresh to REST route handlers
+// Expose broadcast, scheduleRefresh, and resolveRunProject to REST route handlers
 app.locals.broadcast = broadcast;
 app.locals.scheduleRefresh = scheduleRefresh;
+app.locals.resolveRunProject = resolveRunProject;
 
 server.listen(port, host, () => {
   console.log(

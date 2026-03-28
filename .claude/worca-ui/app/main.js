@@ -328,10 +328,13 @@ ws.on('learn-started', (payload) => {
 
 ws.on('webhook-inbox-event', (payload) => {
   if (payload) {
-    const inbox = store.getState().webhookInbox;
-    store.setState({
-      webhookInbox: { ...inbox, events: [...inbox.events, payload] },
-    });
+    const currentProject = store.getState().currentProjectId;
+    if (!payload.projectId || !currentProject || payload.projectId === currentProject) {
+      const inbox = store.getState().webhookInbox;
+      store.setState({
+        webhookInbox: { ...inbox, events: [...inbox.events, payload] },
+      });
+    }
   }
 });
 
@@ -415,6 +418,19 @@ function handleProjectSwitch(newProjectId) {
           dbExists: payload.dbExists ?? false,
           dbPath: payload.dbPath || null,
           loading: false,
+        },
+      });
+    })
+    .catch(() => {});
+
+  // Clear and re-fetch webhook inbox for new project
+  store.setState({ webhookInbox: { events: [], controlAction: store.getState().webhookInbox?.controlAction || 'continue' } });
+  ws.send('get-webhook-inbox')
+    .then((payload) => {
+      store.setState({
+        webhookInbox: {
+          events: payload.events || [],
+          controlAction: payload.controlAction || 'continue',
         },
       });
     })
@@ -1412,6 +1428,9 @@ function attachStickyHeaderListener() {
 notificationManager.setRerender(rerender);
 store.subscribe(() => rerender());
 applyTheme(store.getState().preferences.theme);
+if (route.projectId) {
+  store.setState({ currentProjectId: route.projectId });
+}
 fetchProjectInfo();
 if (route.section === 'settings') {
   loadSettings(null).then(() => rerender());

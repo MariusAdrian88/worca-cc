@@ -926,7 +926,10 @@ export function createApp(options = {}) {
       'x-worca-signature': req.headers['x-worca-signature'] || '',
       'content-type': req.headers['content-type'] || '',
     };
-    const stored = webhookInbox.push({ headers, envelope: req.body || {} });
+    const runId = req.body?.run_id || null;
+    const projectId = runId && app.locals.resolveRunProject
+      ? app.locals.resolveRunProject(runId) : null;
+    const stored = webhookInbox.push({ headers, envelope: req.body || {}, projectId });
     if (app.locals.broadcast) {
       app.locals.broadcast('webhook-inbox-event', stored);
     }
@@ -937,9 +940,10 @@ export function createApp(options = {}) {
   app.get('/api/webhooks/inbox', (req, res) => {
     const since =
       req.query.since != null ? parseInt(req.query.since, 10) : undefined;
+    const projectId = req.query.projectId || undefined;
     res.json({
       ok: true,
-      events: webhookInbox.list(since),
+      events: webhookInbox.list(since, projectId),
       controlAction: webhookInbox.getControlAction(),
     });
   });

@@ -741,10 +741,12 @@ export function createMessageRouter({
         );
         return;
       }
+      const subs = clientManager.getSubs(ws);
+      const projectId = subs?.projectId || null;
       ws.send(
         JSON.stringify(
           makeOk(req, {
-            events: webhookInbox.list(),
+            events: webhookInbox.list(undefined, projectId),
             controlAction: webhookInbox.getControlAction(),
           }),
         ),
