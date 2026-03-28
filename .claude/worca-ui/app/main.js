@@ -729,7 +729,8 @@ function handleResumePipeline() {
   rerender();
   ws.send('resume-run', { runId: route.runId })
     .then(() => {
-      // Status update via file watcher will clear pipelineAction
+      pipelineAction = null;
+      rerender();
     })
     .catch((err) => {
       pipelineAction = null;

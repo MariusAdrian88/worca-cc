@@ -1279,6 +1279,13 @@ def run_pipeline(
                 stage_idx += 1
                 continue
 
+            # On resume, skip stages already completed (PREFLIGHT always re-runs)
+            if resume_stage and current_stage != Stage.PREFLIGHT:
+                if existing_stage.get("status") == "completed":
+                    _log(f"{current_stage.value.upper()} already completed — skipping on resume")
+                    stage_idx += 1
+                    continue
+
             # Update current stage tracker
             status["stage"] = current_stage.value
 
