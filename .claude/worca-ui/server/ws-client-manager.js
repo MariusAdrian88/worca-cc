@@ -7,13 +7,13 @@
  * @param {{ wss: import('ws').WebSocketServer }} deps
  */
 export function createClientManager({ wss }) {
-  /** @type {WeakMap<import('ws').WebSocket, { runId: string | null, logStage: string | null, logRunId: string | null, eventsRunId: string | null }>} */
+  /** @type {WeakMap<import('ws').WebSocket, { runId: string | null, logStage: string | null, logRunId: string | null, eventsRunId: string | null, protocolVersion: number, projectId: string | null }>} */
   const subs = new WeakMap();
 
   function ensureSubs(ws) {
     let s = subs.get(ws);
     if (!s) {
-      s = { runId: null, logStage: null, logRunId: null, eventsRunId: null };
+      s = { runId: null, logStage: null, logRunId: null, eventsRunId: null, protocolVersion: 1, projectId: null };
       subs.set(ws, s);
     }
     return s;
@@ -25,6 +25,12 @@ export function createClientManager({ wss }) {
 
   function deleteSubs(ws) {
     subs.delete(ws);
+  }
+
+  function setProtocol(ws, version, projectId) {
+    const s = ensureSubs(ws);
+    s.protocolVersion = version;
+    s.projectId = projectId ?? null;
   }
 
   // Heartbeat — ping all clients every 30s, terminate unresponsive ones
@@ -44,5 +50,5 @@ export function createClientManager({ wss }) {
     clearInterval(heartbeat);
   }
 
-  return { ensureSubs, getSubs, deleteSubs, destroy };
+  return { ensureSubs, getSubs, deleteSubs, setProtocol, destroy };
 }

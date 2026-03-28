@@ -28,6 +28,7 @@ import {
   readMergedSettings,
 } from './settings-merge.js';
 import { validateSettingsPayload } from './settings-validator.js';
+import { createProjectRoutes, createProjectScopedRoutes, projectResolver } from './project-routes.js';
 import { discoverRuns } from './watcher.js';
 import { createInbox } from './webhook-inbox.js';
 
@@ -38,7 +39,7 @@ function readFullSettings(settingsPath) {
 export function createApp(options = {}) {
   const app = express();
   const appDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'app');
-  const { settingsPath, worcaDir, projectRoot } = options;
+  const { settingsPath, worcaDir, projectRoot, prefsDir } = options;
 
   app.use(express.json());
 
@@ -973,6 +974,16 @@ export function createApp(options = {}) {
   app.get('/api/project-info', (_req, res) => {
     res.json({ name: projectRoot ? basename(projectRoot) : '' });
   });
+
+  // Multi-project routes
+  if (prefsDir) {
+    app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot }));
+    app.use(
+      '/api/projects/:projectId',
+      projectResolver({ prefsDir, projectRoot }),
+      createProjectScopedRoutes(),
+    );
+  }
 
   app.use(express.static(appDir));
   app.get('/{*splat}', (_req, res) => {

@@ -1,17 +1,17 @@
 /**
  * Modular WebSocket server — facade wiring 7 extracted modules.
  * Drop-in replacement for ws-legacy.js with identical behavior.
+ *
+ * Supports multi-project mode via WatcherSet map when projects.d/ exists.
  */
 
-import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { WebSocketServer } from 'ws';
+import { readProjects, synthesizeDefaultProject } from './project-registry.js';
+import { WatcherSet } from './watcher-set.js';
 import { createClientManager } from './ws-client-manager.js';
 import { createBroadcaster } from './ws-broadcaster.js';
-import { createStatusWatcher, resolveActiveRunDir } from './ws-status-watcher.js';
-import { createLogWatcher } from './ws-log-watcher.js';
-import { createBeadsWatcher } from './ws-beads-watcher.js';
-import { createEventWatcher } from './ws-event-watcher.js';
+import { resolveActiveRunDir } from './ws-status-watcher.js';
 import { createMessageRouter } from './ws-message-router.js';
 
 export { resolveActiveRunDir };
@@ -20,10 +20,10 @@ export { resolveActiveRunDir };
  * Attach a WebSocket server to an existing HTTP server.
  *
  * @param {import('node:http').Server} httpServer
- * @param {{ worcaDir: string, settingsPath: string, prefsPath: string }} config
+ * @param {{ worcaDir: string, settingsPath: string, prefsPath: string, prefsDir?: string }} config
  */
 export function attachWsServer(httpServer, config) {
-  const { worcaDir, settingsPath, prefsPath, webhookInbox, projectRoot } =
+  const { worcaDir, settingsPath, prefsPath, webhookInbox, projectRoot, prefsDir } =
     config;
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
 
@@ -36,54 +36,45 @@ export function attachWsServer(httpServer, config) {
     getSubs: clientManager.getSubs,
   });
 
-  // Shared helper: resolve filesystem dir for a run ID
-  function resolveRunDirById(runId) {
-    const candidates = [
-      join(worcaDir, 'runs', runId),
-      join(worcaDir, 'results', runId),
-    ];
-    for (const c of candidates) {
-      if (existsSync(c)) return c;
+  // 3. Create WatcherSet(s) — one per project
+  /** @type {Map<string, WatcherSet>} */
+  const watcherSets = new Map();
+
+  const projects = prefsDir ? readProjects(prefsDir) : [];
+  if (projects.length > 0) {
+    // Multi-project mode
+    for (const proj of projects) {
+      const ws = new WatcherSet(proj.name, proj.worcaDir || join(proj.path, '.worca'), {
+        broadcaster,
+        getSubs: clientManager.getSubs,
+        wss,
+        settingsPath: proj.settingsPath || join(proj.path, '.claude', 'settings.json'),
+        projectRoot: proj.path,
+        webhookInbox,
+      });
+      ws.create();
+      watcherSets.set(proj.name, ws);
     }
-    return join(worcaDir, 'runs', runId);
+  } else {
+    // Single-project mode — synthesize from construction-time config
+    const effectiveRoot = projectRoot || (worcaDir ? join(worcaDir, '..') : process.cwd());
+    const synth = synthesizeDefaultProject(effectiveRoot);
+    const ws = new WatcherSet(synth.name, worcaDir, {
+      broadcaster,
+      getSubs: clientManager.getSubs,
+      wss,
+      settingsPath,
+      projectRoot,
+      webhookInbox,
+    });
+    ws.create();
+    watcherSets.set(synth.name, ws);
   }
 
-  // 3. Log watcher (created before status watcher so onActiveRunChange can reference it)
-  // We'll set up the dependency via a late-bound reference
-  let logWatcher;
+  // Default WatcherSet — used by message router (Phase 1a: UI is single-project)
+  const defaultWs = watcherSets.values().next().value;
 
-  // 4. Status watcher — owns refresh, activeRun tracking
-  const statusWatcher = createStatusWatcher({
-    worcaDir,
-    settingsPath,
-    broadcaster,
-    getSubs: clientManager.getSubs,
-    wss,
-    onActiveRunChange: () => {
-      if (logWatcher) logWatcher.clearLogWatchers();
-    },
-  });
-
-  // Now create log watcher with status watcher's resolveActiveRunDir
-  logWatcher = createLogWatcher({
-    broadcaster,
-    resolveActiveRunDir: statusWatcher.resolveActiveRunDir,
-    worcaDir,
-    currentActiveRunId: statusWatcher.currentActiveRunId,
-  });
-
-  // 5. Beads watcher
-  const beadsWatcher = createBeadsWatcher({ worcaDir, broadcaster });
-
-  // 6. Event watcher
-  const eventWatcher = createEventWatcher({
-    broadcaster,
-    getSubs: clientManager.getSubs,
-    wss,
-    resolveRunDirById,
-  });
-
-  // 7. Message router — delegates to all other modules
+  // 4. Message router — delegates to default project's watchers
   const messageRouter = createMessageRouter({
     worcaDir,
     settingsPath,
@@ -92,16 +83,47 @@ export function attachWsServer(httpServer, config) {
     webhookInbox,
     clientManager,
     broadcaster,
-    statusWatcher,
-    logWatcher,
-    beadsWatcher,
-    eventWatcher,
+    statusWatcher: defaultWs.statusWatcher,
+    logWatcher: defaultWs.logWatcher,
+    beadsWatcher: defaultWs.beadsWatcher,
+    eventWatcher: defaultWs.eventWatcher,
   });
+
+  /**
+   * Scoped scheduleRefresh: with projectName refreshes one, without refreshes all.
+   */
+  function scheduleRefresh(projectName) {
+    if (projectName) {
+      const ws = watcherSets.get(projectName);
+      if (ws) ws.scheduleRefresh();
+    } else {
+      for (const ws of watcherSets.values()) {
+        ws.scheduleRefresh();
+      }
+    }
+  }
 
   // Connection lifecycle
   wss.on('connection', (ws) => {
     ws.isAlive = true;
     clientManager.ensureSubs(ws);
+
+    // Send hello handshake when multi-project is configured.
+    // Protocol 2 clients reply with hello-ack; protocol 1 clients ignore it.
+    if (prefsDir) {
+      ws.send(JSON.stringify({
+        id: `evt-${Date.now()}`,
+        ok: true,
+        type: 'hello',
+        payload: { protocol: 2, capabilities: ['multi-project'] },
+      }));
+
+      // Timeout: if no hello-ack in 2s, client stays at protocol 1 (legacy)
+      const helloTimeout = setTimeout(() => {
+        // No-op: client stays at protocol 1 by default
+      }, 2000);
+      ws._helloTimeout = helloTimeout;
+    }
 
     ws.on('pong', () => {
       ws.isAlive = true;
@@ -115,17 +137,19 @@ export function attachWsServer(httpServer, config) {
       const s = clientManager.getSubs(ws);
       const eventsRunId = s?.eventsRunId;
       clientManager.deleteSubs(ws);
-      if (eventsRunId) eventWatcher.maybeCloseEventWatcher(eventsRunId);
+      if (eventsRunId && defaultWs.eventWatcher) {
+        defaultWs.eventWatcher.maybeCloseEventWatcher(eventsRunId);
+      }
     });
   });
 
   wss.on('close', () => {
     clientManager.destroy();
-    statusWatcher.destroy();
-    logWatcher.destroy();
-    beadsWatcher.destroy();
-    eventWatcher.destroy();
+    for (const ws of watcherSets.values()) {
+      ws.destroy();
+    }
+    watcherSets.clear();
   });
 
-  return { wss, broadcast: broadcaster.broadcast, scheduleRefresh: statusWatcher.scheduleRefresh };
+  return { wss, broadcast: broadcaster.broadcast, scheduleRefresh };
 }

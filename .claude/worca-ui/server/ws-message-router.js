@@ -57,7 +57,7 @@ function _buildStagePrompt(stage, rawPrompt) {
  *   prefsPath: string,
  *   projectRoot: string,
  *   webhookInbox: object,
- *   clientManager: { ensureSubs: Function, getSubs: Function },
+ *   clientManager: { ensureSubs: Function, getSubs: Function, setProtocol: Function },
  *   broadcaster: { broadcast: Function, broadcastToSubscribers: Function },
  *   statusWatcher: { scheduleRefresh: Function, lastPipelineStatus: Map, resolveActiveRunDir: Function },
  *   logWatcher: { watchLogFile: Function, watchAllLogFiles: Function, sendArchivedLogs: Function, resolveLogsBaseDir: Function },
@@ -93,6 +93,19 @@ export function createMessageRouter({
           error: { code: 'bad_json', message: 'Invalid JSON' },
         }),
       );
+      return;
+    }
+
+    // hello-ack — protocol handshake response (not a standard request envelope)
+    if (json.type === 'hello-ack') {
+      const protocol = json.payload?.protocol || 1;
+      const projectId = json.payload?.projectId || null;
+      clientManager.setProtocol(ws, protocol, projectId);
+      // Clear hello timeout if set
+      if (ws._helloTimeout) {
+        clearTimeout(ws._helloTimeout);
+        ws._helloTimeout = null;
+      }
       return;
     }
 

@@ -33,14 +33,16 @@ import { createInbox } from './webhook-inbox.js';
 const projectRoot = findProjectRoot(process.cwd());
 const worcaDir = join(projectRoot, '.worca');
 const settingsPath = join(projectRoot, '.claude', 'settings.json');
+const prefsDir = join(homedir(), '.worca');
 const webhookInbox = createInbox();
-const app = createApp({ settingsPath, worcaDir, projectRoot, webhookInbox });
+const app = createApp({ settingsPath, worcaDir, projectRoot, webhookInbox, prefsDir });
 const server = createServer(app);
 
 const { broadcast, scheduleRefresh } = attachWsServer(server, {
   worcaDir,
   settingsPath,
   prefsPath: join(homedir(), '.worca', 'preferences.json'),
+  prefsDir,
   webhookInbox,
   projectRoot,
 });

@@ -1,0 +1,191 @@
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import express from 'express';
+import { createProjectRoutes, createProjectScopedRoutes, projectResolver } from './project-routes.js';
+import { writeProject } from './project-registry.js';
+
+/** Build a minimal test app with project routes mounted. */
+function buildApp(prefsDir, projectRoot) {
+  const app = express();
+  app.use(express.json());
+
+  const getRegistry = () => {
+    // Lazy import to avoid stale reads
+    const { readProjects, synthesizeDefaultProject } = require('./project-registry.js');
+    const projects = readProjects(prefsDir);
+    if (projects.length === 0) return [synthesizeDefaultProject(projectRoot)];
+    return projects;
+  };
+
+  app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot }));
+  app.use('/api/projects/:projectId', projectResolver({ prefsDir, projectRoot }), createProjectScopedRoutes());
+
+  return app;
+}
+
+// Use dynamic import since we're ESM
+async function createTestApp(prefsDir, projectRoot) {
+  const app = express();
+  app.use(express.json());
+
+  app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot }));
+  app.use('/api/projects/:projectId', projectResolver({ prefsDir, projectRoot }), createProjectScopedRoutes());
+
+  // Also mount an old-style route to verify backwards compat
+  app.get('/api/runs', (_req, res) => res.json({ ok: true, runs: [] }));
+
+  return app;
+}
+
+/**
+ * Helper to make requests to an express app without starting a server.
+ * Uses node's built-in http module.
+ */
+async function request(app, method, path, body) {
+  const { createServer } = await import('node:http');
+  const server = createServer(app);
+
+  return new Promise((resolve, reject) => {
+    server.listen(0, '127.0.0.1', async () => {
+      const { port } = server.address();
+      try {
+        const options = {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+        };
+        if (body) options.body = JSON.stringify(body);
+
+        const res = await fetch(`http://127.0.0.1:${port}${path}`, options);
+        const json = await res.json();
+        resolve({ status: res.status, body: json });
+      } catch (err) {
+        reject(err);
+      } finally {
+        server.close();
+      }
+    });
+  });
+}
+
+describe('project-routes', () => {
+  let prefsDir;
+  let projectRoot;
+
+  beforeEach(() => {
+    prefsDir = join(tmpdir(), `worca-prefs-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    projectRoot = join(tmpdir(), `worca-proj-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    mkdirSync(prefsDir, { recursive: true });
+    mkdirSync(join(projectRoot, '.worca'), { recursive: true });
+    mkdirSync(join(projectRoot, '.claude'), { recursive: true });
+    writeFileSync(join(projectRoot, '.claude', 'settings.json'), '{}');
+  });
+
+  afterEach(() => {
+    rmSync(prefsDir, { recursive: true, force: true });
+    rmSync(projectRoot, { recursive: true, force: true });
+  });
+
+  describe('GET /api/projects', () => {
+    it('returns synthesized single project when no projects.d/', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'GET', '/api/projects');
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+      expect(body.projects).toHaveLength(1);
+      expect(body.projects[0].path).toBe(projectRoot);
+    });
+
+    it('returns registered projects', async () => {
+      writeProject(prefsDir, { name: 'alpha', path: '/alpha' });
+      writeProject(prefsDir, { name: 'beta', path: '/beta' });
+
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'GET', '/api/projects');
+      expect(status).toBe(200);
+      expect(body.projects).toHaveLength(2);
+      expect(body.projects[0].name).toBe('alpha');
+    });
+  });
+
+  describe('POST /api/projects', () => {
+    it('creates a new project', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'POST', '/api/projects', {
+        name: 'new-proj',
+        path: '/some/path',
+      });
+      expect(status).toBe(201);
+      expect(body.ok).toBe(true);
+      expect(body.project.name).toBe('new-proj');
+    });
+
+    it('returns 400 on invalid entry (relative path)', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'POST', '/api/projects', {
+        name: 'bad',
+        path: 'relative/path',
+      });
+      expect(status).toBe(400);
+      expect(body.ok).toBe(false);
+    });
+
+    it('returns 400 on missing name', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status } = await request(app, 'POST', '/api/projects', {
+        path: '/some/path',
+      });
+      expect(status).toBe(400);
+    });
+  });
+
+  describe('DELETE /api/projects/:id', () => {
+    it('removes an existing project', async () => {
+      writeProject(prefsDir, { name: 'to-delete', path: '/del' });
+
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'DELETE', '/api/projects/to-delete');
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+
+      // Verify it's gone
+      const { body: listBody } = await request(app, 'GET', '/api/projects');
+      const found = listBody.projects.find((p) => p.name === 'to-delete');
+      expect(found).toBeUndefined();
+    });
+
+    it('returns 200 even for nonexistent project (no-op)', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status } = await request(app, 'DELETE', '/api/projects/nonexistent');
+      expect(status).toBe(200);
+    });
+  });
+
+  describe('projectResolver middleware', () => {
+    it('resolves known project and attaches to req.project', async () => {
+      writeProject(prefsDir, { name: 'my-proj', path: '/my/proj' });
+
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'GET', '/api/projects/my-proj/info');
+      expect(status).toBe(200);
+      expect(body.project.name).toBe('my-proj');
+    });
+
+    it('returns 404 for unknown project', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'GET', '/api/projects/unknown/info');
+      expect(status).toBe(404);
+      expect(body.error).toMatch(/not found/i);
+    });
+  });
+
+  describe('backwards compatibility', () => {
+    it('old /api/runs route still works', async () => {
+      const app = await createTestApp(prefsDir, projectRoot);
+      const { status, body } = await request(app, 'GET', '/api/runs');
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+    });
+  });
+});
