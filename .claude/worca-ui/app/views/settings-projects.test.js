@@ -69,7 +69,7 @@ describe('Projects tab in settings', () => {
         rerender: vi.fn(),
       }),
     );
-    const removeButtons = container.querySelectorAll('sl-icon-button');
+    const removeButtons = container.querySelectorAll('sl-button[variant="danger"]');
     expect(removeButtons.length).toBe(2);
   });
 });

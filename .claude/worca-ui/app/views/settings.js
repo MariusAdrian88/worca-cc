@@ -11,6 +11,7 @@ import {
   Save,
   Settings,
   Shield,
+  Trash2,
   Users,
   X,
   Zap,
@@ -1165,12 +1166,15 @@ function projectsTab(
               <div class="project-name">${p.name}</div>
               <div class="project-path">${p.path}</div>
             </div>
-            <sl-icon-button
-              name="trash"
-              label="Remove ${p.name}"
-              class="projects-remove-btn"
+            <sl-button
+              size="small"
+              variant="danger"
+              outline
               @click=${() => handleRemove(p.name)}
-            ></sl-icon-button>
+            >
+              ${unsafeHTML(iconSvg(Trash2, 14))}
+              Remove
+            </sl-button>
           </div>
         `,
         )}
