@@ -372,13 +372,68 @@ function handleHello(_payload) {
       const currentProjectId = route.projectId || projects[0]?.name || null;
       store.setState({ currentProjectId });
 
-      // Send hello-ack
+      // Send hello-ack — sets project context on server before any requests
       ws.sendRaw({
         type: 'hello-ack',
         payload: { protocol: 2, projectId: currentProjectId },
       });
+
+      // Now that project context is set, fetch project-scoped data
+      fetchProjectScopedData();
     })
     .catch(() => {});
+}
+
+/** Fetch all project-scoped data after hello-ack sets the project context. */
+function fetchProjectScopedData() {
+  ws.send('list-runs')
+    .then((payload) => {
+      const runs = {};
+      for (const run of payload.runs || []) runs[run.id] = run;
+      store.setState({ runs });
+      if (payload.settings) settings = payload.settings;
+    })
+    .catch(() => {});
+
+  ws.send('list-beads-issues')
+    .then((payload) => {
+      store.setState({
+        beads: {
+          issues: payload.issues || [],
+          dbExists: payload.dbExists ?? false,
+          dbPath: payload.dbPath || null,
+          loading: false,
+        },
+      });
+    })
+    .catch(() => {});
+
+  ws.send('get-webhook-inbox')
+    .then((payload) => {
+      store.setState({
+        webhookInbox: {
+          events: payload.events || [],
+          controlAction: payload.controlAction || 'continue',
+        },
+      });
+    })
+    .catch(() => {});
+
+  fetchBeadsCounts();
+  fetchProjectInfo();
+
+  // Subscribe to active run if selected
+  if (route.runId) {
+    if (route.section !== 'beads') {
+      ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
+      ws.send('subscribe-log', {
+        stage: logFilter === '*' ? null : logFilter,
+        runId: route.runId,
+      }).catch(() => {});
+    }
+    fetchRunBeads(route.runId);
+    if (route.section === 'beads') fetchBeadsRunIssues(route.runId);
+  }
 }
 
 ws.on('hello', handleHello);
@@ -482,64 +537,15 @@ function handleProjectSwitch(newProjectId) {
 ws.onConnection((state) => {
   connectionState = state;
   if (state === 'open') {
-    ws.send('list-runs')
-      .then((payload) => {
-        const runs = {};
-        for (const run of payload.runs || []) {
-          runs[run.id] = run;
-        }
-        store.setState({ runs });
-        if (payload.settings) settings = payload.settings;
-      })
-      .catch(() => {});
-
+    // Only fetch global (non-project-scoped) data here.
+    // Project-scoped data is fetched in handleHello after hello-ack sets
+    // the project context on the server.
     ws.send('get-preferences')
       .then((prefs) => {
         store.setState({ preferences: prefs });
         applyTheme(prefs.theme || 'light');
       })
       .catch(() => {});
-
-    ws.send('list-beads-issues')
-      .then((payload) => {
-        store.setState({
-          beads: {
-            issues: payload.issues || [],
-            dbExists: payload.dbExists ?? false,
-            dbPath: payload.dbPath || null,
-            loading: false,
-          },
-        });
-      })
-      .catch(() => {});
-
-    ws.send('get-webhook-inbox')
-      .then((payload) => {
-        store.setState({
-          webhookInbox: {
-            events: payload.events || [],
-            controlAction: payload.controlAction || 'continue',
-          },
-        });
-      })
-      .catch(() => {});
-
-    fetchBeadsCounts();
-
-    fetchProjectInfo();
-
-    // Subscribe to active run if selected
-    if (route.runId) {
-      if (route.section !== 'beads') {
-        ws.send('subscribe-run', { runId: route.runId }).catch(() => {});
-        ws.send('subscribe-log', {
-          stage: logFilter === '*' ? null : logFilter,
-          runId: route.runId,
-        }).catch(() => {});
-      }
-      fetchRunBeads(route.runId);
-      if (route.section === 'beads') fetchBeadsRunIssues(route.runId);
-    }
   }
   rerender();
 });
