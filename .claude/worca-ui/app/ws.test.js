@@ -70,10 +70,15 @@ describe('ws client', () => {
       }),
     });
 
-    expect(handler).toHaveBeenCalledWith({
-      protocol: 2,
-      capabilities: ['multi-project'],
-    });
+    expect(handler).toHaveBeenCalledWith(
+      { protocol: 2, capabilities: ['multi-project'] },
+      {
+        id: 'evt-hello-1',
+        ok: true,
+        type: 'hello',
+        payload: { protocol: 2, capabilities: ['multi-project'] },
+      },
+    );
     client.close();
   });
 

@@ -173,7 +173,10 @@ function autoResetLogFilterOnStageChange(prevRun, newRun) {
 
 // --- Wire WS events to state ---
 
-ws.on('runs-list', (payload) => {
+ws.on('runs-list', (payload, msg) => {
+  // In multi-project mode, ignore runs-list from other projects
+  const currentProject = store.getState().currentProjectId;
+  if (msg?.project && currentProject && msg.project !== currentProject) return;
   const runs = {};
   for (const run of payload.runs || []) {
     runs[run.id] = run;
@@ -263,7 +266,9 @@ ws.on('preferences', (payload) => {
   }
 });
 
-ws.on('beads-update', (payload) => {
+ws.on('beads-update', (payload, msg) => {
+  const currentProject = store.getState().currentProjectId;
+  if (msg?.project && currentProject && msg.project !== currentProject) return;
   if (payload) {
     store.setState({
       beads: {

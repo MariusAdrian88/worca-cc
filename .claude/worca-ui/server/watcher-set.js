@@ -102,6 +102,7 @@ export class WatcherSet {
         broadcaster,
         getSubs,
         wss,
+        projectId: this.projectId,
         onActiveRunChange: () => {
           if (this.logWatcher) this.logWatcher.clearLogWatchers();
         },
@@ -148,6 +149,7 @@ export class WatcherSet {
         this.beadsWatcher = this._factories.createBeadsWatcher({
           worcaDir,
           broadcaster,
+          projectId: this.projectId,
         });
       } catch (err) {
         console.error(

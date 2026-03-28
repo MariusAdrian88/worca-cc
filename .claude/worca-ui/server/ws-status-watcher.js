@@ -38,7 +38,8 @@ export function resolveActiveRunDir(worcaDir) {
  *   broadcaster: { broadcast: Function, broadcastToSubscribers: Function },
  *   getSubs: Function,
  *   wss: import('ws').WebSocketServer,
- *   onActiveRunChange?: () => void
+ *   onActiveRunChange?: () => void,
+ *   projectId?: string
  * }} deps
  */
 export function createStatusWatcher({
@@ -48,6 +49,7 @@ export function createStatusWatcher({
   getSubs,
   wss,
   onActiveRunChange,
+  projectId,
 }) {
   let REFRESH_TIMER = null;
   const lastPipelineStatus = new Map();
@@ -107,7 +109,7 @@ export function createStatusWatcher({
             lastPipelineStatus.set(run.id, currStatus);
           }
         }
-        broadcaster.broadcast('runs-list', { runs, settings });
+        broadcaster.broadcast('runs-list', { runs, settings }, projectId);
       } catch {
         /* ignore */
       }

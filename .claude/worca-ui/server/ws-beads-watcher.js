@@ -11,9 +11,9 @@ import { listIssues } from './beads-reader.js';
 const BEADS_DEBOUNCE_MS = 200;
 
 /**
- * @param {{ worcaDir: string, broadcaster: { broadcast: Function } }} deps
+ * @param {{ worcaDir: string, broadcaster: { broadcast: Function }, projectId?: string }} deps
  */
-export function createBeadsWatcher({ worcaDir, broadcaster }) {
+export function createBeadsWatcher({ worcaDir, broadcaster, projectId }) {
   const beadsDbPath = resolve(join(worcaDir, '..', '.beads', 'beads.db'));
   const beadsDir = resolve(join(worcaDir, '..', '.beads'));
   let beadsWatcher = null;
@@ -29,7 +29,7 @@ export function createBeadsWatcher({ worcaDir, broadcaster }) {
           issues,
           dbExists: true,
           dbPath: beadsDbPath,
-        });
+        }, projectId);
       } catch {
         /* ignore */
       }

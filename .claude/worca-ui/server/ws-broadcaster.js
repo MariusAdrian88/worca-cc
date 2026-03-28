@@ -23,7 +23,7 @@ export function createBroadcaster({ wss, getSubs }) {
     }
   }
 
-  function broadcast(type, payload) {
+  function broadcast(type, payload, projectId) {
     const base = {
       id: `evt-${Date.now()}`,
       ok: true,
@@ -31,9 +31,14 @@ export function createBroadcaster({ wss, getSubs }) {
       payload,
     };
     for (const ws of wss.clients) {
-      if (ws.readyState === ws.OPEN) {
-        sendToClient(ws, base);
+      if (ws.readyState !== ws.OPEN) continue;
+      if (projectId) {
+        const s = getSubs(ws);
+        // Skip clients subscribed to a different project.
+        // Send to unscoped clients (protocol 1) and matching protocol 2 clients.
+        if (s && s.protocolVersion >= 2 && s.projectId && s.projectId !== projectId) continue;
       }
+      sendToClient(ws, base);
     }
   }
 
