@@ -16,6 +16,7 @@ import {
 } from './utils/icons.js';
 import { statusIcon } from './utils/status-badge.js';
 import { applyTheme } from './utils/theme.js';
+import { confirmDialogTemplate, showConfirm } from './utils/confirm-dialog.js';
 import { formatTitle } from './utils/title.js';
 import { addProjectDialogView } from './views/add-project-dialog.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
@@ -46,7 +47,7 @@ import {
 } from './views/new-run.js';
 import { runBeadsSectionView, runDetailView } from './views/run-detail.js';
 import { runListView } from './views/run-list.js';
-import { loadSettings, settingsView } from './views/settings.js';
+import { loadSettings, projectSettingsView, settingsView } from './views/settings.js';
 import { sidebarView } from './views/sidebar.js';
 import { tokenCostsView } from './views/token-costs.js';
 import { webhookInboxView } from './views/webhook-inbox.js';
@@ -93,8 +94,6 @@ let logIterationFilter = null; // null = all iterations, number = specific
 let pipelineAction = null; // null | 'stopping' | 'resuming' | 'pausing'
 let _controlPending = null; // null | { action: 'pause'|'resume'|'stop', runId: string }
 let actionError = null; // null | string (error message, auto-clears)
-let stopConfirmOpen = false;
-let restartStageConfirmOpen = false;
 let restartStageKey = null;
 const promptCache = {}; // { [runId]: { [stage]: { agentInstructions, userPrompt, agent } } }
 const promptCachePending = new Set(); // tracks in-flight fetches
@@ -110,7 +109,6 @@ const stageIterationTab = new Map(); // stageKey → iterationNumber (user's las
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
 let costsFetched = false;
-let learnConfirmOpen = false;
 let webhookSelectedId = null;
 let webhookCategoryFilter = 'all';
 let webhookRunFilter = null;
@@ -530,6 +528,10 @@ onHashChange((newRoute) => {
   }
 
   if (route.section === 'settings') {
+    loadSettings(null).then(() => rerender());
+  }
+
+  if (route.section === 'project-settings') {
     loadSettings(store.getState().currentProjectId || null).then(() =>
       rerender(),
     );
@@ -636,21 +638,16 @@ function dismissActionError() {
 }
 
 function handleStopPipeline() {
-  stopConfirmOpen = true;
-  rerender();
-  requestAnimationFrame(() => {
-    const dialog = document.getElementById('stop-confirm-dialog');
-    if (dialog) dialog.show();
-  });
-}
-
-function handleCancelStop() {
-  stopConfirmOpen = false;
-  rerender();
+  showConfirm({
+    label: 'Stop Pipeline?',
+    message: 'Are you sure? The current stage will be interrupted and marked as error.',
+    confirmLabel: 'Stop',
+    confirmVariant: 'danger',
+    onConfirm: handleConfirmStop,
+  }, rerender);
 }
 
 async function handleConfirmStop() {
-  stopConfirmOpen = false;
   pipelineAction = 'stopping';
   actionError = null;
   rerender();
@@ -745,22 +742,17 @@ async function handleResumeRun(runId) {
 
 function handleRestartStage(stageKey) {
   restartStageKey = stageKey;
-  restartStageConfirmOpen = true;
-  rerender();
-  requestAnimationFrame(() => {
-    const dialog = document.getElementById('restart-stage-confirm-dialog');
-    if (dialog) dialog.show();
-  });
-}
-
-function handleCancelRestartStage() {
-  restartStageConfirmOpen = false;
-  restartStageKey = null;
-  rerender();
+  showConfirm({
+    label: 'Restart Stage?',
+    message: `Restart the "${stageKey}" stage? The pipeline will resume from this point.`,
+    confirmLabel: 'Restart',
+    confirmVariant: 'warning',
+    onConfirm: handleConfirmRestartStage,
+    onCancel: () => { restartStageKey = null; },
+  }, rerender);
 }
 
 async function handleConfirmRestartStage() {
-  restartStageConfirmOpen = false;
   const stage = restartStageKey;
   restartStageKey = null;
   rerender();
@@ -946,23 +938,19 @@ function handleRunLearn() {
   const run = store.getState().runs[route.runId];
   const learnStatus = run?.stages?.learn?.status;
   if (learnStatus === 'completed' || learnStatus === 'error') {
-    learnConfirmOpen = true;
-    rerender();
-    requestAnimationFrame(() => {
-      document.getElementById('learn-confirm-dialog')?.show();
-    });
+    showConfirm({
+      label: 'Re-run Learning Analysis?',
+      message: 'This will replace existing learnings. Continue?',
+      confirmLabel: 'Re-run',
+      confirmVariant: 'warning',
+      onConfirm: doRunLearn,
+    }, rerender);
     return;
   }
   doRunLearn();
 }
 
-function handleCancelLearn() {
-  learnConfirmOpen = false;
-  rerender();
-}
-
 async function doRunLearn() {
-  learnConfirmOpen = false;
   rerender();
   try {
     const runId = route.runId;
@@ -1121,6 +1109,9 @@ function contentHeaderView() {
   } else if (route.section === 'settings') {
     title = 'Settings';
     showBack = true;
+  } else if (route.section === 'project-settings') {
+    title = 'Project Settings';
+    showBack = true;
   }
 
   return html`
@@ -1249,12 +1240,18 @@ function mainContentView() {
     return newRunView(state, { rerender });
   }
 
+  if (route.section === 'project-settings') {
+    return projectSettingsView(state.preferences, {
+      rerender,
+      currentProjectId: state.currentProjectId || null,
+    });
+  }
+
   if (route.section === 'settings') {
     return settingsView(state.preferences, {
       rerender,
       onThemeToggle: handleThemeToggle,
       onSaveNotifications: handleSaveNotifications,
-      currentProjectId: state.currentProjectId || null,
       projects: state.projects || [],
       onProjectAdd: (result) => {
         if (result?.openDialog) {
@@ -1358,54 +1355,7 @@ function rerender() {
     `
         : ''
     }
-    ${
-      stopConfirmOpen
-        ? html`
-      <sl-dialog id="stop-confirm-dialog" label="Stop Pipeline?" @sl-after-hide=${handleCancelStop}>
-        <p>Are you sure? The current stage will be interrupted and marked as error.</p>
-        <sl-button slot="footer" @click=${() => {
-          document.getElementById('stop-confirm-dialog')?.hide();
-        }}>Cancel</sl-button>
-        <sl-button slot="footer" variant="danger" @click=${() => {
-          document.getElementById('stop-confirm-dialog')?.hide();
-          handleConfirmStop();
-        }}>Stop</sl-button>
-      </sl-dialog>
-    `
-        : ''
-    }
-    ${
-      restartStageConfirmOpen
-        ? html`
-      <sl-dialog id="restart-stage-confirm-dialog" label="Restart Stage?" @sl-after-hide=${handleCancelRestartStage}>
-        <p>Restart the "${restartStageKey}" stage? The pipeline will resume from this point.</p>
-        <sl-button slot="footer" @click=${() => {
-          document.getElementById('restart-stage-confirm-dialog')?.hide();
-        }}>Cancel</sl-button>
-        <sl-button slot="footer" variant="warning" @click=${() => {
-          document.getElementById('restart-stage-confirm-dialog')?.hide();
-          handleConfirmRestartStage();
-        }}>Restart</sl-button>
-      </sl-dialog>
-    `
-        : ''
-    }
-    ${
-      learnConfirmOpen
-        ? html`
-      <sl-dialog id="learn-confirm-dialog" label="Re-run Learning Analysis?" @sl-after-hide=${handleCancelLearn}>
-        <p>This will replace existing learnings. Continue?</p>
-        <sl-button slot="footer" @click=${() => {
-          document.getElementById('learn-confirm-dialog')?.hide();
-        }}>Cancel</sl-button>
-        <sl-button slot="footer" variant="warning" @click=${() => {
-          document.getElementById('learn-confirm-dialog')?.hide();
-          doRunLearn();
-        }}>Re-run</sl-button>
-      </sl-dialog>
-    `
-        : ''
-    }
+    ${confirmDialogTemplate()}
     ${addProjectDialogView(state, {
       onProjectAdd: (_project) => {
         store.setState({ addProjectDialogOpen: false });
@@ -1464,6 +1414,9 @@ store.subscribe(() => rerender());
 applyTheme(store.getState().preferences.theme);
 fetchProjectInfo();
 if (route.section === 'settings') {
+  loadSettings(null).then(() => rerender());
+}
+if (route.section === 'project-settings') {
   loadSettings(store.getState().currentProjectId || null).then(() =>
     rerender(),
   );
