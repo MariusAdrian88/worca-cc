@@ -39,6 +39,7 @@ import RotateCw from 'lucide/dist/esm/icons/rotate-cw';
 import Save from 'lucide/dist/esm/icons/save';
 import Search from 'lucide/dist/esm/icons/search';
 import Settings from 'lucide/dist/esm/icons/settings';
+import SlidersHorizontal from 'lucide/dist/esm/icons/sliders-horizontal';
 import Shield from 'lucide/dist/esm/icons/shield';
 import Square from 'lucide/dist/esm/icons/square';
 import Star from 'lucide/dist/esm/icons/star';
@@ -100,6 +101,7 @@ export {
   ChevronRight,
   Save,
   Settings,
+  SlidersHorizontal,
   Timer,
   Cpu,
   Star,

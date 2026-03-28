@@ -1540,9 +1540,16 @@ sl-details.log-history-panel::part(content) {
   gap: 10px;
 }
 
+.settings-tab-actions sl-button::part(label) {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .settings-tab-actions sl-button svg {
   width: 14px;
   height: 14px;
+  flex-shrink: 0;
 }
 
 /* Pipeline flow visualization */
