@@ -60,7 +60,7 @@ export function discoverRuns(worcaDir) {
     }
   }
 
-  // 2. Scan .worca/runs/ for non-active runs
+  // 2. Scan .worca/runs/ for other runs
   const runsDir = join(worcaDir, 'runs');
   if (existsSync(runsDir)) {
     for (const entry of readdirSync(runsDir)) {
@@ -71,7 +71,8 @@ export function discoverRuns(worcaDir) {
         const id = createRunId(status);
         if (seenIds.has(id)) continue;
         seenIds.add(id);
-        runs.push({ id, active: false, ...status });
+        const active = !isTerminal(status) && status.pipeline_status === 'running';
+        runs.push({ id, active, ...status });
       } catch {
         /* ignore */
       }

@@ -56,6 +56,7 @@ export function createStatusWatcher({
   let statusWatcher = null;
   let watchedRunDir = null;
   let activeRunWatcher = null;
+  let runsDirWatcher = null;
 
   function currentActiveRunId() {
     if (!watchedRunDir) return null;
@@ -209,6 +210,24 @@ export function createStatusWatcher({
     /* ignore */
   }
 
+  // Watch .worca/runs/ for status changes in ANY run (concurrent pipelines)
+  const runsDir = join(worcaDir, 'runs');
+  try {
+    if (existsSync(runsDir)) {
+      runsDirWatcher = watch(
+        runsDir,
+        { recursive: true },
+        (_eventType, filename) => {
+          if (!filename || filename.endsWith('status.json')) {
+            scheduleRefresh();
+          }
+        },
+      );
+    }
+  } catch {
+    /* ignore */
+  }
+
   function getWatchedRunDir() {
     return watchedRunDir;
   }
@@ -216,6 +235,7 @@ export function createStatusWatcher({
   function destroy() {
     if (statusWatcher) statusWatcher.close();
     if (activeRunWatcher) activeRunWatcher.close();
+    if (runsDirWatcher) runsDirWatcher.close();
   }
 
   return {
