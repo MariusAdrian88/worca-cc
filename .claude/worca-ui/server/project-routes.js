@@ -38,6 +38,11 @@ import {
 } from './settings-merge.js';
 import { validateSettingsPayload } from './settings-validator.js';
 import { discoverRuns } from './watcher.js';
+import {
+  checkWorcaInstalled,
+  getSourceRoot,
+  runWorcaSetup,
+} from './worca-setup.js';
 
 /**
  * Middleware that resolves :projectId to a project entry and attaches it to req.project.
@@ -859,6 +864,29 @@ export function createProjectScopedRoutes() {
     try {
       const result = pausePipeline(worktreeWorcaDir, runId);
       res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // GET /api/projects/:projectId/worca-status — check worca installation state
+  router.get('/worca-status', (req, res) => {
+    const installed = checkWorcaInstalled(req.project.projectRoot);
+    res.json({ ok: true, installed });
+  });
+
+  // POST /api/projects/:projectId/worca-setup — install or update worca
+  router.post('/worca-setup', (req, res) => {
+    const sourceRoot = getSourceRoot();
+    if (!sourceRoot) {
+      return res.status(500).json({
+        ok: false,
+        error: 'Could not locate worca-cc source repository',
+      });
+    }
+    try {
+      const { pid } = runWorcaSetup(sourceRoot, req.project.projectRoot);
+      res.json({ ok: true, pid });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
     }

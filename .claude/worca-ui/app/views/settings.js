@@ -1179,6 +1179,19 @@ function projectsTab(
     }, _rerender);
   }
 
+  function confirmWorcaUpdate(projectName) {
+    showConfirm({
+      label: 'Update Worca',
+      message: html`Update worca pipeline files in <strong>${projectName}</strong>?`,
+      confirmLabel: 'Update',
+      confirmVariant: 'primary',
+      onConfirm: () => {
+        fetch(`/api/projects/${projectName}/worca-setup`, { method: 'POST' })
+          .catch(() => {});
+      },
+    }, _rerender);
+  }
+
   function handleOpenAddDialog() {
     onProjectAdd?.({ openDialog: true });
   }
@@ -1194,15 +1207,26 @@ function projectsTab(
               <div class="project-name">${p.name}</div>
               <div class="project-path">${p.path}</div>
             </div>
-            <sl-button
-              size="small"
-              variant="danger"
-              outline
-              @click=${() => confirmRemove(p.name)}
-            >
-              ${unsafeHTML(iconSvg(Trash2, 14))}
-              Remove
-            </sl-button>
+            <div style="display:flex; gap:0.5rem;">
+              <sl-button
+                size="small"
+                variant="primary"
+                outline
+                @click=${() => confirmWorcaUpdate(p.name)}
+              >
+                ${unsafeHTML(iconSvg(RefreshCw, 14))}
+                Update
+              </sl-button>
+              <sl-button
+                size="small"
+                variant="danger"
+                outline
+                @click=${() => confirmRemove(p.name)}
+              >
+                ${unsafeHTML(iconSvg(Trash2, 14))}
+                Remove
+              </sl-button>
+            </div>
           </div>
         `,
         )}

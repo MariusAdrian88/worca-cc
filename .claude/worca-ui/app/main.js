@@ -1519,6 +1519,7 @@ function rerender() {
         store.setState({ addProjectDialogOpen: false });
         rerender();
       },
+      rerender,
     })}
   `,
     appEl,
