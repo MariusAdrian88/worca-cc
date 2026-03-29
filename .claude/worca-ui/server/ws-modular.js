@@ -196,12 +196,11 @@ export function attachWsServer(httpServer, config) {
   function scheduleRefresh(projectName) {
     if (projectName) {
       const ws = watcherSets.get(projectName);
-      if (ws) ws.scheduleRefresh();
-    } else {
-      for (const ws of watcherSets.values()) {
-        ws.scheduleRefresh();
-      }
+      if (ws) { ws.scheduleRefresh(); return true; }
+      return false;
     }
+    for (const ws of watcherSets.values()) ws.scheduleRefresh();
+    return true;
   }
 
   // Connection lifecycle

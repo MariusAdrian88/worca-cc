@@ -296,8 +296,11 @@ export function createMessageRouter({
 
       if (!proj.wset.logWatcher) return;
 
-      const archivedLogDir = runId
+      const archivedRunDir = runId
         ? join(proj.worcaDir, 'results', runId)
+        : null;
+      const archivedLogDir = archivedRunDir
+        ? join(archivedRunDir, 'logs')
         : null;
       const isArchived = archivedLogDir && existsSync(archivedLogDir);
 

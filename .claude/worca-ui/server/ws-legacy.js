@@ -947,8 +947,9 @@ export function attachWsServer(httpServer, config) {
       // Acknowledge the subscription
       ws.send(JSON.stringify(makeOk(req, { subscribed: true })));
 
-      // Check if this is an archived run (logs in .worca/results/{runId}/)
-      const archivedLogDir = runId ? join(worcaDir, 'results', runId) : null;
+      // Check if this is an archived run (logs in .worca/results/{runId}/logs/)
+      const archivedRunDir = runId ? join(worcaDir, 'results', runId) : null;
+      const archivedLogDir = archivedRunDir ? join(archivedRunDir, 'logs') : null;
       const isArchived = archivedLogDir && existsSync(archivedLogDir);
 
       if (isArchived) {

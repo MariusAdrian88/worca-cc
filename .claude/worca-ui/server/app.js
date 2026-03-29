@@ -983,6 +983,29 @@ export function createApp(options = {}) {
     res.json({ name: projectRoot ? basename(projectRoot) : '' });
   });
 
+  // POST /api/projects/inbox — webhook hint for immediate status refresh
+  app.post('/api/projects/inbox', (req, res) => {
+    const body = req.body || {};
+    const projectId = body.project_id
+      || req.headers['x-worca-project']
+      || (body.run_id && app.locals.resolveRunProject?.(body.run_id))
+      || null;
+
+    if (!projectId) {
+      return res.status(400).json({
+        ok: false,
+        error: 'Could not identify project. Provide project_id, X-Worca-Project header, or run_id.',
+      });
+    }
+
+    const refreshed = app.locals.scheduleRefresh?.(projectId);
+    if (refreshed === false) {
+      console.warn(`[webhook-hint] unknown project: ${projectId}`);
+    }
+
+    res.json({ ok: true, project: projectId });
+  });
+
   // Multi-project routes
   if (prefsDir) {
     app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot }));
