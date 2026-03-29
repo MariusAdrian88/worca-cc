@@ -222,6 +222,8 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar-item.active sl-badge {
   --sl-color-primary-600: #ffffff;
   --sl-color-neutral-600: #ffffff;
+  --sl-color-success-600: #ffffff;
+  --sl-color-warning-600: #ffffff;
   --sl-color-neutral-0: var(--accent);
 }
 
@@ -3396,7 +3398,7 @@ sl-details.learnings-panel::part(content) {
 
 .webhook-inbox-list-header {
   display: grid;
-  grid-template-columns: 40px 60px 180px 80px 1fr 70px;
+  grid-template-columns: 40px 75px 65px 180px 80px 1fr minmax(80px, auto);
   gap: 8px;
   padding: 6px 10px;
   background: var(--bg-tertiary);
@@ -3417,7 +3419,7 @@ sl-details.learnings-panel::part(content) {
 
 .webhook-inbox-row {
   display: grid;
-  grid-template-columns: 40px 60px 180px 80px 1fr 70px;
+  grid-template-columns: 40px 75px 65px 180px 80px 1fr minmax(80px, auto);
   gap: 8px;
   padding: 5px 10px;
   border-bottom: 1px solid var(--border-subtle);
@@ -3441,9 +3443,16 @@ sl-details.learnings-panel::part(content) {
   font-family: var(--sl-font-mono);
 }
 
+.wh-col-date {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-family: var(--sl-font-mono);
+}
+
 .wh-col-time {
   color: var(--muted);
   font-size: 0.72rem;
+  font-family: var(--sl-font-mono);
 }
 
 .wh-col-stage {
