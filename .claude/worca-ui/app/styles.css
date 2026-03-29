@@ -2268,7 +2268,7 @@ sl-details.live-output-panel::part(content) {
 
 /* Sidebar new run button */
 .sidebar-new-run {
-  padding: 12px 8px 4px;
+  padding: 8px 8px 4px;
 }
 
 .sidebar-new-run-btn {
@@ -3656,9 +3656,18 @@ sl-details.learnings-panel::part(content) {
 }
 
 /* --- Sidebar Project Selector --- */
-.sidebar-project-section { padding-top: 4px; }
-.sidebar-project-selector { padding: 0 4px; }
+.sidebar-project-section { padding-top: 4px; padding-bottom: 0; }
+.sidebar-project-selector-row { display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+.sidebar-project-selector { flex: 1; min-width: 0; }
 .sidebar-project-selector sl-select::part(combobox) { font-size: 0.85rem; }
+.sidebar-add-project-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex-shrink: 0;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: transparent; color: var(--muted); cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+.sidebar-add-project-btn:hover { color: var(--accent); border-color: var(--accent); }
 
 /* Project status dots in project selector */
 .project-option-label { display: inline-flex; align-items: center; gap: 6px; }

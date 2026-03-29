@@ -1006,6 +1006,43 @@ export function createApp(options = {}) {
     res.json({ ok: true, project: projectId });
   });
 
+  // POST /api/choose-directory — native folder picker (cross-platform)
+  app.post('/api/choose-directory', (_req, res) => {
+    try {
+      let chosenPath;
+      if (process.platform === 'darwin') {
+        chosenPath = execFileSync('osascript', [
+          '-e', 'POSIX path of (choose folder with prompt "Select project directory")',
+        ], { encoding: 'utf8' }).trim();
+      } else if (process.platform === 'win32') {
+        const ps = execFileSync('powershell.exe', [
+          '-NoProfile', '-Command',
+          'Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = "Select project directory"; if ($d.ShowDialog() -eq "OK") { $d.SelectedPath } else { exit 1 }',
+        ], { encoding: 'utf8' }).trim();
+        chosenPath = ps;
+      } else {
+        // Linux: try zenity, then kdialog
+        try {
+          chosenPath = execFileSync('zenity', [
+            '--file-selection', '--directory', '--title=Select project directory',
+          ], { encoding: 'utf8' }).trim();
+        } catch {
+          chosenPath = execFileSync('kdialog', [
+            '--getexistingdirectory', '.', '--title', 'Select project directory',
+          ], { encoding: 'utf8' }).trim();
+        }
+      }
+      chosenPath = chosenPath.replace(/[\\/]+$/, '');
+      if (chosenPath) {
+        res.json({ ok: true, path: chosenPath });
+      } else {
+        res.json({ ok: false });
+      }
+    } catch {
+      res.json({ ok: false });
+    }
+  });
+
   // Multi-project routes
   if (prefsDir) {
     app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot }));

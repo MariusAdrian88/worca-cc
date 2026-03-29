@@ -1,7 +1,10 @@
 import { html, nothing } from 'lit-html';
+import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { showConfirm } from '../utils/confirm-dialog.js';
+import { FolderOpen, iconSvg } from '../utils/icons.js';
 
 let dialogError = '';
+let nameManuallyEdited = false;
 
 function showError(msg) {
   dialogError = msg;
@@ -64,10 +67,45 @@ export function addProjectDialogView(state, { onProjectAdd, onClose, rerender })
       });
   }
 
+  function autoPopulateName(path) {
+    if (nameManuallyEdited) return;
+    const nameEl = document.getElementById('add-project-name');
+    if (!nameEl) return;
+    const segments = path.replace(/\/+$/, '').split('/');
+    const lastSegment = segments[segments.length - 1] || '';
+    const sanitized = lastSegment
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]/g, '-')
+      .replace(/^-+/, '')
+      .replace(/-+$/, '');
+    nameEl.value = sanitized;
+  }
+
+  function handlePathInput(e) {
+    autoPopulateName(e.target.value || '');
+  }
+
+  function handleNameInput() {
+    nameManuallyEdited = true;
+  }
+
+  async function handleBrowse() {
+    try {
+      const resp = await fetch('/api/choose-directory', { method: 'POST' });
+      const data = await resp.json();
+      if (data.ok && data.path) {
+        const pathEl = document.getElementById('add-project-path');
+        if (pathEl) pathEl.value = data.path;
+        autoPopulateName(data.path);
+      }
+    } catch { /* user cancelled or error */ }
+  }
+
   function handleDialogHide(e) {
     // Ignore hide events from elements disconnected during rerender
     if (!e.target.isConnected) return;
     dialogError = '';
+    nameManuallyEdited = false;
     onClose?.();
   }
 
@@ -79,20 +117,28 @@ export function addProjectDialogView(state, { onProjectAdd, onClose, rerender })
     >
       <form @submit=${handleSubmit}>
         <div class="settings-field" style="margin-bottom: 16px;">
+          <label class="settings-label">Project Path</label>
+          <div style="display:flex; gap:8px; align-items:stretch;">
+            <sl-input
+              id="add-project-path"
+              placeholder="/path/to/project"
+              required
+              style="flex:1"
+              @sl-input=${handlePathInput}
+            ></sl-input>
+            <sl-button size="medium" @click=${handleBrowse} title="Browse…" style="--sl-input-height-medium:100%">
+              ${unsafeHTML(iconSvg(FolderOpen, 16))}
+            </sl-button>
+          </div>
+        </div>
+        <div class="settings-field" style="margin-bottom: 16px;">
           <label class="settings-label">Project Name</label>
           <sl-input
             id="add-project-name"
             placeholder="my-project"
             required
             pattern="[a-z0-9][a-z0-9_-]*"
-          ></sl-input>
-        </div>
-        <div class="settings-field" style="margin-bottom: 16px;">
-          <label class="settings-label">Project Path</label>
-          <sl-input
-            id="add-project-path"
-            placeholder="/path/to/project"
-            required
+            @sl-input=${handleNameInput}
           ></sl-input>
         </div>
         <div
@@ -124,12 +170,13 @@ function offerWorcaSetup(projectName, rerender) {
       const message = installed
         ? `Update worca in "${projectName}" with the latest pipeline files?`
         : `Install worca pipeline in "${projectName}"?`;
-      const confirmLabel = installed ? 'Update' : 'Install';
+      const confirmLabel = 'Yes';
 
       showConfirm({
         label,
         message,
         confirmLabel,
+        cancelLabel: 'No',
         confirmVariant: 'primary',
         onConfirm: () => {
           fetch(`/api/projects/${projectName}/worca-setup`, { method: 'POST' })

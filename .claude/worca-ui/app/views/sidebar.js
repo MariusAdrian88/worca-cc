@@ -66,7 +66,7 @@ export function sidebarView(
   state,
   route,
   connectionState,
-  { onNavigate, onProjectChange },
+  { onNavigate, onProjectChange, onAddProject },
 ) {
   const { runs, preferences, projects, currentProjectId } = state;
   const runList = Object.values(runs);
@@ -103,31 +103,39 @@ export function sidebarView(
           ? html`
         <div class="sidebar-section sidebar-project-section">
           <div class="sidebar-section-header">Project</div>
-          <div class="sidebar-project-selector">
-            <sl-select
-              size="small"
-              value=${currentProjectId || ''}
-              @sl-change=${(e) => onProjectChange?.(e.target.value)}
-            >
-              ${projects.map((p) => {
-                const pStatus = projectStatus(p.name, runs, currentProjectId);
-                const dotClass = statusDotClass(pStatus);
-                return html`
-                  <sl-option value=${p.name}>
-                    <span class="project-option-label">
-                      <span class="project-status-dot ${dotClass}"></span>
-                      ${p.name}
-                    </span>
-                  </sl-option>
-                `;
-              })}
-            </sl-select>
+          <div class="sidebar-project-selector-row">
+            <div class="sidebar-project-selector">
+              <sl-select
+                size="small"
+                value=${currentProjectId || ''}
+                @sl-change=${(e) => onProjectChange?.(e.target.value)}
+              >
+                <sl-option value="">All Projects</sl-option>
+                <sl-divider></sl-divider>
+                ${projects.map((p) => {
+                  const pStatus = projectStatus(p.name, runs, currentProjectId);
+                  const dotClass = statusDotClass(pStatus);
+                  return html`
+                    <sl-option value=${p.name}>
+                      <span class="project-option-label">
+                        <span class="project-status-dot ${dotClass}"></span>
+                        ${p.name}
+                      </span>
+                    </sl-option>
+                  `;
+                })}
+              </sl-select>
+            </div>
+            <button class="sidebar-add-project-btn" aria-label="Add project" @click=${() => onAddProject?.()}>
+              ${unsafeHTML(iconSvg(Plus, 16))}
+            </button>
           </div>
         </div>
       `
           : ''
       }
 
+      ${currentProjectId ? html`
       <div class="sidebar-new-run">
         <button class="sidebar-new-run-btn" @click=${() => onNavigate('new-run')}>
           ${unsafeHTML(iconSvg(Plus, 16))}
@@ -202,6 +210,7 @@ export function sidebarView(
           </span>
         </div>
       </div>
+      ` : ''}
 
       <div class="sidebar-footer">
         <div class="connection-indicator ${connClass}">

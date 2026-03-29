@@ -591,7 +591,7 @@ onHashChange((newRoute) => {
   route = newRoute;
 
   // Detect project switch via URL
-  if (newRoute.projectId && newRoute.projectId !== prevProjectId) {
+  if (newRoute.projectId !== prevProjectId) {
     handleProjectSwitch(newRoute.projectId);
   }
 
@@ -653,7 +653,11 @@ function handleSelectRun(runId) {
 }
 
 function handleProjectChange(projectId) {
-  navigate(route.section, null, projectId);
+  if (!projectId) {
+    navigate('dashboard', null, null);
+  } else {
+    navigate(route.section, null, projectId);
+  }
 }
 
 function handleThemeToggle() {
@@ -1481,6 +1485,10 @@ function rerender() {
         onNavigate: handleNavigate,
         onSelectRun: handleSelectRun,
         onProjectChange: handleProjectChange,
+        onAddProject: () => {
+          store.setState({ addProjectDialogOpen: true });
+          rerender();
+        },
       })}
       <main class="main-content">
         ${notificationManager.renderBanner()}
