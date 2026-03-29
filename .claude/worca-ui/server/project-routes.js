@@ -695,6 +695,175 @@ export function createProjectScopedRoutes() {
     res.json({ ok: true, runId, pid: child.pid });
   });
 
+  // POST /api/projects/:projectId/multi-pipeline — launch parallel pipelines
+  router.post('/multi-pipeline', (req, res) => {
+    const { projectRoot } = req.project;
+    const body = req.body || {};
+    const { requests, baseBranch, maxParallel, cleanupPolicy, msize, mloops } =
+      body;
+
+    if (!Array.isArray(requests) || requests.length < 1) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'requests array required (at least 1 item)' });
+    }
+    if (requests.length > 20) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Too many requests (max 20)' });
+    }
+    for (const r of requests) {
+      if (typeof r !== 'string' || r.trim().length === 0) {
+        return res
+          .status(400)
+          .json({ ok: false, error: 'Each request must be a non-empty string' });
+      }
+      if (r.length > 50000) {
+        return res
+          .status(400)
+          .json({ ok: false, error: 'Each request must be 50,000 characters or less' });
+      }
+    }
+    if (baseBranch !== undefined) {
+      if (typeof baseBranch !== 'string' || baseBranch.length > 200 || !/^[\w.\-\/]+$/.test(baseBranch)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: 'Invalid baseBranch value' });
+      }
+    }
+
+    const maxP = Math.max(
+      1,
+      Math.min(5, Math.round(Number(maxParallel) || 3)),
+    );
+    const msizeVal = Math.max(1, Math.min(10, Math.round(Number(msize) || 1)));
+    const mloopsVal = Math.max(
+      1,
+      Math.min(10, Math.round(Number(mloops) || 1)),
+    );
+    const cleanup = ['on-success', 'always', 'never'].includes(cleanupPolicy)
+      ? cleanupPolicy
+      : 'on-success';
+
+    const args = ['.claude/scripts/run_multi.py'];
+    args.push('--max-parallel', String(maxP));
+    args.push('--cleanup', cleanup);
+    args.push('--msize', String(msizeVal));
+    args.push('--mloops', String(mloopsVal));
+    if (baseBranch) args.push('--base-branch', baseBranch);
+    // '--' sentinel prevents user request text from being parsed as flags
+    args.push('--requests', '--', ...requests.map((r) => r.trim()));
+
+    const env = { ...process.env };
+    delete env.CLAUDECODE;
+
+    try {
+      const child = spawn('python3', args, {
+        detached: true,
+        stdio: 'ignore',
+        cwd: projectRoot,
+        env,
+      });
+      child.unref();
+
+      const { broadcast } = req.app.locals;
+      if (broadcast)
+        broadcast('multi-pipeline-started', {
+          pid: child.pid,
+          count: requests.length,
+        });
+
+      res.json({ ok: true, pid: child.pid, count: requests.length });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/projects/:projectId/pipelines/:runId/stop — stop a parallel pipeline
+  router.post('/pipelines/:runId/stop', (req, res) => {
+    const { worcaDir } = req.project;
+    const runId = req.params.runId;
+
+    const pipelineFile = join(
+      worcaDir,
+      'multi',
+      'pipelines.d',
+      `${runId}.json`,
+    );
+    if (!existsSync(pipelineFile)) {
+      return res
+        .status(404)
+        .json({ ok: false, error: `Pipeline ${runId} not found` });
+    }
+
+    let pipeline;
+    try {
+      pipeline = JSON.parse(readFileSync(pipelineFile, 'utf8'));
+    } catch {
+      return res
+        .status(500)
+        .json({ ok: false, error: 'Failed to read pipeline registry' });
+    }
+
+    if (!pipeline.worktree_path) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Pipeline has no worktree path' });
+    }
+
+    const worktreeWorcaDir = join(pipeline.worktree_path, '.worca');
+    try {
+      const result = stopPipeline(worktreeWorcaDir);
+      res.json({ ok: true, stopped: true, runId, pid: result.pid });
+    } catch (err) {
+      if (err.code === 'not_running') {
+        return res.status(404).json({ ok: false, error: err.message });
+      }
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  // POST /api/projects/:projectId/pipelines/:runId/pause — pause a parallel pipeline
+  router.post('/pipelines/:runId/pause', (req, res) => {
+    const { worcaDir } = req.project;
+    const runId = req.params.runId;
+
+    const pipelineFile = join(
+      worcaDir,
+      'multi',
+      'pipelines.d',
+      `${runId}.json`,
+    );
+    if (!existsSync(pipelineFile)) {
+      return res
+        .status(404)
+        .json({ ok: false, error: `Pipeline ${runId} not found` });
+    }
+
+    let pipeline;
+    try {
+      pipeline = JSON.parse(readFileSync(pipelineFile, 'utf8'));
+    } catch {
+      return res
+        .status(500)
+        .json({ ok: false, error: 'Failed to read pipeline registry' });
+    }
+
+    if (!pipeline.worktree_path) {
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Pipeline has no worktree path' });
+    }
+
+    const worktreeWorcaDir = join(pipeline.worktree_path, '.worca');
+    try {
+      const result = pausePipeline(worktreeWorcaDir, runId);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
   // GET /api/projects/:projectId/costs — token & cost data
   router.get('/costs', (req, res) => {
     const { worcaDir } = req.project;

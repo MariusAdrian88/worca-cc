@@ -11,6 +11,7 @@ import {
   Loader,
   Pause,
   Play,
+  Plus,
   Square,
   Trash2,
 } from './utils/icons.js';
@@ -21,6 +22,7 @@ import { formatTitle } from './utils/title.js';
 import { addProjectDialogView } from './views/add-project-dialog.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
 import { dashboardView } from './views/dashboard.js';
+import { multiPipelineDashboardView } from './views/multi-dashboard.js';
 import { learningsSectionView } from './views/learnings-panel.js';
 import {
   clearLiveTerminal,
@@ -358,6 +360,29 @@ ws.on('webhook-inbox-cleared', () => {
   webhookSelectedId = null;
 });
 
+// --- Parallel pipeline events ---
+
+ws.on('pipeline-status-changed', (payload) => {
+  const currentProject = store.getState().currentProjectId;
+  if (payload.project && currentProject && payload.project !== currentProject)
+    return;
+  const pipelines = { ...store.getState().pipelines };
+  if (payload.status === 'removed') {
+    delete pipelines[payload.runId];
+  } else {
+    pipelines[payload.runId] = {
+      run_id: payload.runId,
+      status: payload.status,
+      stage: payload.stage,
+      title: payload.title,
+      worktree_path: payload.worktree_path,
+      started_at: payload.started_at,
+      pid: payload.pid,
+    };
+  }
+  store.setState({ pipelines });
+});
+
 // --- Protocol negotiation ---
 
 function handleHello(_payload) {
@@ -416,6 +441,14 @@ function fetchProjectScopedData() {
           controlAction: payload.controlAction || 'continue',
         },
       });
+    })
+    .catch(() => {});
+
+  ws.send('list-pipelines')
+    .then((payload) => {
+      const pipelines = {};
+      for (const p of payload.pipelines || []) pipelines[p.run_id] = p;
+      store.setState({ pipelines });
     })
     .catch(() => {});
 
@@ -800,6 +833,40 @@ async function handleResumeRun(runId) {
   }
 }
 
+// --- Parallel pipeline control ---
+
+async function handlePauseParallelPipeline(runId) {
+  try {
+    const res = await fetch(projectUrl(`/pipelines/${runId}/pause`), {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (!data.ok) showActionError(data.error || 'Failed to pause pipeline');
+  } catch (err) {
+    showActionError(err?.message || 'Failed to pause pipeline');
+  }
+}
+
+async function handleStopParallelPipeline(runId) {
+  try {
+    const res = await fetch(projectUrl(`/pipelines/${runId}/stop`), {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (!data.ok) showActionError(data.error || 'Failed to stop pipeline');
+  } catch (err) {
+    showActionError(err?.message || 'Failed to stop pipeline');
+  }
+}
+
+async function handleResumeParallelPipeline(runId) {
+  try {
+    await ws.send('resume-run', { runId });
+  } catch (err) {
+    showActionError(err?.message || 'Failed to resume pipeline');
+  }
+}
+
 function handleRestartStage(stageKey) {
   restartStageKey = stageKey;
   showConfirm({
@@ -1174,6 +1241,15 @@ function contentHeaderView() {
     showBack = true;
   }
 
+  // Dashboard gets a "New Pipeline" button in the header
+  if (!route.section && !route.runId) {
+    actionButton = html`
+      <button class="action-btn action-btn--primary" @click=${() => navigate('new-run', null, route.projectId)}>
+        ${unsafeHTML(iconSvg(Plus, 14))}
+        New Pipeline
+      </button>`;
+  }
+
   return html`
     <div class="content-header">
       ${
@@ -1245,12 +1321,18 @@ function mainContentView() {
     if (run && !liveStage) {
       updateActiveStage(run);
     }
+    const { overview, stages: stagePanelsHtml } = runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange });
     return html`
       <div class="run-detail-layout">
+        <div class="run-detail-layout__overview">
+          ${overview}
+        </div>
         <div class="run-detail-layout__stages">
-          ${runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange })}
+          <div class="run-detail-column-header">Stages</div>
+          ${stagePanelsHtml}
         </div>
         <div class="run-detail-layout__logs">
+          <div class="run-detail-column-header">Artifacts</div>
           ${liveOutputView(getActiveStage(), isRunning)}
           ${logViewerView(logState, {
             onStageFilter: handleStageFilter,
@@ -1359,14 +1441,22 @@ function mainContentView() {
     });
   }
 
-  return dashboardView(state, {
-    onSelectRun: (runId) => navigate('active', runId, route.projectId),
-    onNavigate: (section, runId, projectId) => {
-      navigate(section, runId || null, projectId || route.projectId);
-    },
-    onPause: handlePauseRun,
-    onResume: handleResumeRun,
-  });
+  return html`
+    ${dashboardView(state, {
+      onSelectRun: (runId) => navigate('active', runId, route.projectId),
+      onNavigate: (section, runId, projectId) => {
+        navigate(section, runId || null, projectId || route.projectId);
+      },
+      onPause: handlePauseRun,
+      onResume: handleResumeRun,
+    })}
+    ${multiPipelineDashboardView(state.pipelines, {
+      onPause: handlePauseParallelPipeline,
+      onStop: handleStopParallelPipeline,
+      onResume: handleResumeParallelPipeline,
+      onClick: (runId) => navigate('active', runId, route.projectId),
+    })}
+  `;
 }
 
 function filteredLogState(state) {

@@ -11,6 +11,7 @@ export function createStore(initial = {}) {
     currentProjectId: initial.currentProjectId ?? null,
     projects: initial.projects ?? [],
     runs: initial.runs ?? {},
+    pipelines: initial.pipelines ?? {},
     logLines: initial.logLines ?? [],
     preferences: {
       theme: initial.preferences?.theme ?? 'light',
@@ -54,6 +55,7 @@ export function createStore(initial = {}) {
         next.currentProjectId === state.currentProjectId &&
         next.projects === state.projects &&
         next.runs === state.runs &&
+        next.pipelines === state.pipelines &&
         next.logLines === state.logLines &&
         next.preferences.theme === state.preferences.theme &&
         next.preferences.sidebarCollapsed ===

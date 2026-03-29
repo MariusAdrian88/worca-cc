@@ -6,7 +6,6 @@ import {
   CircleCheck,
   Coins,
   iconSvg,
-  Plus,
   Zap,
 } from '../utils/icons.js';
 import { sortByStartDesc } from '../utils/sort-runs.js';
@@ -139,13 +138,6 @@ export function dashboardView(
             <span class="stat-label">Total Cost</span>
           </div>
         </div>
-      </div>
-
-      <div class="dashboard-actions">
-        <sl-button variant="primary" @click=${() => onNavigate?.('new-run')}>
-          ${unsafeHTML(iconSvg(Plus, 16))}
-          New Pipeline
-        </sl-button>
       </div>
 
       <h3 class="dashboard-section-title">Active Runs</h3>

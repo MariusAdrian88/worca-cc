@@ -134,8 +134,7 @@ h1, h2, h3, h4, h5, h6 {
 .sidebar.collapsed .sidebar-section-header,
 .sidebar.collapsed .sidebar-item span,
 .sidebar.collapsed .conn-label,
-.sidebar.collapsed .logo-text,
-.sidebar.collapsed .project-name {
+.sidebar.collapsed .logo-text {
   display: none;
 }
 
@@ -150,19 +149,6 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 700;
   letter-spacing: 0.08em;
   color: var(--fg);
-}
-
-.project-name {
-  display: block;
-  font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
-  font-size: 11px;
-  font-weight: 400;
-  color: var(--muted);
-  letter-spacing: 0.02em;
-  margin-top: 2px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* --- 6. Sidebar Sections --- */
@@ -328,6 +314,7 @@ h1, h2, h3, h4, h5, h6 {
   margin-left: auto;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .beads-db-path {
@@ -525,12 +512,6 @@ h1, h2, h3, h4, h5, h6 {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-  color: var(--muted);
-  font-family: 'JetBrains Mono', 'SF Mono', monospace;
-}
-
-.run-branch .stage-meta-icon {
-  opacity: 0.5;
 }
 
 .pipeline-cost-strip {
@@ -961,7 +942,7 @@ sl-details.log-history-panel::part(base) {
 }
 
 sl-details.log-history-panel::part(header) {
-  padding: 10px 16px;
+  padding: 12px 16px;
 }
 
 sl-details.log-history-panel::part(content) {
@@ -2023,24 +2004,43 @@ sl-details.live-output-panel::part(content) {
 .run-detail-layout {
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+
+.run-detail-layout__overview {
+  min-width: 0;
 }
 
 .run-detail-layout__stages {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.run-detail-layout__stages .stage-panels {
+  margin-top: 0;
+}
+
+.run-detail-column-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .run-detail-layout__logs {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-/* Remove top margin from live-output and log-history when inside the layout columns,
-   since the grid gap handles spacing */
-.run-detail-layout__logs .live-output-container {
-  margin-top: 16px;
-}
-
-.run-detail-layout__logs .log-history-container {
-  margin-top: 16px;
+.run-detail-layout__logs > * {
+  margin-top: 0;
 }
 
 @media (min-width: 1800px) {
@@ -2049,6 +2049,10 @@ sl-details.live-output-panel::part(content) {
     grid-template-columns: 1fr 1fr;
     gap: 24px;
     align-items: start;
+  }
+
+  .run-detail-layout__overview {
+    grid-column: 1 / -1;
   }
 
   .run-detail-layout__logs {
@@ -2290,19 +2294,6 @@ sl-details.live-output-panel::part(content) {
 
 .sidebar.collapsed .sidebar-new-run-btn {
   padding: 8px;
-}
-
-/* Dashboard actions */
-.dashboard-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.dashboard-actions sl-button svg {
-  width: 16px;
-  height: 16px;
-  margin-right: 4px;
 }
 
 /* Stage restart button */
@@ -2616,12 +2607,8 @@ sl-details.live-output-panel::part(content) {
 }
 
 /* --- Run-detail linked Beads section --- */
-.run-detail-layout__logs .run-beads-section {
-  margin-top: 16px;
-}
-
 .run-beads-section {
-  margin: 0 0 8px;
+  margin: 0;
 }
 
 sl-details.run-beads-panel::part(base) {
@@ -2632,7 +2619,7 @@ sl-details.run-beads-panel::part(base) {
 }
 
 sl-details.run-beads-panel::part(header) {
-  padding: 10px 16px;
+  padding: 12px 16px;
 }
 
 sl-details.run-beads-panel::part(content) {
@@ -2718,7 +2705,7 @@ sl-details.run-beads-panel::part(content) {
 
 /* --- Learnings section --- */
 .learnings-section {
-  margin: 0 0 8px;
+  margin: 0;
 }
 
 sl-details.learnings-panel::part(base) {
@@ -2729,7 +2716,7 @@ sl-details.learnings-panel::part(base) {
 }
 
 sl-details.learnings-panel::part(header) {
-  padding: 10px 16px;
+  padding: 12px 16px;
 }
 
 sl-details.learnings-panel::part(content) {
@@ -3657,7 +3644,8 @@ sl-details.learnings-panel::part(content) {
 }
 
 /* --- Sidebar Project Selector --- */
-.sidebar-project-selector { padding: 0 12px; margin-bottom: 8px; }
+.sidebar-project-section { padding-top: 4px; }
+.sidebar-project-selector { padding: 0 4px; }
 .sidebar-project-selector sl-select::part(combobox) { font-size: 0.85rem; }
 
 /* Project status dots in project selector */
@@ -3679,3 +3667,136 @@ sl-details.learnings-panel::part(content) {
 .projects-list-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--border); }
 .projects-list-item:last-child { border-bottom: none; }
 .project-path { font-size: 0.85rem; color: var(--text-secondary); font-family: var(--sl-font-mono); }
+
+/* --- Multi-Pipeline Dashboard --- */
+.multi-pipeline-section {
+  margin-top: 24px;
+}
+
+.pipeline-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.pipeline-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+.pipeline-card:hover {
+  box-shadow: var(--shadow-sm);
+}
+
+.pipeline-running { border-left-color: var(--status-running); }
+.pipeline-succeeded { border-left-color: var(--status-completed); }
+.pipeline-failed { border-left-color: var(--status-failed); }
+.pipeline-paused { border-left-color: var(--status-paused); }
+.pipeline-unknown { border-left-color: var(--muted); }
+
+.pipeline-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pipeline-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.pipeline-status-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.pipeline-badge-running { background: rgba(59, 130, 246, 0.12); color: var(--status-running); }
+.pipeline-badge-succeeded { background: rgba(34, 197, 94, 0.12); color: var(--status-completed); }
+.pipeline-badge-failed { background: rgba(239, 68, 68, 0.12); color: var(--status-failed); }
+.pipeline-badge-paused { background: rgba(245, 158, 11, 0.12); color: var(--status-paused); }
+
+.pipeline-card-progress {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.stage-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background var(--transition-fast);
+}
+.stage-dot.completed { background: var(--status-completed); }
+.stage-dot.active { background: var(--status-running); animation: conn-blink 1.2s ease-in-out infinite; }
+
+.pipeline-stage-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 4px;
+  text-transform: capitalize;
+}
+
+.pipeline-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pipeline-elapsed {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.pipeline-run-id {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--sl-font-mono);
+  font-size: 0.75rem;
+}
+
+.pipeline-actions {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.pipeline-action-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 6px;
+  cursor: pointer;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  transition: var(--transition-fast);
+}
+.pipeline-action-btn:hover {
+  background: var(--bg-tertiary);
+  color: var(--fg);
+}
+

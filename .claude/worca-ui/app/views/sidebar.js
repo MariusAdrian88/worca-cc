@@ -68,7 +68,7 @@ export function sidebarView(
   connectionState,
   { onNavigate, onProjectChange },
 ) {
-  const { runs, preferences, projectName, projects, currentProjectId } = state;
+  const { runs, preferences, projects, currentProjectId } = state;
   const runList = Object.values(runs);
   const activeCount = runList.filter((r) => r.active).length;
   const historyCount = runList.filter((r) => !r.active).length;
@@ -96,31 +96,33 @@ export function sidebarView(
     <aside class="sidebar ${preferences.sidebarCollapsed ? 'collapsed' : ''}">
       <div class="sidebar-logo" @click=${() => onNavigate('dashboard')} style="cursor:pointer">
         <span class="logo-text">WORCA</span>
-        ${projectName ? html`<span class="project-name">${projectName}</span>` : ''}
       </div>
 
       ${
         projects && projects.length > 1
           ? html`
-        <div class="sidebar-project-selector">
-          <sl-select
-            size="small"
-            value=${currentProjectId || ''}
-            @sl-change=${(e) => onProjectChange?.(e.target.value)}
-          >
-            ${projects.map((p) => {
-              const pStatus = projectStatus(p.name, runs, currentProjectId);
-              const dotClass = statusDotClass(pStatus);
-              return html`
-                <sl-option value=${p.name}>
-                  <span class="project-option-label">
-                    <span class="project-status-dot ${dotClass}"></span>
-                    ${p.name}
-                  </span>
-                </sl-option>
-              `;
-            })}
-          </sl-select>
+        <div class="sidebar-section sidebar-project-section">
+          <div class="sidebar-section-header">Project</div>
+          <div class="sidebar-project-selector">
+            <sl-select
+              size="small"
+              value=${currentProjectId || ''}
+              @sl-change=${(e) => onProjectChange?.(e.target.value)}
+            >
+              ${projects.map((p) => {
+                const pStatus = projectStatus(p.name, runs, currentProjectId);
+                const dotClass = statusDotClass(pStatus);
+                return html`
+                  <sl-option value=${p.name}>
+                    <span class="project-option-label">
+                      <span class="project-status-dot ${dotClass}"></span>
+                      ${p.name}
+                    </span>
+                  </sl-option>
+                `;
+              })}
+            </sl-select>
+          </div>
         </div>
       `
           : ''

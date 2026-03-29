@@ -29,6 +29,12 @@ export const MESSAGE_TYPES = [
   // Protocol handshake
   'hello',
   'hello-ack',
+  // Parallel pipelines
+  'list-pipelines',
+  'subscribe-pipeline',
+  'unsubscribe-pipeline',
+  'pipeline-status-changed',
+  'pipelines-list',
   // Server → Client events
   'run-snapshot',
   'run-update',

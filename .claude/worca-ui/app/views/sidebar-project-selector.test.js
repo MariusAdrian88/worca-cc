@@ -83,18 +83,16 @@ describe('sidebar project selector', () => {
     // would require a browser. We verify the template renders without error.
   });
 
-  it('single project shows name without dropdown', async () => {
+  it('single project hides dropdown', async () => {
     const { sidebarView } = await import('./sidebar.js');
     const state = makeState({
       projects: [{ name: 'my-project' }],
       currentProjectId: 'my-project',
-      projectName: 'my-project',
     });
     const route = { section: 'active' };
     const result = sidebarView(state, route, 'open', { onNavigate: vi.fn() });
 
     const templateStr = JSON.stringify(result.values);
-    expect(templateStr).toContain('my-project');
     expect(templateStr).not.toContain('sidebar-project-selector');
   });
 });
