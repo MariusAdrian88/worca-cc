@@ -73,7 +73,8 @@ export function attachWsServer(httpServer, config) {
     const effectiveRoot =
       projectRoot || (worcaDir ? join(worcaDir, '..') : process.cwd());
     const synth = synthesizeDefaultProject(effectiveRoot);
-    const ws = new WatcherSet(synth.name, worcaDir, {
+    const effectiveWorcaDir = worcaDir || synth.worcaDir;
+    const ws = new WatcherSet(synth.name, effectiveWorcaDir, {
       broadcaster,
       getSubs: clientManager.getSubs,
       wss,
@@ -148,9 +149,11 @@ export function attachWsServer(httpServer, config) {
       }
     }
 
-    // Update default if needed
+    // Update default — set to null when all projects removed (fix #5)
     if (watcherSets.size > 0) {
       defaultWs = watcherSets.values().next().value;
+    } else {
+      defaultWs = null;
     }
 
     // Broadcast projects-updated to all clients
@@ -181,9 +184,10 @@ export function attachWsServer(httpServer, config) {
   });
 
   // 6. Message router — resolves project per-request via watcherSets
+  //    Pass defaultWs via getter so the router always sees the current value (fix #6)
   const messageRouter = createMessageRouter({
     watcherSets,
-    defaultWs,
+    getDefaultWs: () => defaultWs,
     prefsPath,
     webhookInbox,
     clientManager,
@@ -236,11 +240,21 @@ export function attachWsServer(httpServer, config) {
     });
 
     ws.on('close', () => {
+      // Clear hello timeout if still pending (fix #17)
+      if (ws._helloTimeout) {
+        clearTimeout(ws._helloTimeout);
+        ws._helloTimeout = null;
+      }
       const s = clientManager.getSubs(ws);
       const eventsRunId = s?.eventsRunId;
+      // Resolve the correct project's WatcherSet for cleanup (fix #4)
+      const projectId = s?.projectId || null;
       clientManager.deleteSubs(ws);
-      if (eventsRunId && defaultWs?.eventWatcher) {
-        defaultWs.eventWatcher.maybeCloseEventWatcher(eventsRunId);
+      if (eventsRunId) {
+        const wset = (projectId && watcherSets.get(projectId)) || defaultWs;
+        if (wset?.eventWatcher) {
+          wset.eventWatcher.maybeCloseEventWatcher(eventsRunId);
+        }
       }
     });
   });

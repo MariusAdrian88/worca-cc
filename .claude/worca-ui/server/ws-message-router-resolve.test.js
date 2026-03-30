@@ -84,7 +84,7 @@ describe('ws-message-router resolveProject', () => {
 
     const router = createMessageRouter({
       watcherSets,
-      defaultWs,
+      getDefaultWs: () => defaultWs,
       prefsPath: '/mock/prefs.json',
       webhookInbox: null,
       clientManager,

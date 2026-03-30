@@ -27,6 +27,7 @@ import {
 import {
   readProjects,
   removeProject,
+  SLUG_RE,
   synthesizeDefaultProject,
   validateProjectEntry,
   writeProject,
@@ -43,6 +44,26 @@ import {
   getSourceRoot,
   runWorcaSetup,
 } from './worca-setup.js';
+
+/** Validate a runId — must not contain path traversal characters */
+const RUN_ID_RE = /^[a-zA-Z0-9_\-]+$/;
+function validateRunId(runId) {
+  return typeof runId === 'string' && runId.length > 0 && runId.length <= 128 && RUN_ID_RE.test(runId);
+}
+
+/** Validate a branch name — alphanumeric, dots, hyphens, underscores, slashes */
+const BRANCH_RE = /^[\w.\-\/]+$/;
+function validateBranch(branch) {
+  return typeof branch === 'string' && branch.length <= 200 && BRANCH_RE.test(branch);
+}
+
+/** Validate a plan file path — relative, no traversal */
+function validatePlanFile(planFile) {
+  if (typeof planFile !== 'string' || planFile.trim().length === 0) return false;
+  const normalized = planFile.trim();
+  if (normalized.startsWith('/') || normalized.includes('..')) return false;
+  return true;
+}
 
 /**
  * Middleware that resolves :projectId to a project entry and attaches it to req.project.
@@ -121,8 +142,12 @@ export function createProjectRoutes({ prefsDir, projectRoot }) {
 
   // DELETE /api/projects/:id — remove a project
   router.delete('/:id', (req, res) => {
-    removeProject(prefsDir, req.params.id);
-    res.json({ ok: true, removed: req.params.id });
+    const id = req.params.id;
+    if (!SLUG_RE.test(id)) {
+      return res.status(400).json({ ok: false, error: 'Invalid project id' });
+    }
+    removeProject(prefsDir, id);
+    res.json({ ok: true, removed: id });
   });
 
   return router;
@@ -355,6 +380,9 @@ export function createProjectScopedRoutes() {
   // GET /api/projects/:projectId/runs/:runId/status — run status
   router.get('/runs/:runId/status', (req, res) => {
     const { runId } = req.params;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
     const { worcaDir } = req.project;
     let statusPath = join(worcaDir, 'runs', runId, 'status.json');
     if (!existsSync(statusPath)) {
@@ -424,11 +452,19 @@ export function createProjectScopedRoutes() {
     if (typeof prompt === 'string') prompt = prompt.trim() || undefined;
 
     if (planFile !== undefined && planFile !== null) {
-      if (typeof planFile !== 'string' || planFile.trim().length === 0) {
+      if (!validatePlanFile(planFile)) {
         return res.status(400).json({
           ok: false,
-          error: 'planFile must be a non-empty string if provided',
+          error: 'planFile must be a relative path with no ".." segments',
         });
+      }
+    }
+
+    if (branch !== undefined && branch !== null) {
+      if (!validateBranch(branch)) {
+        return res
+          .status(400)
+          .json({ ok: false, error: 'Invalid branch value' });
       }
     }
 
@@ -490,8 +526,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/runs/:id/pause
   router.post('/runs/:id/pause', (req, res) => {
-    const { worcaDir } = req.project;
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir } = req.project;
     try {
       const result = pausePipeline(worcaDir, runId);
       const { broadcast } = req.app.locals;
@@ -504,8 +543,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/runs/:id/resume
   router.post('/runs/:id/resume', async (req, res) => {
-    const { worcaDir, projectRoot } = req.project;
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir, projectRoot } = req.project;
     try {
       const result = await startPipeline(worcaDir, {
         resume: true,
@@ -525,8 +567,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/runs/:id/stop — control.json + SIGTERM
   router.post('/runs/:id/stop', (req, res) => {
-    const { worcaDir } = req.project;
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir } = req.project;
     try {
       const controlDir = join(worcaDir, 'runs', runId);
       mkdirSync(controlDir, { recursive: true });
@@ -604,8 +649,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/runs/:id/learn
   router.post('/runs/:id/learn', (req, res) => {
-    const { worcaDir, projectRoot } = req.project;
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir, projectRoot } = req.project;
 
     let statusPath = join(worcaDir, 'runs', runId, 'status.json');
     if (!existsSync(statusPath)) {
@@ -756,8 +804,7 @@ export function createProjectScopedRoutes() {
     args.push('--msize', String(msizeVal));
     args.push('--mloops', String(mloopsVal));
     if (baseBranch) args.push('--base-branch', baseBranch);
-    // '--' sentinel prevents user request text from being parsed as flags
-    args.push('--requests', '--', ...requests.map((r) => r.trim()));
+    args.push('--requests', ...requests.map((r) => r.trim()));
 
     const env = { ...process.env };
     delete env.CLAUDECODE;
@@ -786,8 +833,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/pipelines/:runId/stop — stop a parallel pipeline
   router.post('/pipelines/:runId/stop', (req, res) => {
-    const { worcaDir } = req.project;
     const runId = req.params.runId;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir } = req.project;
 
     const pipelineFile = join(
       worcaDir,
@@ -830,8 +880,11 @@ export function createProjectScopedRoutes() {
 
   // POST /api/projects/:projectId/pipelines/:runId/pause — pause a parallel pipeline
   router.post('/pipelines/:runId/pause', (req, res) => {
-    const { worcaDir } = req.project;
     const runId = req.params.runId;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
+    const { worcaDir } = req.project;
 
     const pipelineFile = join(
       worcaDir,

@@ -84,6 +84,12 @@ export function createStatusWatcher({
           const s = getSubs(ws);
           if (s?.runId) subscribedIds.add(s.runId);
         }
+        // Evict stale entries from lastPipelineStatus (fix #18)
+        const activeRunIds = new Set(runs.map((r) => r.id));
+        for (const id of lastPipelineStatus.keys()) {
+          if (!activeRunIds.has(id)) lastPipelineStatus.delete(id);
+        }
+
         for (const run of runs) {
           if (subscribedIds.has(run.id)) {
             broadcaster.broadcastToSubscribers(run.id, 'run-snapshot', run);

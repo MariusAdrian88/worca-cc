@@ -188,6 +188,7 @@ export class ProcessManager {
             : '--prompt';
       if (
         flag === '--prompt' &&
+        opts.inputValue &&
         Buffer.byteLength(opts.inputValue, 'utf8') > ARG_INLINE_LIMIT
       ) {
         promptFilePath = writePromptFile(opts.inputValue);
@@ -214,7 +215,7 @@ export class ProcessManager {
     delete env.CLAUDECODE;
 
     return new Promise((resolve, reject) => {
-      const child = spawn('python', args, {
+      const child = spawn('python3', args, {
         detached: true,
         stdio: 'ignore',
         cwd,
@@ -455,7 +456,7 @@ export class ProcessManager {
 
     return new Promise((resolve, reject) => {
       const child = spawn(
-        'python',
+        'python3',
         ['.claude/scripts/run_pipeline.py', '--resume'],
         {
           detached: true,

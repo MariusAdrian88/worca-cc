@@ -13,6 +13,13 @@ import {
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
+
+/** Validate a runId — must not contain path traversal characters */
+const RUN_ID_RE = /^[a-zA-Z0-9_\-]+$/;
+function validateRunId(runId) {
+  return typeof runId === 'string' && runId.length > 0 && runId.length <= 128 && RUN_ID_RE.test(runId);
+}
+
 import { dbExists, getIssue, listIssues } from './beads-reader.js';
 import {
   getRunningPid,
@@ -412,6 +419,9 @@ export function createApp(options = {}) {
         .status(501)
         .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
     try {
       const result = pausePipeline(worcaDir, runId);
       if (app.locals.broadcast) {
@@ -430,6 +440,9 @@ export function createApp(options = {}) {
         .status(501)
         .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
     try {
       const result = await startPipeline(worcaDir, {
         resume: true,
@@ -455,6 +468,9 @@ export function createApp(options = {}) {
         .status(501)
         .json({ ok: false, error: 'worcaDir not configured' });
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
     // Write control.json to signal the orchestrator gracefully before SIGTERM
     try {
       const controlDir = join(worcaDir, 'runs', runId);
@@ -589,6 +605,9 @@ export function createApp(options = {}) {
         .json({ ok: false, error: 'worcaDir not configured' });
 
     const runId = req.params.id;
+    if (!validateRunId(runId)) {
+      return res.status(400).json({ ok: false, error: 'Invalid runId' });
+    }
     // Check both runs/ and results/ directories
     let statusPath = join(worcaDir, 'runs', runId, 'status.json');
     if (!existsSync(statusPath)) {

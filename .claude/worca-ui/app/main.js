@@ -180,10 +180,23 @@ ws.on('runs-list', (payload, msg) => {
   const currentProject = store.getState().currentProjectId;
   // In multi-project mode, ignore runs-list from other projects
   if (msg?.project && currentProject && msg.project !== currentProject) return;
-  // In All Projects mode, merge rather than replace
+  // In All Projects mode, merge updates and evict stale entries from this source
   if (!currentProject && (store.getState().projects || []).length > 1) {
     const existing = { ...store.getState().runs };
-    for (const run of payload.runs || []) existing[run.id] = run;
+    const freshIds = new Set((payload.runs || []).map((r) => r.id));
+    // Evict runs from the same project that are no longer reported
+    const sourceProject = msg?.project || null;
+    if (sourceProject) {
+      for (const [id, run] of Object.entries(existing)) {
+        if (run._project === sourceProject && !freshIds.has(id)) {
+          delete existing[id];
+        }
+      }
+    }
+    for (const run of payload.runs || []) {
+      if (sourceProject) run._project = sourceProject;
+      existing[run.id] = run;
+    }
     store.setState({ runs: existing });
     return;
   }
@@ -521,6 +534,7 @@ function handleProjectSwitch(newProjectId) {
     runs: {},
     logLines: [],
     activeRunId: null,
+    pipelines: {},
   });
 
   // Reset all project-scoped module-level state

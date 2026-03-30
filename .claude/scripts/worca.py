@@ -254,7 +254,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--base",
-        default=_DEFAULT_BASE,
+        default=None,
         help="Base worca directory (default: .worca)",
     )
 

@@ -12,7 +12,7 @@ import {
 } from 'node:fs';
 import { basename, isAbsolute, join } from 'node:path';
 
-const SLUG_RE = /^[a-z0-9_-]{1,64}$/i;
+export const SLUG_RE = /^[a-z0-9_-]{1,64}$/i;
 const DEFAULT_MAX_PROJECTS = 20;
 
 /**

@@ -67,30 +67,28 @@ export function runWorcaSetup(sourcePath, targetPath) {
     'utf8',
   );
 
-  // Build a shell script that does the rsync + npm build
+  // Build a shell script using printf %q to safely quote paths
   const script = `
 set -e
+SRC=$(printf '%s' "$1")
+DEST=$(printf '%s' "$2")
+STATUS=$(printf '%s' "$3")
 
 # Core worca directories (--delete removes stale files)
-rsync -a --delete --exclude='node_modules' --exclude='__pycache__' "${src}/worca/" "${dest}/worca/"
-rsync -a --delete --exclude='node_modules' --exclude='__pycache__' --exclude='test-results/' "${src}/worca-ui/" "${dest}/worca-ui/"
-rsync -a --delete --exclude='overrides/' "${src}/agents/" "${dest}/agents/"
-rsync -a --delete --exclude='__pycache__' "${src}/hooks/" "${dest}/hooks/"
-rsync -a --delete --exclude='__pycache__' "${src}/scripts/" "${dest}/scripts/"
+rsync -a --delete --exclude='node_modules' --exclude='__pycache__' "$SRC/worca/" "$DEST/worca/"
+rsync -a --delete --exclude='node_modules' --exclude='__pycache__' --exclude='test-results/' "$SRC/worca-ui/" "$DEST/worca-ui/"
+rsync -a --delete --exclude='overrides/' "$SRC/agents/" "$DEST/agents/"
+rsync -a --delete --exclude='__pycache__' "$SRC/hooks/" "$DEST/hooks/"
+rsync -a --delete --exclude='__pycache__' "$SRC/scripts/" "$DEST/scripts/"
 
 # Skills (additive — no --delete, target may have project-specific skills)
-rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='worca-install/' "${src}/skills/" "${dest}/skills/"
+rsync -a --exclude='node_modules' --exclude='__pycache__' --exclude='worca-install/' "$SRC/skills/" "$DEST/skills/"
 
 # Install deps and build UI
-cd "${dest}/worca-ui" && npm install && npm run build
-
-# Write success status
-cat > "${statusFile}" << 'STATUSEOF'
-{"status":"done","finished_at":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
-STATUSEOF
+cd "$DEST/worca-ui" && npm install && npm run build
 `;
 
-  const child = spawn('bash', ['-c', script], {
+  const child = spawn('bash', ['-c', script, '--', src, dest, statusFile], {
     detached: true,
     stdio: 'ignore',
     env: { ...process.env },

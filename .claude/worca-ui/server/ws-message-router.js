@@ -65,7 +65,7 @@ function _buildStagePrompt(stage, rawPrompt) {
  */
 export function createMessageRouter({
   watcherSets,
-  defaultWs,
+  getDefaultWs,
   prefsPath,
   webhookInbox,
   clientManager,
@@ -87,11 +87,13 @@ export function createMessageRouter({
         projectRoot: wset.projectRoot,
       };
     }
+    const dws = getDefaultWs();
+    if (!dws) return null;
     return {
-      wset: defaultWs,
-      worcaDir: defaultWs.worcaDir,
-      settingsPath: defaultWs.settingsPath,
-      projectRoot: defaultWs.projectRoot,
+      wset: dws,
+      worcaDir: dws.worcaDir,
+      settingsPath: dws.settingsPath,
+      projectRoot: dws.projectRoot,
     };
   }
 
@@ -254,6 +256,10 @@ export function createMessageRouter({
         return;
       }
       const proj = resolveProject(ws, req.payload);
+      if (!proj) {
+        ws.send(JSON.stringify(makeError(req, 'no_project', 'No project available')));
+        return;
+      }
       const s = clientManager.ensureSubs(ws);
       s.runId = runId;
       const runs = discoverRuns(proj.worcaDir);
@@ -261,6 +267,7 @@ export function createMessageRouter({
       if (run) {
         if (
           run.pipeline_status !== undefined &&
+          proj.wset.statusWatcher?.lastPipelineStatus &&
           !proj.wset.statusWatcher.lastPipelineStatus.has(runId)
         ) {
           proj.wset.statusWatcher.lastPipelineStatus.set(
@@ -436,6 +443,10 @@ export function createMessageRouter({
     // stop-run
     if (req.type === 'stop-run') {
       const proj = resolveProject(ws, req.payload);
+      if (!proj) {
+        ws.send(JSON.stringify(makeError(req, 'no_project', 'No project available')));
+        return;
+      }
       try {
         const result = pmStopPipeline(proj.worcaDir);
         ws.send(JSON.stringify(makeOk(req, result)));
@@ -453,12 +464,12 @@ export function createMessageRouter({
           if (!alive || checks >= maxChecks) {
             clearInterval(pollInterval);
             reconcileStatus(proj.worcaDir);
-            proj.wset.statusWatcher.scheduleRefresh();
+            proj.wset.statusWatcher?.scheduleRefresh();
           }
         }, 500);
         pollInterval.unref?.();
       } catch (e) {
-        proj.wset.statusWatcher.scheduleRefresh();
+        proj.wset.statusWatcher?.scheduleRefresh();
         ws.send(
           JSON.stringify(makeError(req, e.code || 'not_running', e.message)),
         );
@@ -833,7 +844,7 @@ export function createMessageRouter({
       s.pipelineRunId = null;
       s.pipelineProjectId = null;
       if (prevRunId && prevProjectId) {
-        const wset = watcherSets.get(prevProjectId) || defaultWs;
+        const wset = watcherSets.get(prevProjectId) || getDefaultWs();
         const multiWatcher = wset?.getMultiWatcher?.();
         if (multiWatcher) {
           multiWatcher.demotePipeline(prevRunId);
