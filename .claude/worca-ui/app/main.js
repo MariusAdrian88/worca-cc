@@ -86,19 +86,33 @@ const notificationManager = createNotificationManager({
   ws,
   getSettings: () => settings,
 });
+// ─── Session-level state (not reset on project switch) ────────────────
 let route = parseHash(location.hash);
 let connectionState = ws.getState();
 let autoScroll = true;
-let logFilter = '*';
-let logSearch = '';
+
+// ─── Project-scoped mutable state ─────────────────────────────────────
+// All variables below are reset by resetProjectState() during project
+// switch. When adding a new project-scoped variable, add its default to
+// resetProjectState() to avoid stale state bugs.
+
+// -- Settings & pipeline control --
 let settings = {};
-let logIterationFilter = null; // null = all iterations, number = specific
 let pipelineAction = null; // null | 'stopping' | 'resuming' | 'pausing'
 let _controlPending = null; // null | { action: 'pause'|'resume'|'stop', runId: string }
 let actionError = null; // null | string (error message, auto-clears)
 let restartStageKey = null;
+
+// -- Log viewer --
+let logFilter = '*';
+let logSearch = '';
+let logIterationFilter = null; // null = all iterations, number = specific
+
+// -- Prompt cache --
 const promptCache = {}; // { [runId]: { [stage]: { agentInstructions, userPrompt, agent } } }
 const promptCachePending = new Set(); // tracks in-flight fetches
+
+// -- Beads --
 let beadsStatusFilter = 'all';
 let beadsPriorityFilter = 'all';
 let beadsStarting = null; // null | issueId
@@ -107,15 +121,66 @@ const runBeads = new Map(); // runId → issues[]
 let beadsCounts = {}; // { runId: count }
 let beadsRunIssues = []; // issues for the currently viewed run
 let beadsRunLoading = false;
-const stageIterationTab = new Map(); // stageKey → iterationNumber (user's last manual choice)
+
+// -- Stage iteration tabs --
+const stageIterationTab = new Map(); // stageKey → iterationNumber
+
+// -- Costs --
 let costsTokenData = {}; // { runId: { stage: [ { inputTokens, outputTokens, ... } ] } }
 let costsExpanded = null; // runId or null
 let costsFetched = false;
+
+// -- Webhook UI --
 let webhookSelectedId = null;
 let webhookCategoryFilter = 'all';
 let webhookRunFilter = null;
 let webhookSearchTerm = '';
+
+// -- Run history --
 let historyStatusFilter = 'all';
+
+/**
+ * Reset all project-scoped state to defaults.
+ * Called on project switch to prevent stale state leaking between projects.
+ * When adding a new project-scoped variable above, add its reset here.
+ */
+function resetProjectState() {
+  // Settings & pipeline control
+  settings = {};
+  pipelineAction = null;
+  _controlPending = null;
+  actionError = null;
+  restartStageKey = null;
+  // Log viewer
+  logFilter = '*';
+  logSearch = '';
+  logIterationFilter = null;
+  // Prompt cache
+  for (const key of Object.keys(promptCache)) delete promptCache[key];
+  promptCachePending.clear();
+  // Beads
+  beadsStatusFilter = 'all';
+  beadsPriorityFilter = 'all';
+  beadsStarting = null;
+  beadsStartError = null;
+  runBeads.clear();
+  beadsCounts = {};
+  beadsRunIssues = [];
+  beadsRunLoading = false;
+  // Stage iteration tabs
+  stageIterationTab.clear();
+  // Costs
+  costsTokenData = {};
+  costsExpanded = null;
+  costsFetched = false;
+  // Webhook UI
+  webhookSelectedId = null;
+  webhookCategoryFilter = 'all';
+  webhookRunFilter = null;
+  webhookSearchTerm = '';
+  // Run history
+  historyStatusFilter = 'all';
+}
 
 function handleStageTabChange(stageKey, iterationNumber) {
   stageIterationTab.set(stageKey, iterationNumber);
@@ -537,37 +602,7 @@ function handleProjectSwitch(newProjectId) {
     pipelines: {},
   });
 
-  // Reset all project-scoped module-level state
-  pipelineAction = null;
-  _controlPending = null;
-  actionError = null;
-  restartStageKey = null;
-  settings = {};
-  // Prompt cache
-  for (const key of Object.keys(promptCache)) delete promptCache[key];
-  promptCachePending.clear();
-  // Stage iteration tabs
-  stageIterationTab.clear();
-  // Beads state
-  beadsStarting = null;
-  beadsStartError = null;
-  runBeads.clear();
-  beadsCounts = {};
-  beadsRunIssues = [];
-  beadsRunLoading = false;
-  // Costs state
-  costsTokenData = {};
-  costsExpanded = null;
-  costsFetched = false;
-  // Webhook UI state
-  webhookSelectedId = null;
-  webhookCategoryFilter = 'all';
-  webhookRunFilter = null;
-  webhookSearchTerm = '';
-  // Log viewer state
-  logFilter = '*';
-  logSearch = '';
-  logIterationFilter = null;
+  resetProjectState();
 
   // Send updated hello-ack
   ws.sendRaw({

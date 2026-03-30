@@ -17,13 +17,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { Router } from 'express';
-import {
-  getRunningPid,
-  pausePipeline,
-  restartStage,
-  startPipeline,
-  stopPipeline,
-} from './process-manager.js';
+import { ProcessManager } from './process-manager.js';
 import {
   readProjects,
   removeProject,
@@ -91,13 +85,16 @@ export function projectResolver({ prefsDir, projectRoot }) {
         .json({ ok: false, error: `Project "${projectId}" not found` });
     }
 
+    const worcaDir = project.worcaDir || join(project.path, '.worca');
+    const projRoot = project.path;
     req.project = {
       name: project.name,
       path: project.path,
-      worcaDir: project.worcaDir || join(project.path, '.worca'),
+      worcaDir,
       settingsPath:
         project.settingsPath || join(project.path, '.claude', 'settings.json'),
-      projectRoot: project.path,
+      projectRoot: projRoot,
+      pm: new ProcessManager({ worcaDir, projectRoot: projRoot }),
     };
     next();
   };
@@ -160,13 +157,23 @@ export function createProjectRoutes({ prefsDir, projectRoot }) {
 export function createProjectScopedRoutes() {
   const router = Router({ mergeParams: true });
 
+  // Guard: run-related, cost, and pipeline routes require worcaDir
+  function requireWorcaDir(req, res, next) {
+    if (!req.project?.worcaDir) {
+      return res
+        .status(501)
+        .json({ ok: false, error: 'worcaDir not configured' });
+    }
+    next();
+  }
+
   // GET /api/projects/:projectId/info — project metadata
   router.get('/info', (req, res) => {
     res.json({ ok: true, project: req.project });
   });
 
   // GET /api/projects/:projectId/runs — list runs for this project
-  router.get('/runs', (req, res) => {
+  router.get('/runs', requireWorcaDir, (req, res) => {
     try {
       const runs = discoverRuns(req.project.worcaDir);
       res.json({ ok: true, runs });
@@ -378,12 +385,12 @@ export function createProjectScopedRoutes() {
   });
 
   // GET /api/projects/:projectId/runs/:runId/status — run status
-  router.get('/runs/:runId/status', (req, res) => {
+  router.get('/runs/:runId/status', requireWorcaDir, (req, res) => {
     const { runId } = req.params;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
     }
-    const { worcaDir } = req.project;
+    const { worcaDir, pm } = req.project;
     let statusPath = join(worcaDir, 'runs', runId, 'status.json');
     if (!existsSync(statusPath)) {
       statusPath = join(worcaDir, 'results', runId, 'status.json');
@@ -394,16 +401,34 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: `Run "${runId}" not found` });
     }
     try {
-      const status = JSON.parse(readFileSync(statusPath, 'utf8'));
-      res.json({ ok: true, ...status });
+      let status = JSON.parse(readFileSync(statusPath, 'utf8'));
+      // Reconcile stale "running" status when no process is alive
+      if (status.pipeline_status === 'running' && pm && !pm.getRunningPid()) {
+        try {
+          pm.reconcileStatus();
+          status = JSON.parse(readFileSync(statusPath, 'utf8'));
+        } catch {
+          /* reconciliation is best-effort */
+        }
+      }
+      const stage = status.stage ?? null;
+      const iteration =
+        stage != null ? (status.stages?.[stage]?.iteration ?? null) : null;
+      res.json({
+        ok: true,
+        pipeline_status: status.pipeline_status ?? null,
+        stage,
+        iteration,
+      });
     } catch (err) {
-      res.status(500).json({ ok: false, error: err.message });
+      res
+        .status(500)
+        .json({ ok: false, error: `Failed to read status: ${err.message}` });
     }
   });
 
   // POST /api/projects/:projectId/runs — start a new pipeline
-  router.post('/runs', async (req, res) => {
-    const { worcaDir, projectRoot } = req.project;
+  router.post('/runs', requireWorcaDir, async (req, res) => {
     const body = req.body || {};
 
     let { sourceType, sourceValue, prompt, planFile, msize, mloops, branch } =
@@ -487,7 +512,7 @@ export function createProjectScopedRoutes() {
         : 1;
 
     try {
-      const result = await startPipeline(worcaDir, {
+      const result = await req.project.pm.startPipeline({
         sourceType,
         sourceValue: hasSource ? sourceValue : undefined,
         prompt: hasPrompt ? prompt : undefined,
@@ -495,7 +520,6 @@ export function createProjectScopedRoutes() {
         mloops: mloopsVal,
         planFile: hasPlan ? planFile.trim() : undefined,
         branch: branch || undefined,
-        projectRoot,
       });
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('run-started', { pid: result.pid });
@@ -509,10 +533,9 @@ export function createProjectScopedRoutes() {
   });
 
   // DELETE /api/projects/:projectId/runs/:id — stop a running pipeline
-  router.delete('/runs/:id', (req, res) => {
-    const { worcaDir } = req.project;
+  router.delete('/runs/:id', requireWorcaDir, (req, res) => {
     try {
-      const result = stopPipeline(worcaDir);
+      const result = req.project.pm.stopPipeline();
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('run-stopped', { pid: result.pid });
       res.json({ ok: true, stopped: true, pid: result.pid });
@@ -525,14 +548,13 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/pause
-  router.post('/runs/:id/pause', (req, res) => {
+  router.post('/runs/:id/pause', requireWorcaDir, (req, res) => {
     const runId = req.params.id;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
     }
-    const { worcaDir } = req.project;
     try {
-      const result = pausePipeline(worcaDir, runId);
+      const result = req.project.pm.pausePipeline(runId);
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('run-paused', { runId });
       res.json({ ok: true, ...result });
@@ -542,17 +564,15 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/resume
-  router.post('/runs/:id/resume', async (req, res) => {
+  router.post('/runs/:id/resume', requireWorcaDir, async (req, res) => {
     const runId = req.params.id;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
     }
-    const { worcaDir, projectRoot } = req.project;
     try {
-      const result = await startPipeline(worcaDir, {
+      const result = await req.project.pm.startPipeline({
         resume: true,
         runId,
-        projectRoot,
       });
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('run-resumed', { runId, pid: result.pid });
@@ -566,7 +586,7 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/stop — control.json + SIGTERM
-  router.post('/runs/:id/stop', (req, res) => {
+  router.post('/runs/:id/stop', requireWorcaDir, (req, res) => {
     const runId = req.params.id;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
@@ -592,13 +612,13 @@ export function createProjectScopedRoutes() {
       /* non-fatal — SIGTERM follows */
     }
     try {
-      const result = stopPipeline(worcaDir);
+      const result = req.project.pm.stopPipeline();
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('run-stopped', { runId, pid: result.pid });
       res.json({ ok: true, stopped: true, runId, pid: result.pid });
     } catch (err) {
       if (err.code === 'not_running') {
-        const statusPath = join(worcaDir, 'runs', runId, 'status.json');
+        const statusPath = join(req.project.worcaDir, 'runs', runId, 'status.json');
         if (existsSync(statusPath)) {
           try {
             const st = JSON.parse(readFileSync(statusPath, 'utf8'));
@@ -628,11 +648,10 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/stages/:stage/restart
-  router.post('/runs/:id/stages/:stage/restart', async (req, res) => {
-    const { worcaDir, projectRoot } = req.project;
+  router.post('/runs/:id/stages/:stage/restart', requireWorcaDir, async (req, res) => {
     const { stage } = req.params;
     try {
-      const result = await restartStage(worcaDir, stage, { projectRoot });
+      const result = await req.project.pm.restartStage(stage);
       const { broadcast } = req.app.locals;
       if (broadcast) broadcast('stage-restarted', { stage, pid: result.pid });
       res.json({ ok: true, restarted: true, stage, pid: result.pid });
@@ -648,7 +667,7 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/learn
-  router.post('/runs/:id/learn', (req, res) => {
+  router.post('/runs/:id/learn', requireWorcaDir, (req, res) => {
     const runId = req.params.id;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
@@ -665,7 +684,7 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: `Run "${runId}" not found` });
     }
 
-    const running = getRunningPid(worcaDir);
+    const running = req.project.pm.getRunningPid();
     if (running) {
       return res.status(409).json({
         ok: false,
@@ -749,7 +768,7 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/multi-pipeline — launch parallel pipelines
-  router.post('/multi-pipeline', (req, res) => {
+  router.post('/multi-pipeline', requireWorcaDir, (req, res) => {
     const { projectRoot } = req.project;
     const body = req.body || {};
     const { requests, baseBranch, maxParallel, cleanupPolicy, msize, mloops } =
@@ -832,7 +851,7 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/pipelines/:runId/stop — stop a parallel pipeline
-  router.post('/pipelines/:runId/stop', (req, res) => {
+  router.post('/pipelines/:runId/stop', requireWorcaDir, (req, res) => {
     const runId = req.params.runId;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
@@ -866,9 +885,9 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: 'Pipeline has no worktree path' });
     }
 
-    const worktreeWorcaDir = join(pipeline.worktree_path, '.worca');
+    const worktreePm = new ProcessManager({ worcaDir: join(pipeline.worktree_path, '.worca') });
     try {
-      const result = stopPipeline(worktreeWorcaDir);
+      const result = worktreePm.stopPipeline();
       res.json({ ok: true, stopped: true, runId, pid: result.pid });
     } catch (err) {
       if (err.code === 'not_running') {
@@ -879,7 +898,7 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/pipelines/:runId/pause — pause a parallel pipeline
-  router.post('/pipelines/:runId/pause', (req, res) => {
+  router.post('/pipelines/:runId/pause', requireWorcaDir, (req, res) => {
     const runId = req.params.runId;
     if (!validateRunId(runId)) {
       return res.status(400).json({ ok: false, error: 'Invalid runId' });
@@ -913,9 +932,9 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: 'Pipeline has no worktree path' });
     }
 
-    const worktreeWorcaDir = join(pipeline.worktree_path, '.worca');
+    const worktreePm = new ProcessManager({ worcaDir: join(pipeline.worktree_path, '.worca') });
     try {
-      const result = pausePipeline(worktreeWorcaDir, runId);
+      const result = worktreePm.pausePipeline(runId);
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(500).json({ ok: false, error: err.message });
@@ -946,7 +965,7 @@ export function createProjectScopedRoutes() {
   });
 
   // GET /api/projects/:projectId/costs — token & cost data
-  router.get('/costs', (req, res) => {
+  router.get('/costs', requireWorcaDir, (req, res) => {
     const { worcaDir } = req.project;
     const resultsDir = join(worcaDir, 'results');
     if (!existsSync(resultsDir)) return res.json({ ok: true, tokenData: {} });
