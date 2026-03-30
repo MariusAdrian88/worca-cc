@@ -70,6 +70,11 @@ def update_pipeline(run_id, status=None, stage=None, base=_DEFAULT_BASE):
     """Update fields on an existing pipeline entry. Returns True on success.
 
     Returns False if the pipeline registry file does not exist.
+
+    Note: The read-modify-write cycle is not atomic across concurrent callers.
+    This is safe because each pipeline has its own run_id file, and the
+    orchestrator processes completions sequentially via as_completed().
+    Do not call concurrently for the same run_id without external locking.
     """
     path = _pipeline_path(run_id, base=base)
     if not os.path.exists(path):
