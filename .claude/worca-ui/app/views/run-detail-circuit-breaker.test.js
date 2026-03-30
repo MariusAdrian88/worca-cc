@@ -3,6 +3,8 @@ import { runDetailView } from './run-detail.js';
 
 function renderToString(template) {
   if (!template) return '';
+  if (template.overview)
+    return renderToString(template.overview) + renderToString(template.stages);
   if (typeof template === 'string') return template;
   if (!template.strings) return String(template);
   let result = '';

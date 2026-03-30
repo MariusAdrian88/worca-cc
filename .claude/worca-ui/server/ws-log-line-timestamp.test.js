@@ -6,12 +6,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { attachWsServer } from './ws.js';
 
-function waitForWsEvent(ws, type, timeoutMs = 3000) {
+function waitForWsEvent(ws, type, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(
-      () => reject(new Error(`Timed out waiting for WS event "${type}"`)),
-      timeoutMs,
-    );
+    const timer = setTimeout(() => {
+      ws.off('message', onMessage);
+      reject(new Error(`Timed out waiting for WS event "${type}"`));
+    }, timeoutMs);
     function onMessage(data) {
       let msg;
       try {
@@ -81,12 +81,16 @@ describe('log-line events include server-side timestamp', () => {
     );
     await waitForWsEvent(ws, 'subscribe-log');
 
-    await new Promise((r) => setTimeout(r, 300));
+    // Give fs.watch time to initialize
+    await new Promise((r) => setTimeout(r, 500));
+
+    // Start listening BEFORE writing so we don't miss the event
+    const logLinePromise = waitForWsEvent(ws, 'log-line', 10000);
 
     const logsDir = join(worcaDir, 'runs', 'test-run', 'logs');
     appendFileSync(join(logsDir, 'orchestrator.log'), 'hello from test\n');
 
-    const msg = await waitForWsEvent(ws, 'log-line');
+    const msg = await logLinePromise;
     expect(msg.payload).toBeDefined();
     expect(msg.payload.line).toBe('hello from test');
     expect(msg.payload.timestamp).toBeDefined();
@@ -96,5 +100,5 @@ describe('log-line events include server-side timestamp', () => {
     expect(Math.abs(Date.now() - parsed.getTime())).toBeLessThan(5000);
 
     ws.close();
-  });
+  }, 15000);
 });
