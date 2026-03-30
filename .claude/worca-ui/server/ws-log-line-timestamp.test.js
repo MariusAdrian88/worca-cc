@@ -65,44 +65,40 @@ describe('log-line events include server-side timestamp', () => {
     rmSync(worcaDir, { recursive: true, force: true });
   });
 
-  it(
-    'log-line payload contains an ISO 8601 timestamp',
-    async () => {
-      const ws = new WebSocket(`ws://localhost:${port}/ws`);
-      await new Promise((resolve, reject) => {
-        ws.on('open', resolve);
-        ws.on('error', reject);
-      });
+  it('log-line payload contains an ISO 8601 timestamp', async () => {
+    const ws = new WebSocket(`ws://localhost:${port}/ws`);
+    await new Promise((resolve, reject) => {
+      ws.on('open', resolve);
+      ws.on('error', reject);
+    });
 
-      ws.send(
-        JSON.stringify({
-          id: 'sub-1',
-          type: 'subscribe-log',
-          payload: { stage: null },
-        }),
-      );
-      await waitForWsEvent(ws, 'subscribe-log');
+    ws.send(
+      JSON.stringify({
+        id: 'sub-1',
+        type: 'subscribe-log',
+        payload: { stage: null },
+      }),
+    );
+    await waitForWsEvent(ws, 'subscribe-log');
 
-      // Give fs.watch time to initialize
-      await new Promise((r) => setTimeout(r, 500));
+    // Give fs.watch time to initialize
+    await new Promise((r) => setTimeout(r, 500));
 
-      // Start listening BEFORE writing so we don't miss the event
-      const logLinePromise = waitForWsEvent(ws, 'log-line', 10000);
+    // Start listening BEFORE writing so we don't miss the event
+    const logLinePromise = waitForWsEvent(ws, 'log-line', 10000);
 
-      const logsDir = join(worcaDir, 'runs', 'test-run', 'logs');
-      appendFileSync(join(logsDir, 'orchestrator.log'), 'hello from test\n');
+    const logsDir = join(worcaDir, 'runs', 'test-run', 'logs');
+    appendFileSync(join(logsDir, 'orchestrator.log'), 'hello from test\n');
 
-      const msg = await logLinePromise;
-      expect(msg.payload).toBeDefined();
-      expect(msg.payload.line).toBe('hello from test');
-      expect(msg.payload.timestamp).toBeDefined();
-      expect(typeof msg.payload.timestamp).toBe('string');
-      const parsed = new Date(msg.payload.timestamp);
-      expect(parsed.getTime()).not.toBeNaN();
-      expect(Math.abs(Date.now() - parsed.getTime())).toBeLessThan(5000);
+    const msg = await logLinePromise;
+    expect(msg.payload).toBeDefined();
+    expect(msg.payload.line).toBe('hello from test');
+    expect(msg.payload.timestamp).toBeDefined();
+    expect(typeof msg.payload.timestamp).toBe('string');
+    const parsed = new Date(msg.payload.timestamp);
+    expect(parsed.getTime()).not.toBeNaN();
+    expect(Math.abs(Date.now() - parsed.getTime())).toBeLessThan(5000);
 
-      ws.close();
-    },
-    15000,
-  );
+    ws.close();
+  }, 15000);
 });

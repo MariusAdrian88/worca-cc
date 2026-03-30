@@ -36,7 +36,13 @@ export function createBroadcaster({ wss, getSubs }) {
         const s = getSubs(ws);
         // Skip clients subscribed to a different project.
         // Send to unscoped clients (protocol 1) and matching protocol 2 clients.
-        if (s && s.protocolVersion >= 2 && s.projectId && s.projectId !== projectId) continue;
+        if (
+          s &&
+          s.protocolVersion >= 2 &&
+          s.projectId &&
+          s.projectId !== projectId
+        )
+          continue;
       }
       sendToClient(ws, base);
     }

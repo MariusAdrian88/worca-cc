@@ -21,7 +21,7 @@ describe('main.js project switching logic', () => {
     };
 
     // Simulate handleHello logic
-    const helloPayload = { protocol: 2, capabilities: ['multi-project'] };
+    const _helloPayload = { protocol: 2, capabilities: ['multi-project'] };
 
     // Fetch projects
     const projectsResponse = await ws.send('list-runs'); // would be GET /api/projects in real code

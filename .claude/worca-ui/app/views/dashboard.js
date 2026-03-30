@@ -160,9 +160,13 @@ export function dashboardView(
           ? html`
         <h3 class="dashboard-section-title">
           Recent Failures
-          ${allFailed.length > MAX_RECENT ? html`
+          ${
+            allFailed.length > MAX_RECENT
+              ? html`
             <a class="dashboard-view-all" @click=${() => onNavigate?.('history', { statusFilter: 'failed' })}>View all ${allFailed.length}</a>
-          ` : nothing}
+          `
+              : nothing
+          }
         </h3>
         <div class="active-group active-group-failed">
           <div class="run-list">
@@ -178,9 +182,13 @@ export function dashboardView(
           ? html`
         <h3 class="dashboard-section-title">
           Recent Completed
-          ${allCompleted.length > MAX_RECENT ? html`
+          ${
+            allCompleted.length > MAX_RECENT
+              ? html`
             <a class="dashboard-view-all" @click=${() => onNavigate?.('history', { statusFilter: 'completed' })}>View all ${allCompleted.length}</a>
-          ` : nothing}
+          `
+              : nothing
+          }
         </h3>
         <div class="active-group active-group-completed">
           <div class="run-list">

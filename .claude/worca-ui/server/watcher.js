@@ -72,7 +72,8 @@ export function discoverRuns(worcaDir) {
         const id = createRunId(status);
         if (seenIds.has(id)) continue;
         seenIds.add(id);
-        const active = !isTerminal(status) && status.pipeline_status === 'running';
+        const active =
+          !isTerminal(status) && status.pipeline_status === 'running';
         runs.push({ id, active, ...status });
       } catch {
         /* ignore */
@@ -153,7 +154,9 @@ export async function discoverRunsAsync(worcaDir) {
     const id = createRunId(status);
     runs.push({ id, active, ...status });
     seenIds.add(id);
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 2. Scan .worca/runs/
   const runsDir = join(worcaDir, 'runs');
@@ -164,28 +167,37 @@ export async function discoverRunsAsync(worcaDir) {
         const statusPath = join(runsDir, entry, 'status.json');
         const status = JSON.parse(await readFile(statusPath, 'utf8'));
         return status;
-      } catch { return null; }
+      } catch {
+        return null;
+      }
     });
     for (const status of await Promise.all(readPromises)) {
       if (!status) continue;
       const id = createRunId(status);
       if (seenIds.has(id)) continue;
       seenIds.add(id);
-      const active = !isTerminal(status) && status.pipeline_status === 'running';
+      const active =
+        !isTerminal(status) && status.pipeline_status === 'running';
       runs.push({ id, active, ...status });
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 3. Legacy flat status.json
   try {
-    const status = JSON.parse(await readFile(join(worcaDir, 'status.json'), 'utf8'));
+    const status = JSON.parse(
+      await readFile(join(worcaDir, 'status.json'), 'utf8'),
+    );
     const id = createRunId(status);
     if (!seenIds.has(id)) {
       const active = !isTerminal(status) && pipelineRunning;
       runs.push({ id, active, ...status });
       seenIds.add(id);
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   // 4. Results
   const resultsDir = join(worcaDir, 'results');
@@ -194,13 +206,17 @@ export async function discoverRunsAsync(worcaDir) {
     const readPromises = entries.map(async (entry) => {
       try {
         if (entry.isFile() && entry.name.endsWith('.json')) {
-          return JSON.parse(await readFile(join(resultsDir, entry.name), 'utf8'));
+          return JSON.parse(
+            await readFile(join(resultsDir, entry.name), 'utf8'),
+          );
         }
         if (entry.isDirectory()) {
           const sp = join(resultsDir, entry.name, 'status.json');
           return JSON.parse(await readFile(sp, 'utf8'));
         }
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
       return null;
     });
     for (const data of await Promise.all(readPromises)) {
@@ -211,7 +227,9 @@ export async function discoverRunsAsync(worcaDir) {
         runs.push({ id, active: false, ...data });
       }
     }
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
 
   return runs;
 }

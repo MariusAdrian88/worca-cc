@@ -18,12 +18,24 @@ vi.mock('../process-manager.js', () => {
       this.worcaDir = opts.worcaDir;
       this.projectRoot = opts.projectRoot;
     }
-    startPipeline(opts) { return Promise.resolve({ pid: 12345 }); }
-    stopPipeline() { return vi.fn()(); }
-    pausePipeline(runId) { return vi.fn()(runId); }
-    getRunningPid() { return mockGetRunningPid(this.worcaDir); }
-    reconcileStatus() { return false; }
-    restartStage() { return vi.fn()(); }
+    startPipeline(_opts) {
+      return Promise.resolve({ pid: 12345 });
+    }
+    stopPipeline() {
+      return vi.fn()();
+    }
+    pausePipeline(runId) {
+      return vi.fn()(runId);
+    }
+    getRunningPid() {
+      return mockGetRunningPid(this.worcaDir);
+    }
+    reconcileStatus() {
+      return false;
+    }
+    restartStage() {
+      return vi.fn()();
+    }
   }
   return {
     ProcessManager,

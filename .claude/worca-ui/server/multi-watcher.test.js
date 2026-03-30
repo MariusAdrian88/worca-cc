@@ -5,7 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MultiWatcher } from './multi-watcher.js';
 
 function tmpDir() {
-  const d = join(tmpdir(), `mw-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const d = join(
+    tmpdir(),
+    `mw-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   mkdirSync(d, { recursive: true });
   return d;
 }
@@ -25,7 +28,10 @@ function makeDeps(overrides = {}) {
 function writePipeline(worcaDir, runId, entry) {
   const dir = join(worcaDir, 'multi', 'pipelines.d');
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${runId}.json`), JSON.stringify({ run_id: runId, ...entry }));
+  writeFileSync(
+    join(dir, `${runId}.json`),
+    JSON.stringify({ run_id: runId, ...entry }),
+  );
 }
 
 describe('MultiWatcher', () => {
@@ -56,8 +62,16 @@ describe('MultiWatcher', () => {
 
   it('_syncPipelines picks up pipeline files and broadcasts', async () => {
     const deps = makeDeps();
-    writePipeline(worcaDir, 'run-a', { status: 'running', stage: 'plan', title: 'Alpha' });
-    writePipeline(worcaDir, 'run-b', { status: 'completed', stage: 'test', title: 'Beta' });
+    writePipeline(worcaDir, 'run-a', {
+      status: 'running',
+      stage: 'plan',
+      title: 'Alpha',
+    });
+    writePipeline(worcaDir, 'run-b', {
+      status: 'completed',
+      stage: 'test',
+      title: 'Beta',
+    });
 
     const mw = new MultiWatcher('proj-1', worcaDir, deps);
     await mw._syncPipelines();

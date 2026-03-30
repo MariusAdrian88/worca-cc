@@ -3,6 +3,7 @@ import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { createNotificationManager } from './notifications.js';
 import { navigate, onHashChange, parseHash } from './router.js';
 import { createStore } from './state.js';
+import { confirmDialogTemplate, showConfirm } from './utils/confirm-dialog.js';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -15,14 +16,13 @@ import {
   Square,
   Trash2,
 } from './utils/icons.js';
+import { sortByStartDesc } from './utils/sort-runs.js';
 import { statusIcon } from './utils/status-badge.js';
 import { applyTheme } from './utils/theme.js';
-import { confirmDialogTemplate, showConfirm } from './utils/confirm-dialog.js';
 import { formatTitle } from './utils/title.js';
 import { addProjectDialogView } from './views/add-project-dialog.js';
 import { beadsPanelView, beadsRunListView } from './views/beads-panel.js';
 import { dashboardView } from './views/dashboard.js';
-import { multiPipelineDashboardView } from './views/multi-dashboard.js';
 import { learningsSectionView } from './views/learnings-panel.js';
 import {
   clearLiveTerminal,
@@ -42,16 +42,20 @@ import {
   searchTerminal,
   writeLogLine,
 } from './views/log-viewer.js';
+import { multiPipelineDashboardView } from './views/multi-dashboard.js';
 import {
   getNewRunSubmitState,
   newRunView,
   submitNewRun,
 } from './views/new-run.js';
-import { runBeadsSectionView, runDetailView } from './views/run-detail.js';
 import { runCardView } from './views/run-card.js';
+import { runBeadsSectionView, runDetailView } from './views/run-detail.js';
 import { runListView } from './views/run-list.js';
-import { sortByStartDesc } from './utils/sort-runs.js';
-import { loadSettings, projectSettingsView, settingsView } from './views/settings.js';
+import {
+  loadSettings,
+  projectSettingsView,
+  settingsView,
+} from './views/settings.js';
 import { sidebarView } from './views/sidebar.js';
 import { tokenCostsView } from './views/token-costs.js';
 import { webhookInboxView } from './views/webhook-inbox.js';
@@ -427,7 +431,11 @@ ws.on('learn-started', (payload) => {
 ws.on('webhook-inbox-event', (payload) => {
   if (payload) {
     const currentProject = store.getState().currentProjectId;
-    if (!payload.projectId || !currentProject || payload.projectId === currentProject) {
+    if (
+      !payload.projectId ||
+      !currentProject ||
+      payload.projectId === currentProject
+    ) {
       const inbox = store.getState().webhookInbox;
       store.setState({
         webhookInbox: { ...inbox, events: [...inbox.events, payload] },
@@ -498,8 +506,8 @@ function handleHello(_payload) {
       store.setState({ projects });
 
       // Determine currentProjectId from URL; only auto-select when single project
-      const currentProjectId = route.projectId
-        || (projects.length === 1 ? projects[0].name : null);
+      const currentProjectId =
+        route.projectId || (projects.length === 1 ? projects[0].name : null);
       store.setState({ currentProjectId });
 
       // Send hello-ack — sets project context on server before any requests
@@ -521,7 +529,12 @@ function fetchAllProjectRuns() {
     projects.map((p) =>
       fetch(`/api/projects/${p.name}/runs`)
         .then((r) => r.json())
-        .then((data) => (data.runs || []).map((run) => ({ ...run, project: run.project || p.name })))
+        .then((data) =>
+          (data.runs || []).map((run) => ({
+            ...run,
+            project: run.project || p.name,
+          })),
+        )
         .catch(() => []),
     ),
   ).then((results) => {
@@ -656,7 +669,12 @@ function handleProjectSwitch(newProjectId) {
     .catch(() => {});
 
   // Clear and re-fetch webhook inbox for new project
-  store.setState({ webhookInbox: { events: [], controlAction: store.getState().webhookInbox?.controlAction || 'continue' } });
+  store.setState({
+    webhookInbox: {
+      events: [],
+      controlAction: store.getState().webhookInbox?.controlAction || 'continue',
+    },
+  });
   ws.send('get-webhook-inbox')
     .then((payload) => {
       store.setState({
@@ -841,13 +859,17 @@ function dismissActionError() {
 }
 
 function handleStopPipeline() {
-  showConfirm({
-    label: 'Stop Pipeline?',
-    message: 'Are you sure? The current stage will be interrupted and marked as error.',
-    confirmLabel: 'Stop',
-    confirmVariant: 'danger',
-    onConfirm: handleConfirmStop,
-  }, rerender);
+  showConfirm(
+    {
+      label: 'Stop Pipeline?',
+      message:
+        'Are you sure? The current stage will be interrupted and marked as error.',
+      confirmLabel: 'Stop',
+      confirmVariant: 'danger',
+      onConfirm: handleConfirmStop,
+    },
+    rerender,
+  );
 }
 
 async function handleConfirmStop() {
@@ -980,14 +1002,19 @@ async function handleResumeParallelPipeline(runId) {
 
 function handleRestartStage(stageKey) {
   restartStageKey = stageKey;
-  showConfirm({
-    label: 'Restart Stage?',
-    message: `Restart the "${stageKey}" stage? The pipeline will resume from this point.`,
-    confirmLabel: 'Restart',
-    confirmVariant: 'warning',
-    onConfirm: handleConfirmRestartStage,
-    onCancel: () => { restartStageKey = null; },
-  }, rerender);
+  showConfirm(
+    {
+      label: 'Restart Stage?',
+      message: `Restart the "${stageKey}" stage? The pipeline will resume from this point.`,
+      confirmLabel: 'Restart',
+      confirmVariant: 'warning',
+      onConfirm: handleConfirmRestartStage,
+      onCancel: () => {
+        restartStageKey = null;
+      },
+    },
+    rerender,
+  );
 }
 
 async function handleConfirmRestartStage() {
@@ -1176,13 +1203,16 @@ function handleRunLearn() {
   const run = store.getState().runs[route.runId];
   const learnStatus = run?.stages?.learn?.status;
   if (learnStatus === 'completed' || learnStatus === 'error') {
-    showConfirm({
-      label: 'Re-run Learning Analysis?',
-      message: 'This will replace existing learnings. Continue?',
-      confirmLabel: 'Re-run',
-      confirmVariant: 'warning',
-      onConfirm: doRunLearn,
-    }, rerender);
+    showConfirm(
+      {
+        label: 'Re-run Learning Analysis?',
+        message: 'This will replace existing learnings. Continue?',
+        confirmLabel: 'Re-run',
+        confirmVariant: 'warning',
+        onConfirm: doRunLearn,
+      },
+      rerender,
+    );
     return;
   }
   doRunLearn();
@@ -1431,7 +1461,12 @@ function mainContentView() {
     if (run && !liveStage) {
       updateActiveStage(run);
     }
-    const { overview, stages: stagePanelsHtml } = runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange });
+    const { overview, stages: stagePanelsHtml } = runDetailView(run, settings, {
+      promptCache: promptCache[route.runId] || {},
+      onRestartStage: handleRestartStage,
+      stageIterationTab,
+      onStageTabChange: handleStageTabChange,
+    });
     return html`
       <div class="run-detail run-detail-layout">
         <div class="run-detail-layout__overview">
@@ -1553,17 +1588,23 @@ function mainContentView() {
     // Match the dashboard "Active Runs" section style
     return html`
       <h3 class="dashboard-section-title">Active Runs</h3>
-      ${activeRuns.length > 0 ? html`
+      ${
+        activeRuns.length > 0
+          ? html`
         <div class="active-group">
           <div class="run-list">
-            ${activeRuns.map((run) => runCardView(run, {
-              onClick: handleSelectRun,
-              onPause: handlePauseRun,
-              onResume: handleResumeRun,
-            }))}
+            ${activeRuns.map((run) =>
+              runCardView(run, {
+                onClick: handleSelectRun,
+                onPause: handlePauseRun,
+                onResume: handleResumeRun,
+              }),
+            )}
           </div>
         </div>
-      ` : html`<div class="empty-state">No running pipelines</div>`}
+      `
+          : html`<div class="empty-state">No running pipelines</div>`
+      }
     `;
   }
 
@@ -1571,7 +1612,11 @@ function mainContentView() {
     ${dashboardView(state, {
       onSelectRun: (runId) => navigate('active', runId, route.projectId),
       onNavigate: (section, secondArg, thirdArg) => {
-        if (secondArg && typeof secondArg === 'object' && secondArg.statusFilter) {
+        if (
+          secondArg &&
+          typeof secondArg === 'object' &&
+          secondArg.statusFilter
+        ) {
           historyStatusFilter = secondArg.statusFilter;
           navigate(section, null, route.projectId);
         } else {

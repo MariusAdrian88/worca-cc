@@ -2,16 +2,22 @@ import { html } from 'lit-html';
 import { sortByStartDesc } from '../utils/sort-runs.js';
 import { runCardView } from './run-card.js';
 
-const HISTORY_STATUSES = ['all', 'running', 'completed', 'failed', 'paused', 'error'];
+const HISTORY_STATUSES = [
+  'all',
+  'running',
+  'completed',
+  'failed',
+  'paused',
+  'error',
+];
 
 export function runListView(
   runs,
   filter,
   { onSelectRun, onPause, onResume, statusFilter, onStatusFilter } = {},
 ) {
-  const baseFiltered = filter === 'active'
-    ? runs.filter((r) => r.active)
-    : runs;
+  const baseFiltered =
+    filter === 'active' ? runs.filter((r) => r.active) : runs;
 
   const showStatusChips = filter === 'history' && onStatusFilter;
 
@@ -41,7 +47,9 @@ export function runListView(
   }
 
   return html`
-    ${showStatusChips ? html`
+    ${
+      showStatusChips
+        ? html`
       <div class="filter-chips">
         ${HISTORY_STATUSES.filter((s) => s === 'all' || statusCounts[s]).map(
           (s) => html`
@@ -52,15 +60,22 @@ export function runListView(
             ${s === 'all' ? 'All' : s}
             <span class="chip-count">${statusCounts[s] || 0}</span>
           </button>
-        `)}
+        `,
+        )}
       </div>
-    ` : ''}
-    ${displayed.length === 0 ? html`
+    `
+        : ''
+    }
+    ${
+      displayed.length === 0
+        ? html`
       <div class="empty-state">No ${statusFilter} runs</div>
-    ` : html`
+    `
+        : html`
       <div class="run-list">
         ${displayed.map((run) => runCardView(run, { onClick: onSelectRun, onPause, onResume }))}
       </div>
-    `}
+    `
+    }
   `;
 }

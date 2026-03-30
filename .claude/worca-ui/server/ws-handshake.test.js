@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createClientManager } from './ws-client-manager.js';
 

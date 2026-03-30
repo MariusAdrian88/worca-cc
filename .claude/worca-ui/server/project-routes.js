@@ -41,20 +41,28 @@ import {
 } from './worca-setup.js';
 
 /** Validate a runId — must not contain path traversal characters */
-const RUN_ID_RE = /^[a-zA-Z0-9_\-]+$/;
+const RUN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 function validateRunId(runId) {
-  return typeof runId === 'string' && runId.length > 0 && runId.length <= 128 && RUN_ID_RE.test(runId);
+  return (
+    typeof runId === 'string' &&
+    runId.length > 0 &&
+    runId.length <= 128 &&
+    RUN_ID_RE.test(runId)
+  );
 }
 
 /** Validate a branch name — alphanumeric, dots, hyphens, underscores, slashes */
-const BRANCH_RE = /^[\w.\-\/]+$/;
+const BRANCH_RE = /^[\w.\-/]+$/;
 function validateBranch(branch) {
-  return typeof branch === 'string' && branch.length <= 200 && BRANCH_RE.test(branch);
+  return (
+    typeof branch === 'string' && branch.length <= 200 && BRANCH_RE.test(branch)
+  );
 }
 
 /** Validate a plan file path — relative, no traversal */
 function validatePlanFile(planFile) {
-  if (typeof planFile !== 'string' || planFile.trim().length === 0) return false;
+  if (typeof planFile !== 'string' || planFile.trim().length === 0)
+    return false;
   const normalized = planFile.trim();
   if (normalized.startsWith('/') || normalized.includes('..')) return false;
   return true;
@@ -621,7 +629,12 @@ export function createProjectScopedRoutes() {
       res.json({ ok: true, stopped: true, runId, pid: result.pid });
     } catch (err) {
       if (err.code === 'not_running') {
-        const statusPath = join(req.project.worcaDir, 'runs', runId, 'status.json');
+        const statusPath = join(
+          req.project.worcaDir,
+          'runs',
+          runId,
+          'status.json',
+        );
         if (existsSync(statusPath)) {
           try {
             const st = JSON.parse(readFileSync(statusPath, 'utf8'));
@@ -651,23 +664,27 @@ export function createProjectScopedRoutes() {
   });
 
   // POST /api/projects/:projectId/runs/:id/stages/:stage/restart
-  router.post('/runs/:id/stages/:stage/restart', requireWorcaDir, async (req, res) => {
-    const { stage } = req.params;
-    try {
-      const result = await req.project.pm.restartStage(stage);
-      const { broadcast } = req.app.locals;
-      if (broadcast) broadcast('stage-restarted', { stage, pid: result.pid });
-      res.json({ ok: true, restarted: true, stage, pid: result.pid });
-    } catch (err) {
-      if (err.code === 'already_running') {
-        return res.status(409).json({ ok: false, error: err.message });
+  router.post(
+    '/runs/:id/stages/:stage/restart',
+    requireWorcaDir,
+    async (req, res) => {
+      const { stage } = req.params;
+      try {
+        const result = await req.project.pm.restartStage(stage);
+        const { broadcast } = req.app.locals;
+        if (broadcast) broadcast('stage-restarted', { stage, pid: result.pid });
+        res.json({ ok: true, restarted: true, stage, pid: result.pid });
+      } catch (err) {
+        if (err.code === 'already_running') {
+          return res.status(409).json({ ok: false, error: err.message });
+        }
+        if (err.code === 'stage_not_found' || err.code === 'stage_not_error') {
+          return res.status(400).json({ ok: false, error: err.message });
+        }
+        res.status(500).json({ ok: false, error: err.message });
       }
-      if (err.code === 'stage_not_found' || err.code === 'stage_not_error') {
-        return res.status(400).json({ ok: false, error: err.message });
-      }
-      res.status(500).json({ ok: false, error: err.message });
-    }
-  });
+    },
+  );
 
   // POST /api/projects/:projectId/runs/:id/learn
   router.post('/runs/:id/learn', requireWorcaDir, (req, res) => {
@@ -778,9 +795,10 @@ export function createProjectScopedRoutes() {
       body;
 
     if (!Array.isArray(requests) || requests.length < 1) {
-      return res
-        .status(400)
-        .json({ ok: false, error: 'requests array required (at least 1 item)' });
+      return res.status(400).json({
+        ok: false,
+        error: 'requests array required (at least 1 item)',
+      });
     }
     if (requests.length > 20) {
       return res
@@ -789,28 +807,31 @@ export function createProjectScopedRoutes() {
     }
     for (const r of requests) {
       if (typeof r !== 'string' || r.trim().length === 0) {
-        return res
-          .status(400)
-          .json({ ok: false, error: 'Each request must be a non-empty string' });
+        return res.status(400).json({
+          ok: false,
+          error: 'Each request must be a non-empty string',
+        });
       }
       if (r.length > 50000) {
-        return res
-          .status(400)
-          .json({ ok: false, error: 'Each request must be 50,000 characters or less' });
+        return res.status(400).json({
+          ok: false,
+          error: 'Each request must be 50,000 characters or less',
+        });
       }
     }
     if (baseBranch !== undefined) {
-      if (typeof baseBranch !== 'string' || baseBranch.length > 200 || !/^[\w.\-\/]+$/.test(baseBranch)) {
+      if (
+        typeof baseBranch !== 'string' ||
+        baseBranch.length > 200 ||
+        !/^[\w.\-/]+$/.test(baseBranch)
+      ) {
         return res
           .status(400)
           .json({ ok: false, error: 'Invalid baseBranch value' });
       }
     }
 
-    const maxP = Math.max(
-      1,
-      Math.min(5, Math.round(Number(maxParallel) || 3)),
-    );
+    const maxP = Math.max(1, Math.min(5, Math.round(Number(maxParallel) || 3)));
     const msizeVal = Math.max(1, Math.min(10, Math.round(Number(msize) || 1)));
     const mloopsVal = Math.max(
       1,
@@ -888,7 +909,9 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: 'Pipeline has no worktree path' });
     }
 
-    const worktreePm = new ProcessManager({ worcaDir: join(pipeline.worktree_path, '.worca') });
+    const worktreePm = new ProcessManager({
+      worcaDir: join(pipeline.worktree_path, '.worca'),
+    });
     try {
       const result = worktreePm.stopPipeline();
       res.json({ ok: true, stopped: true, runId, pid: result.pid });
@@ -935,7 +958,9 @@ export function createProjectScopedRoutes() {
         .json({ ok: false, error: 'Pipeline has no worktree path' });
     }
 
-    const worktreePm = new ProcessManager({ worcaDir: join(pipeline.worktree_path, '.worca') });
+    const worktreePm = new ProcessManager({
+      worcaDir: join(pipeline.worktree_path, '.worca'),
+    });
     try {
       const result = worktreePm.pausePipeline(runId);
       res.json({ ok: true, ...result });
@@ -1040,7 +1065,12 @@ export function createProjectScopedRoutes() {
   router.get('/beads/issues', requireWorcaDir, (req, res) => {
     const beadsDbPath = join(req.project.worcaDir, '..', '.beads', 'beads.db');
     if (!dbExists(beadsDbPath)) {
-      return res.json({ ok: true, issues: [], dbExists: false, dbPath: beadsDbPath });
+      return res.json({
+        ok: true,
+        issues: [],
+        dbExists: false,
+        dbPath: beadsDbPath,
+      });
     }
     try {
       const issues = listIssues(beadsDbPath);
@@ -1053,12 +1083,16 @@ export function createProjectScopedRoutes() {
   router.post('/beads/issues/:id/start', requireWorcaDir, async (req, res) => {
     const issueId = parseInt(req.params.id, 10);
     if (!Number.isInteger(issueId) || issueId <= 0) {
-      return res.status(400).json({ ok: false, error: 'Issue ID must be a positive integer' });
+      return res
+        .status(400)
+        .json({ ok: false, error: 'Issue ID must be a positive integer' });
     }
     const beadsDbPath = join(req.project.worcaDir, '..', '.beads', 'beads.db');
     const issue = getIssue(beadsDbPath, issueId);
     if (!issue) {
-      return res.status(404).json({ ok: false, error: `Issue ${issueId} not found` });
+      return res
+        .status(404)
+        .json({ ok: false, error: `Issue ${issueId} not found` });
     }
     if (issue.status !== 'ready') {
       return res.status(409).json({
@@ -1073,11 +1107,14 @@ export function createProjectScopedRoutes() {
       });
     }
     try {
-      const pm = req.project.pm || new ProcessManager({
-        worcaDir: req.project.worcaDir,
-        projectRoot: req.project.projectRoot,
-      });
-      const prompt = `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
+      const pm =
+        req.project.pm ||
+        new ProcessManager({
+          worcaDir: req.project.worcaDir,
+          projectRoot: req.project.projectRoot,
+        });
+      const prompt =
+        `[Beads #${issue.id}] ${issue.title}\n\n${(issue.body || '').trim()}`.trim();
       const result = await pm.startPipeline({
         inputType: 'prompt',
         inputValue: prompt,
@@ -1086,7 +1123,9 @@ export function createProjectScopedRoutes() {
       });
       res.json({ ok: true, pid: result.pid, issueId, prompt });
     } catch (err) {
-      const status = (err.message || '').includes('already running') ? 409 : 500;
+      const status = (err.message || '').includes('already running')
+        ? 409
+        : 500;
       res.status(status).json({ ok: false, error: err.message });
     }
   });

@@ -296,13 +296,16 @@ async function resetSection(section, rerender, projectId) {
 
 function confirmReset(section, rerender) {
   const label = section.charAt(0).toUpperCase() + section.slice(1);
-  showConfirm({
-    label: `Reset ${label}`,
-    message: html`Are you sure you want to reset <strong>${label}</strong> settings to their defaults?`,
-    confirmLabel: 'Reset',
-    confirmVariant: 'danger',
-    onConfirm: () => resetSection(section, rerender),
-  }, rerender);
+  showConfirm(
+    {
+      label: `Reset ${label}`,
+      message: html`Are you sure you want to reset <strong>${label}</strong> settings to their defaults?`,
+      confirmLabel: 'Reset',
+      confirmVariant: 'danger',
+      onConfirm: () => resetSection(section, rerender),
+    },
+    rerender,
+  );
 }
 
 // --- Read form values from DOM ---
@@ -1167,33 +1170,40 @@ function projectsTab(
   const list = projects || [];
 
   function confirmRemove(projectName) {
-    showConfirm({
-      label: 'Remove Project',
-      message: html`Are you sure you want to remove <strong>${projectName}</strong>? This only unregisters the project — no files are deleted.`,
-      confirmLabel: 'Remove',
-      confirmVariant: 'danger',
-      onConfirm: () => {
-        fetch(`/api/projects/${projectName}`, { method: 'DELETE' })
-          .then((r) => r.json())
-          .then((data) => {
-            if (data.ok) onProjectRemove?.(projectName);
-          })
-          .catch(() => {});
+    showConfirm(
+      {
+        label: 'Remove Project',
+        message: html`Are you sure you want to remove <strong>${projectName}</strong>? This only unregisters the project — no files are deleted.`,
+        confirmLabel: 'Remove',
+        confirmVariant: 'danger',
+        onConfirm: () => {
+          fetch(`/api/projects/${projectName}`, { method: 'DELETE' })
+            .then((r) => r.json())
+            .then((data) => {
+              if (data.ok) onProjectRemove?.(projectName);
+            })
+            .catch(() => {});
+        },
       },
-    }, _rerender);
+      _rerender,
+    );
   }
 
   function confirmWorcaUpdate(projectName) {
-    showConfirm({
-      label: 'Update Worca',
-      message: html`Update worca pipeline files in <strong>${projectName}</strong>?`,
-      confirmLabel: 'Update',
-      confirmVariant: 'primary',
-      onConfirm: () => {
-        fetch(`/api/projects/${projectName}/worca-setup`, { method: 'POST' })
-          .catch(() => {});
+    showConfirm(
+      {
+        label: 'Update Worca',
+        message: html`Update worca pipeline files in <strong>${projectName}</strong>?`,
+        confirmLabel: 'Update',
+        confirmVariant: 'primary',
+        onConfirm: () => {
+          fetch(`/api/projects/${projectName}/worca-setup`, {
+            method: 'POST',
+          }).catch(() => {});
+        },
       },
-    }, _rerender);
+      _rerender,
+    );
   }
 
   function handleOpenAddDialog() {
@@ -1300,11 +1310,8 @@ export function settingsView(
  * Reloads when currentProjectId changes.
  */
 export function projectSettingsView(
-  preferences,
-  {
-    rerender,
-    currentProjectId,
-  } = {},
+  _preferences,
+  { rerender, currentProjectId } = {},
 ) {
   // Reload settings when the active project changes
   if (currentProjectId !== _settingsProjectId) {

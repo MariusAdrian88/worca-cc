@@ -2,7 +2,6 @@
 import json
 import os
 import sys
-import tempfile
 from unittest import mock
 
 import pytest
@@ -10,7 +9,6 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".claude"))
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".claude", "scripts"))
 
-import run_multi
 from run_multi import (
     _generate_run_id,
     _load_parallel_settings,

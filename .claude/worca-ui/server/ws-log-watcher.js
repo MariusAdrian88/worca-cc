@@ -11,7 +11,6 @@ import {
   listLogFiles,
   readLastLines,
   readNewLines,
-  resolveIterationLogPath,
   resolveLogPath,
 } from './log-tailer.js';
 
@@ -69,7 +68,10 @@ export function createLogWatcher({
         if (eventType === 'change') {
           try {
             const prevOffset = logByteOffsets.get(key) || 0;
-            const { lines: newLines, newOffset } = readNewLines(filePath, prevOffset);
+            const { lines: newLines, newOffset } = readNewLines(
+              filePath,
+              prevOffset,
+            );
             if (newLines.length > 0) {
               logByteOffsets.set(key, newOffset);
               for (const line of newLines) {

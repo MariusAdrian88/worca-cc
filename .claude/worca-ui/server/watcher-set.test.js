@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TIER_FULL, TIER_POLLING, WatcherSet } from './watcher-set.js';
 
 /** Minimal mock watcher factory returning an object with destroy(). */
-function mockWatcherFactory(name) {
+function _mockWatcherFactory(name) {
   return () => ({
     name,
     destroy: vi.fn(),

@@ -72,31 +72,30 @@ server.on('error', (err) => {
     console.error(
       `       Or directly:                PORT=${port + 1} npm start\n`,
     );
-    console.error(
-      '    2. Stop the existing server:   worca-ui stop',
-    );
+    console.error('    2. Stop the existing server:   worca-ui stop');
     if (!isGlobal) {
       console.error(
         '       Or the global server:       worca-ui stop --global',
       );
     }
-    console.error(
-      `\n    3. Find what's using the port: lsof -i :${port}\n`,
-    );
+    console.error(`\n    3. Find what's using the port: lsof -i :${port}\n`);
   } else {
     console.error(`\n  Error: Failed to start server — ${err.message}\n`);
   }
   process.exit(1);
 });
 
-const { broadcast, scheduleRefresh, resolveRunProject } = attachWsServer(server, {
-  worcaDir,
-  settingsPath,
-  prefsPath: join(homedir(), '.worca', 'preferences.json'),
-  prefsDir,
-  webhookInbox,
-  projectRoot,
-});
+const { broadcast, scheduleRefresh, resolveRunProject } = attachWsServer(
+  server,
+  {
+    worcaDir,
+    settingsPath,
+    prefsPath: join(homedir(), '.worca', 'preferences.json'),
+    prefsDir,
+    webhookInbox,
+    projectRoot,
+  },
+);
 
 // Expose broadcast, scheduleRefresh, and resolveRunProject to REST route handlers
 app.locals.broadcast = broadcast;
@@ -106,12 +105,15 @@ app.locals.resolveRunProject = resolveRunProject;
 // ─── inotify budget check (Linux only) ─────────────────────────────────
 if (platform() === 'linux') {
   try {
-    const max = parseInt(readFileSync('/proc/sys/fs/inotify/max_user_watches', 'utf8').trim(), 10);
+    const max = parseInt(
+      readFileSync('/proc/sys/fs/inotify/max_user_watches', 'utf8').trim(),
+      10,
+    );
     if (Number.isFinite(max)) {
       if (max < 8192) {
         console.warn(
           `[inotify] max_user_watches=${max} is very low. ` +
-          `Run: sudo sysctl fs.inotify.max_user_watches=524288`,
+            `Run: sudo sysctl fs.inotify.max_user_watches=524288`,
         );
       } else {
         console.log(`[inotify] max_user_watches=${max}`);

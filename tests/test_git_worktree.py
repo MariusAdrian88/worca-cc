@@ -5,7 +5,6 @@ Uses real temporary git repos to exercise actual worktree creation/removal.
 
 import os
 import subprocess
-import tempfile
 
 import pytest
 

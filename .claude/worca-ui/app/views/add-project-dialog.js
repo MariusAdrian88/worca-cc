@@ -15,7 +15,10 @@ function showError(msg) {
   }
 }
 
-export function addProjectDialogView(state, { onProjectAdd, onClose, rerender }) {
+export function addProjectDialogView(
+  state,
+  { onProjectAdd, onClose, rerender },
+) {
   const { addProjectDialogOpen } = state;
   if (!addProjectDialogOpen) return nothing;
 
@@ -98,7 +101,9 @@ export function addProjectDialogView(state, { onProjectAdd, onClose, rerender })
         if (pathEl) pathEl.value = data.path;
         autoPopulateName(data.path);
       }
-    } catch { /* user cancelled or error */ }
+    } catch {
+      /* user cancelled or error */
+    }
   }
 
   function handleDialogHide(e) {
@@ -172,17 +177,21 @@ function offerWorcaSetup(projectName, rerender) {
         : `Install worca pipeline in "${projectName}"?`;
       const confirmLabel = 'Yes';
 
-      showConfirm({
-        label,
-        message,
-        confirmLabel,
-        cancelLabel: 'No',
-        confirmVariant: 'primary',
-        onConfirm: () => {
-          fetch(`/api/projects/${projectName}/worca-setup`, { method: 'POST' })
-            .catch(() => {});
+      showConfirm(
+        {
+          label,
+          message,
+          confirmLabel,
+          cancelLabel: 'No',
+          confirmVariant: 'primary',
+          onConfirm: () => {
+            fetch(`/api/projects/${projectName}/worca-setup`, {
+              method: 'POST',
+            }).catch(() => {});
+          },
         },
-      }, rerender);
+        rerender,
+      );
     })
     .catch(() => {});
 }

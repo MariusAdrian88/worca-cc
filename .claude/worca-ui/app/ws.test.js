@@ -40,7 +40,7 @@ describe('ws client', () => {
   async function createClient() {
     let mockWs;
     globalThis.WebSocket = class extends MockWebSocket {
-      constructor(url) {
+      constructor(_url) {
         super();
         mockWs = this;
         // Auto-fire open after microtask
@@ -111,7 +111,7 @@ describe('ws client', () => {
     const client = createWsClient({ url: 'ws://localhost:3400/ws' });
 
     // Queue a regular message before connection opens
-    const listRunsPromise = client.send('list-runs', {});
+    const _listRunsPromise = client.send('list-runs', {});
 
     // Now send hello-ack via sendRaw (which goes directly, not queued)
     // Simulate connection opening

@@ -5,7 +5,6 @@ import os
 import sys
 from unittest.mock import patch
 
-import pytest
 
 # Add the .claude directory to sys.path so we can import worca modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '.claude'))

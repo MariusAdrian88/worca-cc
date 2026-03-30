@@ -30,7 +30,7 @@ describe('sidebar project selector', () => {
 
     // Render to string to check content
     const { render } = await import('lit-html');
-    const container = { innerHTML: '' };
+    const _container = { innerHTML: '' };
     // lit-html needs a real DOM element; we'll inspect the template values instead
     // The template should NOT contain sl-select for project switching
     const templateStr = JSON.stringify(result.values);

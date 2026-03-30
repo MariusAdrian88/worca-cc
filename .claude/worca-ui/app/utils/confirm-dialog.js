@@ -3,10 +3,26 @@ import { html, nothing } from 'lit-html';
 let _pending = null; // { label, message, confirmLabel, confirmVariant, cancelLabel, onConfirm, onCancel }
 
 export function showConfirm(
-  { label, message, confirmLabel, confirmVariant = 'danger', cancelLabel, onConfirm, onCancel },
+  {
+    label,
+    message,
+    confirmLabel,
+    confirmVariant = 'danger',
+    cancelLabel,
+    onConfirm,
+    onCancel,
+  },
   rerender,
 ) {
-  _pending = { label, message, confirmLabel, confirmVariant, cancelLabel, onConfirm, onCancel };
+  _pending = {
+    label,
+    message,
+    confirmLabel,
+    confirmVariant,
+    cancelLabel,
+    onConfirm,
+    onCancel,
+  };
   rerender();
   requestAnimationFrame(() => {
     document.getElementById('global-confirm-dialog')?.show();
@@ -23,7 +39,15 @@ function dismiss(callback) {
 
 export function confirmDialogTemplate() {
   if (!_pending) return nothing;
-  const { label, message, confirmLabel, confirmVariant, cancelLabel, onConfirm, onCancel } = _pending;
+  const {
+    label,
+    message,
+    confirmLabel,
+    confirmVariant,
+    cancelLabel,
+    onConfirm,
+    onCancel,
+  } = _pending;
   return html`
     <sl-dialog id="global-confirm-dialog" label=${label} @sl-after-hide=${() => dismiss(onCancel)}>
       ${typeof message === 'string' ? html`<p>${message}</p>` : message}

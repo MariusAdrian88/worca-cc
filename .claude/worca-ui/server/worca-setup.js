@@ -58,12 +58,16 @@ export function runWorcaSetup(sourcePath, targetPath) {
   // Write initial status
   writeFileSync(
     statusFile,
-    JSON.stringify({
-      status: 'running',
-      started_at: new Date().toISOString(),
-      source: sourcePath,
-      target: targetPath,
-    }, null, 2) + '\n',
+    `${JSON.stringify(
+      {
+        status: 'running',
+        started_at: new Date().toISOString(),
+        source: sourcePath,
+        target: targetPath,
+      },
+      null,
+      2,
+    )}\n`,
     'utf8',
   );
 
@@ -99,10 +103,13 @@ cd "$DEST/worca-ui" && npm install && npm run build
     try {
       writeFileSync(
         statusFile,
-        JSON.stringify({ status: 'error', error: 'spawn failed' }, null, 2) + '\n',
+        JSON.stringify({ status: 'error', error: 'spawn failed' }, null, 2) +
+          '\n',
         'utf8',
       );
-    } catch { /* best effort */ }
+    } catch {
+      /* best effort */
+    }
   });
 
   child.on('exit', (code) => {
@@ -110,25 +117,37 @@ cd "$DEST/worca-ui" && npm install && npm run build
       try {
         writeFileSync(
           statusFile,
-          JSON.stringify({
-            status: 'error',
-            error: `Process exited with code ${code}`,
-            finished_at: new Date().toISOString(),
-          }, null, 2) + '\n',
+          `${JSON.stringify(
+            {
+              status: 'error',
+              error: `Process exited with code ${code}`,
+              finished_at: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
           'utf8',
         );
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     } else {
       try {
         writeFileSync(
           statusFile,
-          JSON.stringify({
-            status: 'done',
-            finished_at: new Date().toISOString(),
-          }, null, 2) + '\n',
+          `${JSON.stringify(
+            {
+              status: 'done',
+              finished_at: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
           'utf8',
         );
-      } catch { /* best effort */ }
+      } catch {
+        /* best effort */
+      }
     }
   });
 

@@ -17,7 +17,7 @@ import json
 import sys
 from contextlib import ExitStack
 from pathlib import Path
-from unittest.mock import patch, call
+from unittest.mock import patch
 
 import pytest
 
@@ -201,7 +201,7 @@ class TestWorktreeStatusFlag:
         wr = WorkRequest(title="Test worktree", description="test", source_type="prompt")
 
         with ExitStack() as stack:
-            mocks = _common_patches(stack)
+            _common_patches(stack)
 
             result = run_pipeline(
                 wr,
@@ -221,7 +221,7 @@ class TestWorktreeStatusFlag:
         wr = WorkRequest(title="Test normal", description="test", source_type="prompt")
 
         with ExitStack() as stack:
-            mocks = _common_patches(stack)
+            _common_patches(stack)
 
             result = run_pipeline(
                 wr,

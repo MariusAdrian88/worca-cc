@@ -23,9 +23,10 @@ export function projectStatus(projectId, runs, currentProjectId) {
   // In multi-project mode, runs in state belong to currentProjectId.
   // For other projects we have no data — return idle.
   const projectRuns = projectId
-    ? runList.filter((r) =>
-        r.project === projectId ||
-        (!r.project && (!currentProjectId || currentProjectId === projectId)),
+    ? runList.filter(
+        (r) =>
+          r.project === projectId ||
+          (!r.project && (!currentProjectId || currentProjectId === projectId)),
       )
     : runList;
 
@@ -138,7 +139,9 @@ export function sidebarView(
           : ''
       }
 
-      ${(currentProjectId || (projects || []).length <= 1) ? html`
+      ${
+        currentProjectId || (projects || []).length <= 1
+          ? html`
       <div class="sidebar-new-run">
         <button class="sidebar-new-run-btn" @click=${() => onNavigate('new-run')}>
           ${unsafeHTML(iconSvg(Plus, 16))}
@@ -213,7 +216,9 @@ export function sidebarView(
           </span>
         </div>
       </div>
-      ` : ''}
+      `
+          : ''
+      }
 
       <div class="sidebar-footer">
         <div class="connection-indicator ${connClass}">

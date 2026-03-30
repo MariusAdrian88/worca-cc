@@ -12,11 +12,11 @@ import {
 } from './project-routes.js';
 
 /** Build a minimal test app with project routes mounted. */
-function buildApp(prefsDir, projectRoot) {
+function _buildApp(prefsDir, projectRoot) {
   const app = express();
   app.use(express.json());
 
-  const getRegistry = () => {
+  const _getRegistry = () => {
     // Lazy import to avoid stale reads
     const {
       readProjects,

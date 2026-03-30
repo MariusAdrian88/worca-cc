@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 from unittest.mock import patch
 
-import pytest
 
 from worca.orchestrator.registry import (
     _registry_dir,

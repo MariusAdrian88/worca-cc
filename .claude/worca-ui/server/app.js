@@ -33,7 +33,11 @@ export function createApp(options = {}) {
   // Block cross-origin state-mutating requests. Webhooks from pipeline
   // processes use X-Worca-Event header to bypass (they aren't browsers).
   app.use((req, res, next) => {
-    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+    if (
+      req.method === 'GET' ||
+      req.method === 'HEAD' ||
+      req.method === 'OPTIONS'
+    ) {
       return next();
     }
     // Allow non-browser clients (webhook callbacks, curl, etc.)
@@ -51,7 +55,9 @@ export function createApp(options = {}) {
     } catch {
       // malformed origin — reject
     }
-    res.status(403).json({ ok: false, error: 'Forbidden: cross-origin request' });
+    res
+      .status(403)
+      .json({ ok: false, error: 'Forbidden: cross-origin request' });
   });
 
   // Webhook inbox — shared in-memory store (also exposed for WS server)
@@ -71,13 +77,12 @@ export function createApp(options = {}) {
         worcaDir,
         settingsPath,
         projectRoot: projectRoot || process.cwd(),
-        pm:
-          worcaDir
-            ? new ProcessManager({
-                worcaDir,
-                projectRoot: projectRoot || process.cwd(),
-              })
-            : null,
+        pm: worcaDir
+          ? new ProcessManager({
+              worcaDir,
+              projectRoot: projectRoot || process.cwd(),
+            })
+          : null,
       };
       next();
     },
@@ -251,9 +256,15 @@ export function createApp(options = {}) {
       'content-type': req.headers['content-type'] || '',
     };
     const runId = req.body?.run_id || null;
-    const projectId = runId && app.locals.resolveRunProject
-      ? app.locals.resolveRunProject(runId) : null;
-    const stored = webhookInbox.push({ headers, envelope: req.body || {}, projectId });
+    const projectId =
+      runId && app.locals.resolveRunProject
+        ? app.locals.resolveRunProject(runId)
+        : null;
+    const stored = webhookInbox.push({
+      headers,
+      envelope: req.body || {},
+      projectId,
+    });
     if (app.locals.broadcast) {
       app.locals.broadcast('webhook-inbox-event', stored);
     }
@@ -310,15 +321,17 @@ export function createApp(options = {}) {
   // POST /api/projects/inbox — webhook hint for immediate status refresh
   app.post('/api/projects/inbox', (req, res) => {
     const body = req.body || {};
-    const projectId = body.project_id
-      || req.headers['x-worca-project']
-      || (body.run_id && app.locals.resolveRunProject?.(body.run_id))
-      || null;
+    const projectId =
+      body.project_id ||
+      req.headers['x-worca-project'] ||
+      (body.run_id && app.locals.resolveRunProject?.(body.run_id)) ||
+      null;
 
     if (!projectId) {
       return res.status(400).json({
         ok: false,
-        error: 'Could not identify project. Provide project_id, X-Worca-Project header, or run_id.',
+        error:
+          'Could not identify project. Provide project_id, X-Worca-Project header, or run_id.',
       });
     }
 
@@ -335,25 +348,48 @@ export function createApp(options = {}) {
     try {
       let chosenPath;
       if (process.platform === 'darwin') {
-        chosenPath = execFileSync('osascript', [
-          '-e', 'POSIX path of (choose folder with prompt "Select project directory")',
-        ], { encoding: 'utf8' }).trim();
+        chosenPath = execFileSync(
+          'osascript',
+          [
+            '-e',
+            'POSIX path of (choose folder with prompt "Select project directory")',
+          ],
+          { encoding: 'utf8' },
+        ).trim();
       } else if (process.platform === 'win32') {
-        const ps = execFileSync('powershell.exe', [
-          '-NoProfile', '-Command',
-          'Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = "Select project directory"; if ($d.ShowDialog() -eq "OK") { $d.SelectedPath } else { exit 1 }',
-        ], { encoding: 'utf8' }).trim();
+        const ps = execFileSync(
+          'powershell.exe',
+          [
+            '-NoProfile',
+            '-Command',
+            'Add-Type -AssemblyName System.Windows.Forms; $d = New-Object System.Windows.Forms.FolderBrowserDialog; $d.Description = "Select project directory"; if ($d.ShowDialog() -eq "OK") { $d.SelectedPath } else { exit 1 }',
+          ],
+          { encoding: 'utf8' },
+        ).trim();
         chosenPath = ps;
       } else {
         // Linux: try zenity, then kdialog
         try {
-          chosenPath = execFileSync('zenity', [
-            '--file-selection', '--directory', '--title=Select project directory',
-          ], { encoding: 'utf8' }).trim();
+          chosenPath = execFileSync(
+            'zenity',
+            [
+              '--file-selection',
+              '--directory',
+              '--title=Select project directory',
+            ],
+            { encoding: 'utf8' },
+          ).trim();
         } catch {
-          chosenPath = execFileSync('kdialog', [
-            '--getexistingdirectory', '.', '--title', 'Select project directory',
-          ], { encoding: 'utf8' }).trim();
+          chosenPath = execFileSync(
+            'kdialog',
+            [
+              '--getexistingdirectory',
+              '.',
+              '--title',
+              'Select project directory',
+            ],
+            { encoding: 'utf8' },
+          ).trim();
         }
       }
       chosenPath = chosenPath.replace(/[\\/]+$/, '');

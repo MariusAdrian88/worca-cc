@@ -71,7 +71,10 @@ describe('multi-project API', () => {
   function buildApp() {
     const app = express();
     app.use(express.json());
-    app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot: projectRootA }));
+    app.use(
+      '/api/projects',
+      createProjectRoutes({ prefsDir, projectRoot: projectRootA }),
+    );
     app.use(
       '/api/projects/:projectId',
       projectResolver({ prefsDir, projectRoot: projectRootA }),
@@ -87,16 +90,28 @@ describe('multi-project API', () => {
       mkdirSync(runDir, { recursive: true });
       writeFileSync(
         join(runDir, 'status.json'),
-        JSON.stringify({ run_id: 'run-only-in-a', pipeline_status: 'completed', stage: 'test' }),
+        JSON.stringify({
+          run_id: 'run-only-in-a',
+          pipeline_status: 'completed',
+          stage: 'test',
+        }),
       );
 
       const app = buildApp();
 
-      const { body: runsA } = await request(app, 'GET', '/api/projects/alpha/runs');
+      const { body: runsA } = await request(
+        app,
+        'GET',
+        '/api/projects/alpha/runs',
+      );
       expect(runsA.ok).toBe(true);
       expect(runsA.runs.some((r) => r.id === 'run-only-in-a')).toBe(true);
 
-      const { body: runsB } = await request(app, 'GET', '/api/projects/beta/runs');
+      const { body: runsB } = await request(
+        app,
+        'GET',
+        '/api/projects/beta/runs',
+      );
       expect(runsB.ok).toBe(true);
       expect(runsB.runs.some((r) => r.id === 'run-only-in-a')).toBe(false);
     });
@@ -114,8 +129,16 @@ describe('multi-project API', () => {
 
       const app = buildApp();
 
-      const { body: settingsA } = await request(app, 'GET', '/api/projects/alpha/settings');
-      const { body: settingsB } = await request(app, 'GET', '/api/projects/beta/settings');
+      const { body: settingsA } = await request(
+        app,
+        'GET',
+        '/api/projects/alpha/settings',
+      );
+      const { body: settingsB } = await request(
+        app,
+        'GET',
+        '/api/projects/beta/settings',
+      );
 
       expect(settingsA.worca.loops.max_test).toBe(5);
       expect(settingsB.worca.loops.max_test).toBe(10);
@@ -123,15 +146,29 @@ describe('multi-project API', () => {
 
     it('plan-files are scoped per project', async () => {
       mkdirSync(join(projectRootA, 'docs', 'plans'), { recursive: true });
-      writeFileSync(join(projectRootA, 'docs', 'plans', 'W-001-alpha.md'), '# Alpha');
+      writeFileSync(
+        join(projectRootA, 'docs', 'plans', 'W-001-alpha.md'),
+        '# Alpha',
+      );
 
       mkdirSync(join(projectRootB, 'docs', 'plans'), { recursive: true });
-      writeFileSync(join(projectRootB, 'docs', 'plans', 'W-002-beta.md'), '# Beta');
+      writeFileSync(
+        join(projectRootB, 'docs', 'plans', 'W-002-beta.md'),
+        '# Beta',
+      );
 
       const app = buildApp();
 
-      const { body: filesA } = await request(app, 'GET', '/api/projects/alpha/plan-files');
-      const { body: filesB } = await request(app, 'GET', '/api/projects/beta/plan-files');
+      const { body: filesA } = await request(
+        app,
+        'GET',
+        '/api/projects/alpha/plan-files',
+      );
+      const { body: filesB } = await request(
+        app,
+        'GET',
+        '/api/projects/beta/plan-files',
+      );
 
       expect(filesA.files).toHaveLength(1);
       expect(filesA.files[0].name).toBe('W-001-alpha.md');
@@ -148,10 +185,15 @@ describe('multi-project API', () => {
       writeFileSync(join(projectRootC, '.claude', 'settings.json'), '{}');
 
       const app = buildApp();
-      const { status: createStatus } = await request(app, 'POST', '/api/projects', {
-        name: 'gamma',
-        path: projectRootC,
-      });
+      const { status: createStatus } = await request(
+        app,
+        'POST',
+        '/api/projects',
+        {
+          name: 'gamma',
+          path: projectRootC,
+        },
+      );
       expect(createStatus).toBe(201);
 
       const { body: listBody } = await request(app, 'GET', '/api/projects');
@@ -196,12 +238,20 @@ describe('multi-project API', () => {
       const app = buildApp();
 
       // Should find it in beta
-      const { status, body } = await request(app, 'GET', `/api/projects/beta/runs/${runId}/status`);
+      const { status, body } = await request(
+        app,
+        'GET',
+        `/api/projects/beta/runs/${runId}/status`,
+      );
       expect(status).toBe(200);
       expect(body.pipeline_status).toBe('completed');
 
       // Should NOT find it in alpha
-      const { status: notFound } = await request(app, 'GET', `/api/projects/alpha/runs/${runId}/status`);
+      const { status: notFound } = await request(
+        app,
+        'GET',
+        `/api/projects/alpha/runs/${runId}/status`,
+      );
       expect(notFound).toBe(404);
     });
   });

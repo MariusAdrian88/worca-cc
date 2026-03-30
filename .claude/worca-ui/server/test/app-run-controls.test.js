@@ -25,12 +25,24 @@ vi.mock('../process-manager.js', () => {
       this.worcaDir = opts.worcaDir;
       this.projectRoot = opts.projectRoot;
     }
-    pausePipeline(runId) { return mockPausePipeline(this.worcaDir, runId); }
-    startPipeline(opts) { return mockStartPipeline(this.worcaDir, opts); }
-    stopPipeline() { return mockStopPipeline(this.worcaDir); }
-    getRunningPid() { return mockGetRunningPid(this.worcaDir); }
-    reconcileStatus() { return mockReconcileStatus(this.worcaDir); }
-    restartStage(stage, opts) { return vi.fn()(this.worcaDir, stage, opts); }
+    pausePipeline(runId) {
+      return mockPausePipeline(this.worcaDir, runId);
+    }
+    startPipeline(opts) {
+      return mockStartPipeline(this.worcaDir, opts);
+    }
+    stopPipeline() {
+      return mockStopPipeline(this.worcaDir);
+    }
+    getRunningPid() {
+      return mockGetRunningPid(this.worcaDir);
+    }
+    reconcileStatus() {
+      return mockReconcileStatus(this.worcaDir);
+    }
+    restartStage(stage, opts) {
+      return vi.fn()(this.worcaDir, stage, opts);
+    }
   }
   return {
     ProcessManager,

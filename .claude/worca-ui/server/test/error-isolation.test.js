@@ -75,7 +75,10 @@ describe('error isolation', () => {
   function buildApp() {
     const app = express();
     app.use(express.json());
-    app.use('/api/projects', createProjectRoutes({ prefsDir, projectRoot: goodProjectRoot }));
+    app.use(
+      '/api/projects',
+      createProjectRoutes({ prefsDir, projectRoot: goodProjectRoot }),
+    );
     app.use(
       '/api/projects/:projectId',
       projectResolver({ prefsDir, projectRoot: goodProjectRoot }),
@@ -94,7 +97,11 @@ describe('error isolation', () => {
 
   it('bad project info still resolves (projectResolver is path-based)', async () => {
     const app = buildApp();
-    const { status, body } = await request(app, 'GET', '/api/projects/bad-proj/info');
+    const { status, body } = await request(
+      app,
+      'GET',
+      '/api/projects/bad-proj/info',
+    );
     expect(status).toBe(200);
     expect(body.project.name).toBe('bad-proj');
   });
@@ -115,7 +122,11 @@ describe('error isolation', () => {
     await request(app, 'GET', '/api/projects/bad-proj/runs');
 
     // Then: hit the good project — should work fine
-    const { status, body } = await request(app, 'GET', '/api/projects/good-proj/runs');
+    const { status, body } = await request(
+      app,
+      'GET',
+      '/api/projects/good-proj/runs',
+    );
     expect(status).toBe(200);
     expect(body.ok).toBe(true);
     expect(Array.isArray(body.runs)).toBe(true);
@@ -125,26 +136,40 @@ describe('error isolation', () => {
     const app = buildApp();
 
     const { status: notFoundStatus } = await request(
-      app, 'GET', '/api/projects/ghost/info',
+      app,
+      'GET',
+      '/api/projects/ghost/info',
     );
     expect(notFoundStatus).toBe(404);
 
     // Good project still works
-    const { status, body } = await request(app, 'GET', '/api/projects/good-proj/info');
+    const { status, body } = await request(
+      app,
+      'GET',
+      '/api/projects/good-proj/info',
+    );
     expect(status).toBe(200);
     expect(body.project.name).toBe('good-proj');
   });
 
   it('settings endpoint works even if no local settings file exists', async () => {
     const app = buildApp();
-    const { status, body } = await request(app, 'GET', '/api/projects/good-proj/settings');
+    const { status, body } = await request(
+      app,
+      'GET',
+      '/api/projects/good-proj/settings',
+    );
     expect(status).toBe(200);
     expect(body.worca).toBeDefined();
   });
 
   it('bad project settings still responds (does not crash)', async () => {
     const app = buildApp();
-    const { status } = await request(app, 'GET', '/api/projects/bad-proj/settings');
+    const { status } = await request(
+      app,
+      'GET',
+      '/api/projects/bad-proj/settings',
+    );
     // Should return some response (200 or error), not crash
     expect([200, 500]).toContain(status);
   });

@@ -31,7 +31,9 @@ export function createInbox(maxSize = 500) {
         result = result.filter((e) => e.id > sinceId);
       }
       if (projectId) {
-        result = result.filter((e) => !e.projectId || e.projectId === projectId);
+        result = result.filter(
+          (e) => !e.projectId || e.projectId === projectId,
+        );
       }
       return [...result];
     },

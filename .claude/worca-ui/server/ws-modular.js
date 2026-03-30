@@ -200,7 +200,10 @@ export function attachWsServer(httpServer, config) {
   function scheduleRefresh(projectName) {
     if (projectName) {
       const ws = watcherSets.get(projectName);
-      if (ws) { ws.scheduleRefresh(); return true; }
+      if (ws) {
+        ws.scheduleRefresh();
+        return true;
+      }
       return false;
     }
     for (const ws of watcherSets.values()) ws.scheduleRefresh();
@@ -219,7 +222,10 @@ export function attachWsServer(httpServer, config) {
         id: `evt-${Date.now()}`,
         ok: true,
         type: 'hello',
-        payload: { protocol: 2, capabilities: prefsDir ? ['multi-project'] : [] },
+        payload: {
+          protocol: 2,
+          capabilities: prefsDir ? ['multi-project'] : [],
+        },
       }),
     );
 
@@ -294,5 +300,10 @@ export function attachWsServer(httpServer, config) {
     return null;
   }
 
-  return { wss, broadcast: broadcaster.broadcast, scheduleRefresh, resolveRunProject };
+  return {
+    wss,
+    broadcast: broadcaster.broadcast,
+    scheduleRefresh,
+    resolveRunProject,
+  };
 }

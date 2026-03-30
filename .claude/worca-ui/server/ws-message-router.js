@@ -257,7 +257,9 @@ export function createMessageRouter({
       }
       const proj = resolveProject(ws, req.payload);
       if (!proj) {
-        ws.send(JSON.stringify(makeError(req, 'no_project', 'No project available')));
+        ws.send(
+          JSON.stringify(makeError(req, 'no_project', 'No project available')),
+        );
         return;
       }
       const s = clientManager.ensureSubs(ws);
@@ -444,7 +446,9 @@ export function createMessageRouter({
     if (req.type === 'stop-run') {
       const proj = resolveProject(ws, req.payload);
       if (!proj) {
-        ws.send(JSON.stringify(makeError(req, 'no_project', 'No project available')));
+        ws.send(
+          JSON.stringify(makeError(req, 'no_project', 'No project available')),
+        );
         return;
       }
       try {

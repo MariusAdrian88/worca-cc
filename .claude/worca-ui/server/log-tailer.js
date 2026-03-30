@@ -1,4 +1,12 @@
-import { existsSync, openSync, readSync, readdirSync, readFileSync, statSync, closeSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from 'node:fs';
 import { join } from 'node:path';
 
 /** Pipeline stage order for log display (orchestrator first, then stages in execution order). */

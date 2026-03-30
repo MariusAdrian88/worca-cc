@@ -6,7 +6,6 @@ Covers:
 - Backward compatibility with MASTER_PLAN.md
 """
 import os
-import pytest
 from worca.orchestrator.runner import _next_plan_path
 from worca.hooks.guard import check_guard
 

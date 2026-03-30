@@ -3,7 +3,7 @@
  * @vitest-environment jsdom
  */
 
-import { html, render } from 'lit-html';
+import { render } from 'lit-html';
 import { describe, expect, it, vi } from 'vitest';
 import { addProjectDialogView } from './add-project-dialog.js';
 import { _projectsTab as projectsTab } from './settings.js';
@@ -69,7 +69,9 @@ describe('Projects tab in settings', () => {
         rerender: vi.fn(),
       }),
     );
-    const removeButtons = container.querySelectorAll('.projects-list-item sl-button[variant="danger"]');
+    const removeButtons = container.querySelectorAll(
+      '.projects-list-item sl-button[variant="danger"]',
+    );
     expect(removeButtons.length).toBe(2);
   });
 });

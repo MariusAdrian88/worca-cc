@@ -1,6 +1,5 @@
 """Tests for test_gate.py - File-backed strike persistence."""
 import json
-import os
 
 import pytest
 

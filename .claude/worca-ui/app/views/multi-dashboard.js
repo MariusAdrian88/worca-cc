@@ -69,17 +69,20 @@ export function pipelineCardView(
       </div>
       <div class="pipeline-card-progress">
         ${stageDots(pipeline.stage)}
-        ${pipeline.stage
-          ? html`<span class="pipeline-stage-label">${pipeline.stage}</span>`
-          : nothing}
+        ${
+          pipeline.stage
+            ? html`<span class="pipeline-stage-label">${pipeline.stage}</span>`
+            : nothing
+        }
       </div>
       <div class="pipeline-card-footer">
         <span class="pipeline-elapsed">
           ${unsafeHTML(iconSvg(Clock, 12))} ${elapsedTime(pipeline.started_at)}
         </span>
         <span class="pipeline-run-id">${pipeline.run_id || ''}</span>
-        ${status === 'running'
-          ? html`
+        ${
+          status === 'running'
+            ? html`
               <span
                 class="pipeline-actions"
                 @click=${(e) => e.stopPropagation()}
@@ -100,8 +103,8 @@ export function pipelineCardView(
                 </button>
               </span>
             `
-          : status === 'paused'
-            ? html`
+            : status === 'paused'
+              ? html`
                 <span
                   class="pipeline-actions"
                   @click=${(e) => e.stopPropagation()}
@@ -115,7 +118,8 @@ export function pipelineCardView(
                   </button>
                 </span>
               `
-            : nothing}
+              : nothing
+        }
       </div>
     </div>
   `;
@@ -130,29 +134,35 @@ export function multiPipelineDashboardView(
 
   const running = entries.filter((p) => p.status === 'running');
   const paused = entries.filter((p) => p.status === 'paused');
-  const completed = entries.filter((p) => p.status !== 'running' && p.status !== 'paused');
+  const completed = entries.filter(
+    (p) => p.status !== 'running' && p.status !== 'paused',
+  );
   const cardOpts = { onPause, onStop, onResume, onClick };
 
   return html`
     <div class="multi-pipeline-section">
       <h3 class="dashboard-section-title">Parallel Pipelines</h3>
-      ${running.length > 0 || paused.length > 0
-        ? html`
+      ${
+        running.length > 0 || paused.length > 0
+          ? html`
             <div class="pipeline-grid">
               ${running.map((p) => pipelineCardView(p, cardOpts))}
               ${paused.map((p) => pipelineCardView(p, cardOpts))}
             </div>
           `
-        : nothing}
-      ${completed.length > 0
-        ? html`
+          : nothing
+      }
+      ${
+        completed.length > 0
+          ? html`
             <sl-details summary="Completed (${completed.length})">
               <div class="pipeline-grid">
                 ${completed.map((p) => pipelineCardView(p, cardOpts))}
               </div>
             </sl-details>
           `
-        : nothing}
+          : nothing
+      }
     </div>
   `;
 }

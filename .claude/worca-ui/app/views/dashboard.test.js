@@ -25,7 +25,7 @@ const running1 = {
   active: true,
   started_at: '2026-01-01T00:00:00Z',
 };
-const running2 = {
+const _running2 = {
   id: 'r2',
   pipeline_status: 'running',
   active: true,
@@ -83,7 +83,12 @@ describe('dashboardView - active runs', () => {
   });
 
   it('shows empty state when no active runs', () => {
-    const completed = { id: 'c1', pipeline_status: 'completed', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const completed = {
+      id: 'c1',
+      pipeline_status: 'completed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const state = { runs: { c1: completed } };
     const output = renderToString(dashboardView(state));
     expect(output).toContain('No active pipelines');
@@ -92,7 +97,12 @@ describe('dashboardView - active runs', () => {
   it('renders failed runs in Recent Failures not Active Runs', () => {
     // failed1 has active:true so it shows in active section
     // An inactive failed run should only show in Recent Failures
-    const inactiveFailed = { id: 'if1', pipeline_status: 'failed', active: false, started_at: '2026-01-01T00:00:00Z' };
+    const inactiveFailed = {
+      id: 'if1',
+      pipeline_status: 'failed',
+      active: false,
+      started_at: '2026-01-01T00:00:00Z',
+    };
     const state = { runs: { if1: inactiveFailed } };
     const output = renderToString(dashboardView(state));
     expect(output).toContain('Recent Failures');
@@ -276,10 +286,22 @@ describe('dashboardView - inactive failed/paused runs', () => {
 
 describe('dashboardView - recent sections capping', () => {
   function makeFailed(id, date) {
-    return { id, pipeline_status: 'failed', active: false, started_at: date, work_request: { title: `Run ${id}` } };
+    return {
+      id,
+      pipeline_status: 'failed',
+      active: false,
+      started_at: date,
+      work_request: { title: `Run ${id}` },
+    };
   }
   function makeCompleted(id, date) {
-    return { id, pipeline_status: 'completed', active: false, started_at: date, work_request: { title: `Run ${id}` } };
+    return {
+      id,
+      pipeline_status: 'completed',
+      active: false,
+      started_at: date,
+      work_request: { title: `Run ${id}` },
+    };
   }
 
   it('shows at most 3 failed runs in Recent Failures', () => {

@@ -62,9 +62,13 @@ export class MultiWatcher {
         .filter((f) => f.endsWith('.json'))
         .map(async (fname) => {
           try {
-            const entry = JSON.parse(await readFile(join(pipelinesDir, fname), 'utf8'));
+            const entry = JSON.parse(
+              await readFile(join(pipelinesDir, fname), 'utf8'),
+            );
             return entry.run_id ? [entry.run_id, entry] : null;
-          } catch { return null; }
+          } catch {
+            return null;
+          }
         });
       for (const result of await Promise.all(readPromises)) {
         if (result) freshEntries.set(result[0], result[1]);
@@ -83,8 +87,16 @@ export class MultiWatcher {
         existing.entry.stage !== entry.stage
       ) {
         // Destroy WatcherSet when pipeline transitions out of running
-        if (existing.entry.status === 'running' && entry.status !== 'running' && existing.watcherSet) {
-          try { existing.watcherSet.destroy(); } catch { /* ignore */ }
+        if (
+          existing.entry.status === 'running' &&
+          entry.status !== 'running' &&
+          existing.watcherSet
+        ) {
+          try {
+            existing.watcherSet.destroy();
+          } catch {
+            /* ignore */
+          }
           existing.watcherSet = null;
         }
         existing.entry = entry;

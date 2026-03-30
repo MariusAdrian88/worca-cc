@@ -25,11 +25,15 @@ export function createBeadsWatcher({ worcaDir, broadcaster, projectId }) {
       BEADS_REFRESH_TIMER = null;
       try {
         const issues = listIssues(beadsDbPath);
-        broadcaster.broadcast('beads-update', {
-          issues,
-          dbExists: true,
-          dbPath: beadsDbPath,
-        }, projectId);
+        broadcaster.broadcast(
+          'beads-update',
+          {
+            issues,
+            dbExists: true,
+            dbPath: beadsDbPath,
+          },
+          projectId,
+        );
       } catch {
         /* ignore */
       }

@@ -151,7 +151,11 @@ export function createStatusWatcher({
             scheduleRefresh();
             if (eventType === 'rename') {
               // File replaced (atomic write) — re-watch the new inode
-              try { statusWatcher.close(); } catch { /* ignore */ }
+              try {
+                statusWatcher.close();
+              } catch {
+                /* ignore */
+              }
               statusWatcher = null;
               setTimeout(() => tryWatch(), 50);
             }
