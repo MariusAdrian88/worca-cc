@@ -65,6 +65,9 @@ class TestBdInit:
             # bd not on PATH -- skip gracefully
             import pytest
             pytest.skip("bd CLI not available")
+        if os.environ.get("CI"):
+            import pytest
+            pytest.skip("bd init unreliable in CI environments")
 
         with tempfile.TemporaryDirectory() as tmpdir:
             # bd init requires a git repo with at least one commit

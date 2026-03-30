@@ -288,10 +288,23 @@ describe('project-routes', () => {
     it('GET /api/projects/:id/branches returns branches for resolved project', async () => {
       // Init a git repo in projectRoot using safe execFileSync
       execFileSync('git', ['init'], { cwd: projectRoot, stdio: 'ignore' });
-      execFileSync('git', ['-c', 'user.name=Test', '-c', 'user.email=test@test.com', 'commit', '--allow-empty', '-m', 'init'], {
-        cwd: projectRoot,
-        stdio: 'ignore',
-      });
+      execFileSync(
+        'git',
+        [
+          '-c',
+          'user.name=Test',
+          '-c',
+          'user.email=test@test.com',
+          'commit',
+          '--allow-empty',
+          '-m',
+          'init',
+        ],
+        {
+          cwd: projectRoot,
+          stdio: 'ignore',
+        },
+      );
 
       const app = await createTestApp(prefsDir, projectRoot);
       const { body: projectsBody } = await request(app, 'GET', '/api/projects');

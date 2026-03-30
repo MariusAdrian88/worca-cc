@@ -95,7 +95,7 @@ describe('ws-message-router resolveProject', () => {
   }
 
   it('resolveProject returns defaultWs when no projectId in payload or subs', async () => {
-    const { router, defaultWs } = setup();
+    const { router } = setup();
     const ws = makeWs();
 
     // Send list-runs with no projectId — should use defaultWs (mock worcaDir)
@@ -115,7 +115,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('resolveProject returns matching WatcherSet when subs.projectId matches', async () => {
-    const { router, clientManager, watcherSets } = setup();
+    const { router, clientManager } = setup();
     const ws = makeWs();
 
     // Set the client's subscription projectId
@@ -140,7 +140,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('resolveProject returns matching WatcherSet when payload.projectId matches', async () => {
-    const { router, watcherSets } = setup();
+    const { router } = setup();
     const ws = makeWs();
 
     // Send list-runs with explicit projectId in payload
@@ -159,7 +159,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('resolveProject falls back to defaultWs when projectId not in watcherSets', async () => {
-    const { router, defaultWs } = setup();
+    const { router } = setup();
     const ws = makeWs();
 
     await router.handleMessage(
@@ -177,7 +177,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('resolveProject prefers payload.projectId over subs.projectId', async () => {
-    const { router, clientManager, watcherSets } = setup();
+    const { router, clientManager } = setup();
     const ws = makeWs();
 
     // Set subs to proj-a
@@ -200,7 +200,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('list-runs uses resolved project worcaDir', async () => {
-    const { router, watcherSets, clientManager } = setup();
+    const { router, clientManager } = setup();
     const ws = makeWs();
 
     const subs = clientManager.ensureSubs(ws);
@@ -222,7 +222,7 @@ describe('ws-message-router resolveProject', () => {
   });
 
   it('subscribe-run uses resolved project statusWatcher', async () => {
-    const { router, clientManager, watcherSets } = setup();
+    const { router, clientManager } = setup();
     const ws = makeWs();
 
     const subs = clientManager.ensureSubs(ws);
