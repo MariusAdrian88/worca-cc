@@ -48,7 +48,9 @@ import {
   submitNewRun,
 } from './views/new-run.js';
 import { runBeadsSectionView, runDetailView } from './views/run-detail.js';
+import { runCardView } from './views/run-card.js';
 import { runListView } from './views/run-list.js';
+import { sortByStartDesc } from './utils/sort-runs.js';
 import { loadSettings, projectSettingsView, settingsView } from './views/settings.js';
 import { sidebarView } from './views/sidebar.js';
 import { tokenCostsView } from './views/token-costs.js';
@@ -1526,15 +1528,26 @@ function mainContentView() {
   }
 
   if (route.section === 'active') {
-    const activeRuns = runs.filter((r) => r.active);
+    const activeRuns = sortByStartDesc(runs.filter((r) => r.active));
     if (activeRuns.length === 1) {
       navigate('active', activeRuns[0].id, route.projectId);
       return html``;
     }
-    return runListView(runs, 'active', {
-      onSelectRun: handleSelectRun,
-      onResume: handleResumeRun,
-    });
+    // Match the dashboard "Active Runs" section style
+    return html`
+      <h3 class="dashboard-section-title">Active Runs</h3>
+      ${activeRuns.length > 0 ? html`
+        <div class="active-group">
+          <div class="run-list">
+            ${activeRuns.map((run) => runCardView(run, {
+              onClick: handleSelectRun,
+              onPause: handlePauseRun,
+              onResume: handleResumeRun,
+            }))}
+          </div>
+        </div>
+      ` : html`<div class="empty-state">No running pipelines</div>`}
+    `;
   }
 
   return html`
