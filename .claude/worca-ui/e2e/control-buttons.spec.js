@@ -155,7 +155,7 @@ test.describe('control buttons — interactions', () => {
       await page.locator('.action-btn--danger').click();
 
       // Shoelace sl-dialog opens (has open attribute when visible)
-      await expect(page.locator('#stop-confirm-dialog')).toBeVisible();
+      await expect(page.locator('#global-confirm-dialog')).toBeVisible();
     } finally {
       await ctx.close();
     }
@@ -184,10 +184,10 @@ test.describe('control buttons — interactions', () => {
 
       await openRunDetail(page, ctx.url, runId, 'running');
       await page.locator('.action-btn--danger').click();
-      await expect(page.locator('#stop-confirm-dialog')).toBeVisible();
+      await expect(page.locator('#global-confirm-dialog')).toBeVisible();
 
       // Click the danger (Stop) button in the dialog footer
-      await page.locator('#stop-confirm-dialog sl-button[variant="danger"]').click();
+      await page.locator('#global-confirm-dialog sl-button[variant="danger"]').click();
 
       await expect.poll(() => stopRequests.length, {}).toBeGreaterThan(0);
       expect(stopRequests[0]).toBe('DELETE');
@@ -219,10 +219,10 @@ test.describe('control buttons — interactions', () => {
 
       await openRunDetail(page, ctx.url, runId, 'running');
       await page.locator('.action-btn--danger').click();
-      await expect(page.locator('#stop-confirm-dialog')).toBeVisible();
+      await expect(page.locator('#global-confirm-dialog')).toBeVisible();
 
       // Click Cancel (the non-danger button in the dialog footer)
-      await page.locator('#stop-confirm-dialog sl-button:not([variant="danger"])').click();
+      await page.locator('#global-confirm-dialog sl-button:not([variant="danger"])').click();
 
       // Wait briefly then confirm no stop request was sent
       await page.waitForTimeout(800);

@@ -477,7 +477,20 @@ ws.on('pipeline-status-changed', (payload) => {
 // --- Protocol negotiation ---
 
 function handleHello(_payload) {
-  // Server says it supports protocol 2 — fetch projects and send hello-ack
+  const capabilities = _payload?.capabilities || [];
+  const isMultiProject = capabilities.includes('multi-project');
+
+  if (!isMultiProject) {
+    // Single-project mode: no /api/projects endpoint, just ack and fetch data
+    ws.sendRaw({
+      type: 'hello-ack',
+      payload: { protocol: 2, projectId: null },
+    });
+    fetchProjectScopedData();
+    return;
+  }
+
+  // Multi-project mode: fetch projects and send hello-ack
   fetch('/api/projects')
     .then((r) => r.json())
     .then((data) => {
@@ -1420,7 +1433,7 @@ function mainContentView() {
     }
     const { overview, stages: stagePanelsHtml } = runDetailView(run, settings, { promptCache: promptCache[route.runId] || {}, onRestartStage: handleRestartStage, stageIterationTab, onStageTabChange: handleStageTabChange });
     return html`
-      <div class="run-detail-layout">
+      <div class="run-detail run-detail-layout">
         <div class="run-detail-layout__overview">
           ${overview}
         </div>

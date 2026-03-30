@@ -3,7 +3,11 @@ import { startServer, seedRun, writePipelinePid } from './fixtures.js';
 
 const GOTO_OPTS = { waitUntil: 'domcontentloaded' };
 
-// ─── Grouping by pipeline status ─────────────────────────────────────────────
+// ─── Dashboard active runs ──────────────────────────────────────────────────
+// The dashboard renders a single .active-group for all active runs (running,
+// paused, resuming). Failed and completed runs appear in separate sections
+// (.active-group-failed, .active-group-completed). There is no per-status
+// sub-grouping within the active section.
 
 test.describe('dashboard — active run groups', () => {
   test('shows empty state when no running/paused/failed runs', async ({ page }) => {
@@ -17,15 +21,12 @@ test.describe('dashboard — active run groups', () => {
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
       await expect(page.locator('.dashboard')).toBeVisible();
       await expect(page.locator('.empty-state')).toBeVisible();
-      await expect(page.locator('.active-group-running')).not.toBeAttached();
-      await expect(page.locator('.active-group-paused')).not.toBeAttached();
-      await expect(page.locator('.active-group-failed')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
   });
 
-  test('shows running group for pipeline_status=running', async ({ page }) => {
+  test('shows active group for pipeline_status=running', async ({ page }) => {
     const ctx = await startServer();
     try {
       writePipelinePid(ctx.worcaDir, '20260101-dash-running');
@@ -34,31 +35,30 @@ test.describe('dashboard — active run groups', () => {
         work_request: { title: 'Running test' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running')).toBeVisible();
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
       await expect(page.locator('.empty-state')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
   });
 
-  test('shows paused group for pipeline_status=paused', async ({ page }) => {
+  test('shows active group for pipeline_status=paused', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-paused');
       seedRun(ctx.worcaDir, '20260101-dash-paused', {
         pipeline_status: 'paused',
         work_request: { title: 'Paused test' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused')).toBeVisible();
-      await expect(page.locator('.active-group-paused .run-card.status-paused')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-paused')).toBeVisible();
       await expect(page.locator('.empty-state')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
   });
 
-  test('shows failed group for pipeline_status=failed', async ({ page }) => {
+  test('shows failed section for pipeline_status=failed', async ({ page }) => {
     const ctx = await startServer();
     try {
       seedRun(ctx.worcaDir, '20260101-dash-failed', {
@@ -66,15 +66,13 @@ test.describe('dashboard — active run groups', () => {
         work_request: { title: 'Failed test' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-failed')).toBeVisible();
       await expect(page.locator('.active-group-failed .run-card.status-failed')).toBeVisible();
-      await expect(page.locator('.empty-state')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
   });
 
-  test('running and paused groups coexist', async ({ page }) => {
+  test('running and paused runs coexist in active group', async ({ page }) => {
     const ctx = await startServer();
     try {
       writePipelinePid(ctx.worcaDir, '20260101-dash-multi-run');
@@ -82,70 +80,15 @@ test.describe('dashboard — active run groups', () => {
         pipeline_status: 'running',
         work_request: { title: 'Multi: running' },
       });
+      writePipelinePid(ctx.worcaDir, '20260101-dash-multi-pause');
       seedRun(ctx.worcaDir, '20260101-dash-multi-pause', {
         pipeline_status: 'paused',
         work_request: { title: 'Multi: paused' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running')).toBeVisible();
-      await expect(page.locator('.active-group-paused')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-paused')).toBeVisible();
       await expect(page.locator('.empty-state')).not.toBeAttached();
-    } finally {
-      await ctx.close();
-    }
-  });
-});
-
-// ─── Count badges ─────────────────────────────────────────────────────────────
-
-test.describe('dashboard — count badges', () => {
-  test('group count shows correct number for 2 paused runs', async ({ page }) => {
-    const ctx = await startServer();
-    try {
-      seedRun(ctx.worcaDir, '20260101-dash-count-p2a', {
-        pipeline_status: 'paused',
-        work_request: { title: 'Paused count 1' },
-      });
-      seedRun(ctx.worcaDir, '20260101-dash-count-p2b', {
-        pipeline_status: 'paused',
-        work_request: { title: 'Paused count 2' },
-      });
-      await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused')).toBeVisible();
-      const countText = await page.locator('.active-group-paused .active-group-count').textContent();
-      expect(countText).toContain('2 paused');
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('paused group count shows 1 for single paused run', async ({ page }) => {
-    const ctx = await startServer();
-    try {
-      seedRun(ctx.worcaDir, '20260101-dash-count-p1', {
-        pipeline_status: 'paused',
-        work_request: { title: 'Paused count single' },
-      });
-      await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused')).toBeVisible();
-      const countText = await page.locator('.active-group-paused .active-group-count').textContent();
-      expect(countText).toContain('1 paused');
-    } finally {
-      await ctx.close();
-    }
-  });
-
-  test('failed group count shows 1 for single failed run', async ({ page }) => {
-    const ctx = await startServer();
-    try {
-      seedRun(ctx.worcaDir, '20260101-dash-count-f1', {
-        pipeline_status: 'failed',
-        work_request: { title: 'Failed count single' },
-      });
-      await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-failed')).toBeVisible();
-      const countText = await page.locator('.active-group-failed .active-group-count').textContent();
-      expect(countText).toContain('1 failed');
     } finally {
       await ctx.close();
     }
@@ -164,8 +107,8 @@ test.describe('dashboard — quick-action buttons', () => {
         work_request: { title: 'Quick pause visible' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running .run-card')).toBeVisible();
-      await expect(page.locator('.active-group-running .btn-quick-pause')).toBeVisible();
+      await expect(page.locator('.active-group .run-card')).toBeVisible();
+      await expect(page.locator('.active-group .btn-quick-pause')).toBeVisible();
     } finally {
       await ctx.close();
     }
@@ -174,13 +117,14 @@ test.describe('dashboard — quick-action buttons', () => {
   test('paused card shows quick-resume button', async ({ page }) => {
     const ctx = await startServer();
     try {
+      writePipelinePid(ctx.worcaDir, '20260101-dash-qresume-paused');
       seedRun(ctx.worcaDir, '20260101-dash-qresume-paused', {
         pipeline_status: 'paused',
         work_request: { title: 'Quick resume paused' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused .run-card')).toBeVisible();
-      await expect(page.locator('.active-group-paused .btn-quick-resume')).toBeVisible();
+      await expect(page.locator('.active-group .run-card')).toBeVisible();
+      await expect(page.locator('.active-group .btn-quick-resume')).toBeVisible();
     } finally {
       await ctx.close();
     }
@@ -210,8 +154,8 @@ test.describe('dashboard — quick-action buttons', () => {
         work_request: { title: 'No resume on running' },
       });
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running .run-card')).toBeVisible();
-      await expect(page.locator('.active-group-running .btn-quick-resume')).not.toBeAttached();
+      await expect(page.locator('.active-group .run-card')).toBeVisible();
+      await expect(page.locator('.active-group .btn-quick-resume')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
@@ -238,8 +182,8 @@ test.describe('dashboard — quick-action buttons', () => {
       });
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running .btn-quick-pause')).toBeVisible();
-      await page.locator('.active-group-running .btn-quick-pause').click();
+      await expect(page.locator('.active-group .btn-quick-pause')).toBeVisible();
+      await page.locator('.active-group .btn-quick-pause').click();
 
       await expect.poll(() => pauseRequests.length, {}).toBeGreaterThan(0);
       expect(pauseRequests[0]).toBe('POST');
@@ -252,6 +196,7 @@ test.describe('dashboard — quick-action buttons', () => {
     const ctx = await startServer();
     try {
       const runId = '20260101-dash-qresume-req';
+      writePipelinePid(ctx.worcaDir, runId);
       seedRun(ctx.worcaDir, runId, {
         pipeline_status: 'paused',
         work_request: { title: 'Quick resume API' },
@@ -268,8 +213,8 @@ test.describe('dashboard — quick-action buttons', () => {
       });
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused .btn-quick-resume')).toBeVisible();
-      await page.locator('.active-group-paused .btn-quick-resume').click();
+      await expect(page.locator('.active-group .btn-quick-resume')).toBeVisible();
+      await page.locator('.active-group .btn-quick-resume').click();
 
       await expect.poll(() => resumeRequests.length, {}).toBeGreaterThan(0);
       expect(resumeRequests[0]).toBe('POST');

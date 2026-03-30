@@ -203,83 +203,76 @@ test.describe('WebSocket live updates — stage timeline', () => {
   });
 });
 
-// ─── Dashboard group reordering ───────────────────────────────────────────────
+// ─── Dashboard live status updates ───────────────────────────────────────────
 
-test.describe('WebSocket live updates — dashboard reordering', () => {
-  test('run moves from running group to paused group on pipeline-paused', async ({ page }) => {
+test.describe('WebSocket live updates — dashboard status changes', () => {
+  test('run card status updates from running to paused on dashboard', async ({ page }) => {
     const ctx = await startServer();
     try {
       const runId = '20260101-ws-dash-run-to-pause';
       writePipelinePid(ctx.worcaDir, runId);
       seedRun(ctx.worcaDir, runId, {
         pipeline_status: 'running',
-        work_request: { title: 'Reorder: running to paused' },
+        work_request: { title: 'Status change: running to paused' },
       });
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-
-      // Wait for the run card in the running group
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
-      await expect(page.locator('.active-group-paused')).not.toBeAttached();
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
 
       triggerStatusUpdate(ctx.worcaDir, runId, {
         pipeline_status: 'paused',
-        work_request: { title: 'Reorder: running to paused' },
+        work_request: { title: 'Status change: running to paused' },
       });
 
-      // Run card moves to paused group; running group disappears (no remaining running runs)
-      await expect(page.locator('.active-group-paused .run-card.status-paused')).toBeVisible();
-      await expect(page.locator('.active-group-running')).not.toBeAttached();
+      await expect(page.locator('.run-card.status-paused')).toBeVisible();
     } finally {
       await ctx.close();
     }
   });
 
-  test('run moves from paused group to running group on pipeline-resumed', async ({ page }) => {
+  test('run card status updates from paused to running on dashboard', async ({ page }) => {
     const ctx = await startServer();
     try {
       const runId = '20260101-ws-dash-pause-to-run';
       writePipelinePid(ctx.worcaDir, runId);
       seedRun(ctx.worcaDir, runId, {
         pipeline_status: 'paused',
-        work_request: { title: 'Reorder: paused to running' },
+        work_request: { title: 'Status change: paused to running' },
       });
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-paused .run-card.status-paused')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-paused')).toBeVisible();
 
       triggerStatusUpdate(ctx.worcaDir, runId, {
         pipeline_status: 'running',
-        work_request: { title: 'Reorder: paused to running' },
+        work_request: { title: 'Status change: paused to running' },
       });
 
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
-      await expect(page.locator('.active-group-paused')).not.toBeAttached();
+      await expect(page.locator('.run-card.status-running')).toBeVisible();
     } finally {
       await ctx.close();
     }
   });
 
-  test('run moves from running group to failed group on pipeline-failed', async ({ page }) => {
+  test('run moves to failed section on pipeline-failed', async ({ page }) => {
     const ctx = await startServer();
     try {
       const runId = '20260101-ws-dash-run-to-fail';
       writePipelinePid(ctx.worcaDir, runId);
       seedRun(ctx.worcaDir, runId, {
         pipeline_status: 'running',
-        work_request: { title: 'Reorder: running to failed' },
+        work_request: { title: 'Status change: running to failed' },
       });
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
 
       triggerStatusUpdate(ctx.worcaDir, runId, {
         pipeline_status: 'failed',
-        work_request: { title: 'Reorder: running to failed' },
+        work_request: { title: 'Status change: running to failed' },
       });
 
       await expect(page.locator('.active-group-failed .run-card.status-failed')).toBeVisible();
-      await expect(page.locator('.active-group-running')).not.toBeAttached();
     } finally {
       await ctx.close();
     }
@@ -299,8 +292,8 @@ test.describe('WebSocket live updates — dashboard reordering', () => {
 
       // Dashboard renders (stats are present)
       await expect(page.locator('.dashboard-stats')).toBeVisible();
-      // Running card is visible in the running group
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
+      // Running card is visible
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
 
       // Pipeline completes
       triggerStatusUpdate(ctx.worcaDir, runId, {
@@ -309,8 +302,7 @@ test.describe('WebSocket live updates — dashboard reordering', () => {
         work_request: { title: 'Stats update test' },
       });
 
-      // All active groups disappear (no running/paused/failed runs)
-      await expect(page.locator('.active-group-running')).not.toBeAttached();
+      // Active group disappears (no running/paused runs), empty state appears
       await expect(page.locator('.empty-state')).toBeVisible();
     } finally {
       await ctx.close();

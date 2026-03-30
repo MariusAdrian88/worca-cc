@@ -191,6 +191,7 @@ test.describe('run lifecycle — multiple runs on dashboard', () => {
         pipeline_status: 'running',
         work_request: { title: 'Multi: running' },
       });
+      writePipelinePid(ctx.worcaDir, '20260101-multi-paused');
       seedRun(ctx.worcaDir, '20260101-multi-paused', {
         pipeline_status: 'paused',
         work_request: { title: 'Multi: paused' },
@@ -203,15 +204,12 @@ test.describe('run lifecycle — multiple runs on dashboard', () => {
 
       await page.goto(`${ctx.url}/#/dashboard`, GOTO_OPTS);
 
-      // Running group has the running card
-      await expect(page.locator('.active-group-running .run-card.status-running')).toBeVisible();
+      // Active group has both running and paused cards
+      await expect(page.locator('.active-group .run-card.status-running')).toBeVisible();
+      await expect(page.locator('.active-group .run-card.status-paused')).toBeVisible();
 
-      // Paused group has the paused card
-      await expect(page.locator('.active-group-paused .run-card.status-paused')).toBeVisible();
-
-      // Completed runs should not appear in active groups
-      await expect(page.locator('.active-group-running .run-card.status-completed')).not.toBeAttached();
-      await expect(page.locator('.active-group-paused .run-card.status-completed')).not.toBeAttached();
+      // Completed runs should not appear in the active group (exclude the completed section which also has .active-group)
+      await expect(page.locator('.active-group:not(.active-group-completed) .run-card.status-completed')).not.toBeAttached();
     } finally {
       await ctx.close();
     }

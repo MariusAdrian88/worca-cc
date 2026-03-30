@@ -138,7 +138,7 @@ export function sidebarView(
           : ''
       }
 
-      ${currentProjectId ? html`
+      ${(currentProjectId || (projects || []).length <= 1) ? html`
       <div class="sidebar-new-run">
         <button class="sidebar-new-run-btn" @click=${() => onNavigate('new-run')}>
           ${unsafeHTML(iconSvg(Plus, 16))}
