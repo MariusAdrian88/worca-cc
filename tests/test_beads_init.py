@@ -67,8 +67,13 @@ class TestBdInit:
             pytest.skip("bd CLI not available")
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            # bd init requires a git repo
+            # bd init requires a git repo with at least one commit
             subprocess.run(["git", "init"], cwd=tmpdir, check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-c", "user.name=Test", "-c", "user.email=test@test.com",
+                 "commit", "--allow-empty", "-m", "init"],
+                cwd=tmpdir, check=True, capture_output=True,
+            )
             result = bd_init(cwd=tmpdir)
             assert result is True
             assert os.path.isdir(os.path.join(tmpdir, ".beads"))
