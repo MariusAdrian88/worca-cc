@@ -35,7 +35,7 @@ DEST=<target-project-path>
 
 Validate:
 - `$WORCA_ROOT/.claude/worca/` exists (confirms it's actually worca-cc)
-- `$DEST` exists and is a git repository (including worktrees — use `git -C "$DEST" rev-parse --show-toplevel`, NOT `test -d "$DEST/.git"` which fails for worktrees that have a `.git` file instead of a directory)
+- `$DEST` exists and is a git repository
 - `$DEST/.claude/worca/` does NOT exist (this is install, not sync — if it exists, suggest `/worca-sync` instead)
 
 ### Step 2: Copy .claude/ directory
@@ -57,57 +57,22 @@ rsync -av --exclude='__pycache__' "$SRC/scripts/" "$DEST/.claude/scripts/"
 rsync -av --exclude='node_modules' --exclude='__pycache__' --exclude='worca-install/' "$SRC/skills/" "$DEST/.claude/skills/"
 ```
 
-### Step 3: Merge settings.json (never overwrite existing)
+### Step 3: Copy and patch settings.json
 
-If `.claude/settings.json` does **not** exist in the target, copy the template from source. If it **already exists** (e.g. the user has Claude Code permissions, MCP config, or model preferences), use a deep-merge that only adds missing keys — never overwrite existing values.
+Copy `settings.json` from source, then add the `worca.source_repo` key:
 
-After merging, set `worca.source_repo` to the resolved source path.
+```bash
+cp "$SRC/settings.json" "$DEST/.claude/settings.json"
+```
 
-```python
-import json, copy, os
+Then use a JSON tool (python/jq) to set:
 
-src_path = f"{WORCA_ROOT}/.claude/settings.json"
-dest_path = f"{DEST}/.claude/settings.json"
-
-def deep_merge_new_only(source, target):
-    """Recursively add keys from source that are missing in target.
-    Never overwrite existing target values at any depth."""
-    added = []
-    for key, value in source.items():
-        if key not in target:
-            target[key] = copy.deepcopy(value)
-            added.append(key)
-        elif isinstance(value, dict) and isinstance(target[key], dict):
-            sub = deep_merge_new_only(value, target[key])
-            added.extend(f"{key}.{k}" for k in sub)
-    return added
-
-src = json.load(open(src_path))
-
-if not os.path.exists(dest_path):
-    # First time — seed with source template
-    tgt = copy.deepcopy(src)
-    print("settings.json: created from template")
-else:
-    tgt = json.load(open(dest_path))
-    # Only merge hooks and worca sections; skip permissions, MCP, model, deny
-    added_keys = []
-    for section in ("hooks", "worca"):
-        if section in src:
-            tgt.setdefault(section, {})
-            added = deep_merge_new_only(src[section], tgt[section])
-            added_keys.extend(f"{section}.{k}" for k in added)
-    if added_keys:
-        print(f"settings.json: added {len(added_keys)} new keys: {added_keys}")
-    else:
-        print("settings.json: already up to date")
-
-# Always set source_repo to the current worca-cc path
-tgt.setdefault("worca", {})["source_repo"] = "/absolute/path/to/worca-cc"
-
-with open(dest_path, "w") as f:
-    json.dump(tgt, f, indent=2)
-    f.write("\n")
+```json
+{
+  "worca": {
+    "source_repo": "/absolute/path/to/worca-cc"
+  }
+}
 ```
 
 This stores the source path so that `/worca-sync` can find it automatically in the future.
