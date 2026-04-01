@@ -4,6 +4,8 @@ Autonomous software development pipeline with governance enforcement.
 
 worca-cc is a multi-agent pipeline that plans, coordinates, implements, tests, reviews, and learns from code changes autonomously. It runs as a `.claude/` folder you drop into any project — fully configurable, with safety hooks at every stage.
 
+![Pipeline stages — Preflight through PR with per-stage cost, turns, and duration](docs/screenshots/pipeline-stages.png)
+
 ## Features
 
 ### Pipeline
@@ -44,6 +46,22 @@ worca-cc is a multi-agent pipeline that plans, coordinates, implements, tests, r
 - **Local settings** — `settings.local.json` deep-merges machine-specific overrides that aren't committed to git
 - **Loop controls** — configurable iteration limits for implement/test cycles, code review, and PR updates (per-loop-type limits + global multiplier)
 
+### Multi-Project Dashboard
+
+- **Global mode** — a single `worca-ui --global` instance monitors all registered projects from one browser tab
+- **Sidebar project picker** — dropdown with live status dots (green = healthy, red = errors) and run count badges
+- **Add-project dialog** — register projects via the UI with path validation and duplicate detection
+- **Batch registration** — `worca-ui migrate --scan ~/dev` discovers and registers all worca-enabled projects in one command
+
+![Sidebar project picker with status dots and 20 registered projects](docs/screenshots/sidebar-projects.png)
+
+### Parallel Pipelines
+
+- **`run_multi.py`** — run N pipelines concurrently, each isolated in its own git worktree with independent `.worca/` state, `.beads/` database, and git branch
+- **Three-level UI** — projects → pipelines → stages, with per-pipeline pause/stop/resume controls
+- **Configurable cleanup** — `on-success` (remove successful worktrees), `always`, or `never`
+- **Registry tracking** — all running pipelines are tracked in `.worca/multi/pipelines.d/` for monitoring and stale process recovery
+
 ## Prerequisites
 
 - Python 3.8+
@@ -58,9 +76,22 @@ worca-cc is a multi-agent pipeline that plans, coordinates, implements, tests, r
 
 ## Installation
 
-### Using the `/worca-install` skill (recommended)
+### Via the dashboard (recommended)
 
-If you already have Claude Code, run inside the worca-cc repo:
+Start the global dashboard and use the Add Project dialog to register and set up new projects:
+
+```bash
+cd worca-cc/.claude/worca-ui && node server/index.js --global
+# Open http://127.0.0.1:3400, click + next to the project picker
+```
+
+The dialog validates the project path, registers it, and offers to install worca automatically — copying pipeline files, installing dependencies, and building the UI. After registration, the project appears in the sidebar and is ready for pipeline runs.
+
+![Add project dialog](docs/screenshots/add-project-dialog.png)
+
+### Using the `/worca-install` skill
+
+Alternatively, install from the Claude Code CLI:
 
 ```bash
 cd worca-cc && claude
@@ -139,6 +170,45 @@ python .claude/scripts/run_pipeline.py --source gh:issue:42
 
 `--prompt`, `--spec`, and `--source` are mutually exclusive — provide one.
 
+### Global Dashboard
+
+Start a single worca-ui instance that monitors all registered projects:
+
+```bash
+worca-ui start --global          # single instance, port 3400
+worca-ui projects add /path      # register a project
+worca-ui projects list           # list registered projects
+worca-ui migrate --scan ~/dev    # batch-register all worca-enabled projects
+```
+
+Projects are stored in `~/.worca/projects.d/` as individual JSON files. Each project auto-registers when the pipeline runs.
+
+### Parallel Pipelines
+
+Run multiple work requests concurrently, each in an isolated git worktree:
+
+```bash
+python .claude/scripts/run_multi.py \
+  --requests "Add auth" "Add search" "Add logging" \
+  --max-parallel 3
+
+python .claude/scripts/run_multi.py \
+  --sources gh:issue:1 gh:issue:2 \
+  --cleanup always
+```
+
+| Flag | Description |
+|------|-------------|
+| `--requests TEXT [TEXT ...]` | Text prompts for each pipeline |
+| `--sources TEXT [TEXT ...]` | Source references (`gh:issue:N`, `bd:bd-abc`) |
+| `--max-parallel N` | Max concurrent pipelines (default: 3) |
+| `--base-branch REF` | Git ref each worktree branches from (default: `main`) |
+| `--cleanup POLICY` | Worktree cleanup: `on-success`, `always`, `never` |
+| `--msize [1-10]` | Task size multiplier for all pipelines |
+| `--mloops [1-10]` | Loop multiplier for all pipelines |
+
+Results are saved to `.worca/multi/results-{timestamp}.json`.
+
 ## Dashboard (worca-ui)
 
 ```bash
@@ -163,6 +233,18 @@ Expand a stage to see individual iterations — each shows agent, turns, cost, d
 After a run completes, the LEARN stage produces ranked observations and actionable suggestions. Copy-to-clipboard buttons let you feed insights directly into future runs or agent prompts.
 
 ![Learnings panel](docs/screenshots/learn-stage.png)
+
+### Global Dashboard
+
+In global mode (`--global`), the sidebar shows a project picker with all registered projects, live status indicators, and a "New Pipeline" button. Select a project to see its runs, beads, costs, and settings.
+
+![Global dashboard — project-scoped history view with sidebar navigation](docs/screenshots/global-dashboard.png)
+
+### Add Project
+
+Click the **+** button next to the project picker to register a new project. The dialog validates the project path and auto-generates a slug for the project name.
+
+![Add project dialog](docs/screenshots/add-project-dialog.png)
 
 ### Run History
 
@@ -228,6 +310,7 @@ All configuration lives in `.claude/settings.json` under the `worca` key:
 - **`worca.pricing`** — per-model token pricing for cost tracking
 - **`worca.circuit_breaker`** — max failures before halting, transient error retry logic
 - **`worca.events`** — event emission and webhook configuration (HMAC signing, retry, secret management)
+- **`worca.parallel`** — parallel pipeline settings (max_concurrent_pipelines: 3, default_base_branch, cleanup_policy: `on-success`|`always`|`never`, worktree_base_dir)
 
 ### Local overrides
 
@@ -271,6 +354,7 @@ Governance hooks run at every tool call — `pre_tool_use` enforces guards and p
 │   └── ...
 ├── scripts/
 │   ├── run_pipeline.py # CLI entry point
+│   ├── run_multi.py    # Multi-pipeline orchestrator (worktree-isolated)
 │   ├── run_learn.py    # LEARN stage runner
 │   ├── run_parallel.py # Parallel batch execution
 │   └── run_batch.py    # Batch runner
@@ -280,14 +364,16 @@ Governance hooks run at every tool call — `pre_tool_use` enforces guards and p
 │   └── worca-agent-override/ # /worca-agent-override skill
 ├── worca/
 │   ├── orchestrator/   # Pipeline runner, stages, resume, prompt builder, error classifier, overlays, events, control
+│   │   └── registry.py # Parallel pipeline registry (directory-based tracking)
 │   ├── events/         # Event emitter, webhook dispatch, event types
 │   ├── hooks/          # Guard, plan_check, test_gate, tracking, session
 │   ├── schemas/        # JSON schemas for agent outputs
 │   ├── state/          # Status persistence
 │   └── utils/          # Git, beads, Claude CLI, GitHub issues, token tracking, settings
+│       └── project_registry.py  # Auto-register projects in ~/.worca/projects.d/
 ├── worca-ui/
-│   ├── server/         # Express + WebSocket server
-│   ├── app/            # Lit-HTML frontend
+│   ├── server/         # Express + WebSocket server (global mode, project routes, pipeline registry)
+│   ├── app/            # Lit-HTML frontend (multi-dashboard, add-project dialog)
 │   └── scripts/        # Build scripts
 └── settings.json       # Configuration
 ```
