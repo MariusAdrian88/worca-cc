@@ -6,31 +6,28 @@ For detailed tracking, see [GitHub Issues](https://github.com/SinishaDjukic/worc
 
 ---
 
-## Parallel Pipeline Execution
+## Completed
 
-Run multiple independent pipelines concurrently, each isolated in its own git worktree. ([W-030](https://github.com/SinishaDjukic/worca-cc/issues/54))
+### Parallel Pipeline Execution
 
-**Problem.** The pipeline is currently single-tenant — only one pipeline can run at a time per project directory. A PID file lock prevents concurrent starts, and even bypassing it leads to shared state corruption (active run pointer, beads database, git HEAD, cumulative stats). This is the primary throughput bottleneck for batch workloads.
+Implemented as part of [W-032: Global Multi-Project worca-ui](docs/plans/W-032-global-multi-project-worca-ui.md) and [W-030](https://github.com/SinishaDjukic/worca-cc/issues/54). The `run_multi.py` entry point orchestrates N pipelines via `ThreadPoolExecutor`, each in its own git worktree with isolated `.worca/` state, `.beads/` database, and git branch. The global dashboard UI (`worca-ui --global`) provides multi-project monitoring with per-pipeline pause/stop/resume controls.
 
-**Approach.** Use git worktrees as the isolation boundary. Each pipeline runs in its own worktree with an independent working tree, `.worca/` state directory, beads database, and git branch. A new `run_multi.py` entry point orchestrates multiple pipelines via `ProcessPoolExecutor`, and a pipeline registry enables the UI and CLI to monitor all running pipelines.
+### Feedback Loops from Test and Review Stages
 
-**Benefit.** Multiplies throughput linearly — processing N independent work requests in roughly the time it takes to run one.
+The pipeline implements four feedback loops with configurable retry limits, all tracked in `status["loop_counters"]`:
 
----
+- **Plan Review loop** — Plan Reviewer returns `revise` → critical issues fed back to Planner → re-plan with accumulated context (limit: `worca.loops.plan_review`, default 5)
+- **Implement/Test loop** — Tester returns failures → failure analysis fed back to Implementer → fix and re-test (limit: `worca.loops.implement_test`, default 5)
+- **PR Changes loop** — Guardian returns `revise` with critical/major issues → Implementer reworks → re-review (limit: `worca.loops.pr_changes`, default 5)
+- **Restart Planning loop** — Guardian returns `restart_planning` → pipeline resets to PLAN stage (limit: `worca.loops.restart_planning`, default 5)
 
-## Feedback Loops from Test and Review Stages
-
-Close the loop between Test/Review failures and the Coordinator, enabling structured rework cycles with full traceability.
-
-**Problem.** When the Tester or Guardian identifies failures, the current pipeline either retries within the same stage or halts. There is no mechanism to feed detailed failure analysis back to the Coordinator so it can decompose rework into tracked beads tasks — leading to untraceable fix attempts and lost context between iterations.
-
-**Approach.** When the Test or Review stage produces failures, it generates a structured feedback plan describing what failed, why, and what needs to change. This plan is routed back to the Coordinator, which breaks it down into new beads tasks with dependencies on the original work. The Implementer then picks up these tasks through the normal dispatch flow.
-
-**Benefit.** Comprehensive test failure results or extensive review feedback get decomposed into separate, trackable implementation tasks — rather than being passed as a monolithic retry prompt that the Implementer must interpret on its own.
+All loops are bounded, persist counters across resume, and cap context accumulation at 50 entries to prevent unbounded growth.
 
 ---
 
-## Pipeline Templates
+## Planned
+
+### Pipeline Templates
 
 Support predefined pipeline templates that configure stage flow, agent selection, and governance rules for different work types. ([W-023](https://github.com/SinishaDjukic/worca-cc/issues/23))
 

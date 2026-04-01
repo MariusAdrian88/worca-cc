@@ -5,10 +5,12 @@ Autonomous software development pipeline combining orchestration with governance
 ## Quick Start
 
 ```bash
-# Copy .claude/ folder to your target project
-cp -R .claude/ my-project/.claude/
+# Install via /worca-install skill (recommended)
+cd worca-cc && claude
+# Then type: /worca-install /path/to/my-project
 
-# Build the UI (required on first setup)
+# Or manually copy .claude/ folder
+cp -R .claude/ my-project/.claude/
 cd my-project/.claude/worca-ui && npm install && npm run build && cd -
 
 # Interactive mode
@@ -32,7 +34,7 @@ All governance enforced via Python hooks in `.claude/hooks/`.
 .claude/
   agents/core/           # Agent .md templates (planner, plan_reviewer, coordinator, implementer, tester, guardian, learner)
   hooks/                 # Python hook scripts (pre_tool_use, post_tool_use, etc.)
-  scripts/               # Pipeline entry points (run_pipeline.py, preflight_checks.py)
+  scripts/               # Pipeline entry points (run_pipeline.py, run_multi.py, preflight_checks.py)
   settings.json          # All pipeline config under the "worca" key
   worca/
     orchestrator/
@@ -42,6 +44,7 @@ All governance enforced via Python hooks in `.claude/hooks/`.
       error_classifier.py # LLM error classification + circuit breaker
       resume.py          # Resume point detection
       work_request.py    # Input normalization (gh issues, beads, prompts)
+      registry.py        # Parallel pipeline registry (directory-based tracking)
     state/
       status.py          # Status JSON read/write, iteration tracking
     utils/
@@ -50,6 +53,7 @@ All governance enforced via Python hooks in `.claude/hooks/`.
       gh_issues.py       # GitHub issue lifecycle
       git.py             # Git operations
       env.py             # PATH enrichment
+      project_registry.py # Auto-register projects in ~/.worca/projects.d/
     schemas/             # JSON schemas for structured agent output
   worca-ui/              # Web UI (lit-html + Shoelace + esbuild)
     app/                 # Source files (views/, utils/, styles.css, main.js)
@@ -128,12 +132,15 @@ This runs esbuild to produce `app/main.bundle.js`. Without rebuilding, changes w
 ### Running the UI
 
 ```bash
-pnpm worca:ui                        # Default port 3400
+pnpm worca:ui                        # Default port 3400 (single-project)
+pnpm worca:ui -- --global            # Global mode (multi-project dashboard)
 PORT=3401 pnpm worca:ui              # Custom port via env var
 pnpm worca:ui -- --port 3401         # Custom port via flag
 ```
 
 The `--port` flag takes precedence over the `PORT` env var. `HOST` / `--host` works the same way (default `127.0.0.1`).
+
+Global mode (`--global`) starts the UI without a fixed project root, serving all projects registered in `~/.worca/projects.d/`. Use this when monitoring multiple projects from a single browser tab.
 
 ## Plans & Roadmap
 
