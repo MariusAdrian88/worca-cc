@@ -10,6 +10,7 @@ import {
   Star,
 } from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
+import { sortStageNames } from '../utils/stage-order.js';
 import { copyTerminalToClipboard } from '../utils/terminal-clipboard.js';
 
 // ANSI color palette for stage tags
@@ -194,16 +195,17 @@ export function logViewerView(
     runStages,
   },
 ) {
-  // Build stage list: orchestrator first, then pipeline stages from status.json
+  // Build stage list: orchestrator first, then pipeline stages sorted by canonical order
+  const sortWithOrchestrator = (keys) => {
+    const rest = keys.filter((k) => k !== 'orchestrator');
+    return ['orchestrator', ...sortStageNames(rest)];
+  };
   const configStages = runStages
-    ? ['orchestrator', ...Object.keys(runStages)]
+    ? sortWithOrchestrator(Object.keys(runStages))
     : null;
-  const logStages = [
-    ...new Set([
-      'orchestrator',
-      ...state.logLines.map((l) => l.stage).filter(Boolean),
-    ]),
-  ];
+  const logStages = sortWithOrchestrator([
+    ...new Set(state.logLines.map((l) => l.stage).filter(Boolean)),
+  ]);
   const stages = configStages || logStages;
   const currentStage = state.currentLogStage;
   const iterCount = stageIterations?.[currentStage] || 0;

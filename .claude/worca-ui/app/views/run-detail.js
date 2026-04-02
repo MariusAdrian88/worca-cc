@@ -14,6 +14,7 @@ import {
   Timer,
 } from '../utils/icons.js';
 import { scrollOnExpand } from '../utils/scroll.js';
+import { sortByStageOrder } from '../utils/stage-order.js';
 import {
   resolveStatus,
   statusClass,
@@ -27,26 +28,8 @@ import {
 import { resolveIterationTab } from './stage-tab-memory.js';
 import { stageTimelineView } from './stage-timeline.js';
 
-/** Canonical pipeline stage order — stages not listed sort to the end. */
-const STAGE_ORDER = [
-  'preflight',
-  'plan',
-  'plan_review',
-  'coordinate',
-  'implement',
-  'test',
-  'review',
-  'pr',
-  'learn',
-];
-
 function _sortedEntries(stages) {
-  const entries = Object.entries(stages);
-  return entries.sort(([a], [b]) => {
-    const ai = STAGE_ORDER.indexOf(a);
-    const bi = STAGE_ORDER.indexOf(b);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
+  return sortByStageOrder(Object.entries(stages));
 }
 
 /**

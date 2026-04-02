@@ -2,6 +2,7 @@ import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
 import { Clock, Coins, Cpu, iconSvg, Timer, Zap } from '../utils/icons.js';
+import { STAGE_ORDER } from '../utils/stage-order.js';
 
 function _sumCosts(runs) {
   let total = 0;
@@ -88,19 +89,10 @@ function timingStripView(startedAt, completedAt) {
 }
 
 function _stageOrder(stages) {
-  const order = [
-    'plan',
-    'plan_review',
-    'coordinate',
-    'implement',
-    'test',
-    'review',
-    'pr',
-  ];
   const keys = Object.keys(stages || {});
-  return order
-    .filter((k) => keys.includes(k))
-    .concat(keys.filter((k) => !order.includes(k)));
+  return STAGE_ORDER.filter((k) => keys.includes(k)).concat(
+    keys.filter((k) => !STAGE_ORDER.includes(k)),
+  );
 }
 
 function summaryCards(runs, tokenData) {

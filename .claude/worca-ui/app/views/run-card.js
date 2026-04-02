@@ -2,24 +2,12 @@ import { html, nothing } from 'lit-html';
 import { unsafeHTML } from 'lit-html/directives/unsafe-html.js';
 import { elapsed, formatDuration, formatTimestamp } from '../utils/duration.js';
 import { iconSvg, Pause } from '../utils/icons.js';
+import { STAGE_ORDER } from '../utils/stage-order.js';
 import {
   resolveStatus,
   statusClass,
   statusIcon,
 } from '../utils/status-badge.js';
-
-/** Canonical pipeline stage order — stages not listed sort to the end. */
-const STAGE_ORDER = [
-  'preflight',
-  'plan',
-  'plan_review',
-  'coordinate',
-  'implement',
-  'test',
-  'review',
-  'pr',
-  'learn',
-];
 
 function _sortedEntries(stages) {
   const entries = Object.entries(stages);

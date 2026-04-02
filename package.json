@@ -1,7 +1,9 @@
 {
   "private": true,
   "devDependencies": {
-    "husky": "^9.1.7"
+    "husky": "^9.1.7",
+    "jsdom": "^29.0.1",
+    "vitest": "^4.0.15"
   },
   "scripts": {
     "prepare": "husky",

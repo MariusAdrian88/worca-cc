@@ -8,19 +8,10 @@ import {
   statSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { STAGE_ORDER_WITH_ORCHESTRATOR } from '../app/utils/stage-order.js';
 
-/** Pipeline stage order for log display (orchestrator first, then stages in execution order). */
-export const STAGE_ORDER = [
-  'orchestrator',
-  'plan',
-  'plan_review',
-  'coordinate',
-  'implement',
-  'test',
-  'review',
-  'pr',
-  'learn',
-];
+/** Re-export for consumers (includes orchestrator). */
+export const STAGE_ORDER = STAGE_ORDER_WITH_ORCHESTRATOR;
 
 export function resolveLogPath(worcaDir, stage, iteration = null) {
   if (!stage) return join(worcaDir, 'logs', 'orchestrator.log');

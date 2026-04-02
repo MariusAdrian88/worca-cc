@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 describe('settings.js plan_review stage constants', () => {
-  it('STAGE_ORDER contains plan_review between plan and coordinate', async () => {
-    const { STAGE_ORDER } = await import('./settings.js');
-    expect(STAGE_ORDER).toContain('plan_review');
-    const planIdx = STAGE_ORDER.indexOf('plan');
-    const reviewIdx = STAGE_ORDER.indexOf('plan_review');
-    const coordinateIdx = STAGE_ORDER.indexOf('coordinate');
+  it('CONFIGURABLE_STAGES contains plan_review between plan and coordinate', async () => {
+    const { CONFIGURABLE_STAGES } = await import('./settings.js');
+    expect(CONFIGURABLE_STAGES).toContain('plan_review');
+    const planIdx = CONFIGURABLE_STAGES.indexOf('plan');
+    const reviewIdx = CONFIGURABLE_STAGES.indexOf('plan_review');
+    const coordinateIdx = CONFIGURABLE_STAGES.indexOf('coordinate');
     expect(reviewIdx).toBeGreaterThan(planIdx);
     expect(reviewIdx).toBeLessThan(coordinateIdx);
   });

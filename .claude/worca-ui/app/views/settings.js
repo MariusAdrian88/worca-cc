@@ -18,6 +18,7 @@ import {
   X,
   Zap,
 } from '../utils/icons.js';
+import { STAGE_ORDER } from '../utils/stage-order.js';
 
 // Stage-to-agent mapping (from stages.py STAGE_AGENT_MAP)
 export const STAGE_AGENT_MAP = {
@@ -31,16 +32,8 @@ export const STAGE_AGENT_MAP = {
   learn: 'learner',
 };
 
-export const STAGE_ORDER = [
-  'plan',
-  'plan_review',
-  'coordinate',
-  'implement',
-  'test',
-  'review',
-  'pr',
-  'learn',
-];
+/** Stages configurable via the settings UI (excludes preflight which has no agent). */
+export const CONFIGURABLE_STAGES = STAGE_ORDER.filter((s) => s !== 'preflight');
 export const AGENT_NAMES = [
   'planner',
   'plan_reviewer',
@@ -152,13 +145,13 @@ export async function loadSettings(projectId) {
     if (!settingsData.worca.stages) {
       settingsData.worca.stages = { ...DEFAULT_STAGES };
     } else {
-      for (const stage of STAGE_ORDER) {
+      for (const stage of CONFIGURABLE_STAGES) {
         if (!settingsData.worca.stages[stage]) {
           settingsData.worca.stages[stage] = { ...DEFAULT_STAGES[stage] };
         }
       }
     }
-    // Ensure preflight defaults exist (script-based stage, not in STAGE_ORDER)
+    // Ensure preflight defaults exist (script-based stage, not in CONFIGURABLE_STAGES)
     if (!settingsData.worca.stages.preflight) {
       settingsData.worca.stages.preflight = {
         enabled: true,
@@ -342,7 +335,7 @@ function readPipelineFromDom() {
 
 function readStagesFromDom() {
   const stages = {};
-  for (const stage of STAGE_ORDER) {
+  for (const stage of CONFIGURABLE_STAGES) {
     const enabledEl = document.getElementById(`stage-${stage}-enabled`);
     const agentEl = document.getElementById(`stage-${stage}-agent`);
     stages[stage] = {
@@ -502,7 +495,7 @@ function pipelineTab(worca, rerender) {
 
       <h3 class="settings-section-title">Stage Configuration</h3>
       <div class="pipeline-flow">
-        ${STAGE_ORDER.map((stage, i) => {
+        ${CONFIGURABLE_STAGES.map((stage, i) => {
           const stageConfig = stages[stage] || DEFAULT_STAGES[stage];
           const enabled = stageConfig.enabled !== false;
           return html`
@@ -535,7 +528,7 @@ function pipelineTab(worca, rerender) {
               </div>
             </div>
             ${
-              i < STAGE_ORDER.length - 1
+              i < CONFIGURABLE_STAGES.length - 1
                 ? html`
               <span class="pipeline-arrow">${unsafeHTML(iconSvg(ChevronRight, 16))}</span>
             `

@@ -1,4 +1,6 @@
 // server/settings-validator.js
+import { STAGE_ORDER } from '../app/utils/stage-order.js';
+
 const VALID_AGENTS = [
   'planner',
   'plan_reviewer',
@@ -8,17 +10,7 @@ const VALID_AGENTS = [
   'guardian',
   'learner',
 ];
-const VALID_STAGES = [
-  'preflight',
-  'plan',
-  'plan_review',
-  'coordinate',
-  'implement',
-  'test',
-  'review',
-  'pr',
-  'learn',
-];
+const VALID_STAGES = STAGE_ORDER;
 const VALID_MODELS = ['opus', 'sonnet', 'haiku'];
 const VALID_LOOPS = [
   'implement_test',
