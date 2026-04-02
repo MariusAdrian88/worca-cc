@@ -72,7 +72,15 @@ export function sidebarView(
   { onNavigate, onProjectChange, onAddProject },
 ) {
   const { runs, preferences, projects, currentProjectId } = state;
-  const runList = Object.values(runs);
+  const allRunList = Object.values(runs);
+  // Filter to selected project for counters (sidebar dots use allRunList via projectStatus)
+  const runList =
+    currentProjectId && (projects || []).length > 1
+      ? allRunList.filter((r) => {
+          const rp = r.project || r._project;
+          return rp === currentProjectId;
+        })
+      : allRunList;
   const activeCount = runList.filter((r) => {
     const ps = r.pipeline_status || (r.active ? 'running' : 'completed');
     return ps === 'running' || ps === 'resuming';
@@ -83,7 +91,6 @@ export function sidebarView(
   const beadsReady = beadsIssues.filter(
     (i) => i.status === 'ready' && (i.blocked_by?.length ?? 0) === 0,
   ).length;
-  const beadsDbExists = state.beads?.dbExists ?? false;
 
   const connClass =
     connectionState === 'open'
@@ -171,23 +178,17 @@ export function sidebarView(
         </div>
       </div>
 
-      ${
-        beadsDbExists
-          ? html`
-        <div class="sidebar-section">
-          <div class="sidebar-section-header">Work</div>
-          <div class="sidebar-item ${route.section === 'beads' ? 'active' : ''}"
-               @click=${() => onNavigate('beads')}>
-            <span class="sidebar-item-left">
-              ${unsafeHTML(iconSvg(List, 16))}
-              <span>Beads</span>
-            </span>
-            ${beadsReady > 0 ? html`<sl-badge variant="success" pill>${beadsReady}</sl-badge>` : ''}
-          </div>
+      <div class="sidebar-section">
+        <div class="sidebar-section-header">Work</div>
+        <div class="sidebar-item ${route.section === 'beads' ? 'active' : ''}"
+             @click=${() => onNavigate('beads')}>
+          <span class="sidebar-item-left">
+            ${unsafeHTML(iconSvg(List, 16))}
+            <span>Beads</span>
+          </span>
+          ${beadsReady > 0 ? html`<sl-badge variant="success" pill>${beadsReady}</sl-badge>` : ''}
         </div>
-      `
-          : ''
-      }
+      </div>
 
       <div class="sidebar-section">
         <div class="sidebar-section-header">Analytics</div>

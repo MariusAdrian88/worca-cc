@@ -622,6 +622,15 @@ ws.on('projects-updated', (payload) => {
 // --- Project switching ---
 
 function handleProjectSwitch(newProjectId) {
+  // Unsubscribe from any run/log/event subscriptions tied to the old project
+  // before switching context — otherwise the server keeps pushing updates
+  // for the old project's runs to this client.
+  ws.send('unsubscribe-run').catch(() => {});
+  ws.send('unsubscribe-log').catch(() => {});
+  ws.send('unsubscribe-events').catch(() => {});
+  ws.send('unsubscribe-pipeline').catch(() => {});
+  store.clearLog();
+
   store.setState({
     currentProjectId: newProjectId,
     runs: {},
@@ -1414,7 +1423,22 @@ function contentHeaderView() {
 
 function mainContentView() {
   const state = store.getState();
-  const runs = Object.values(state.runs);
+  const allRuns = Object.values(state.runs);
+  // In multi-project mode, filter runs to the selected project so views
+  // only show runs belonging to the current project — not all projects.
+  const currentProjectId = state.currentProjectId;
+  const runs =
+    currentProjectId && (state.projects || []).length > 1
+      ? allRuns.filter((r) => {
+          const rp = r.project || r._project;
+          return rp === currentProjectId;
+        })
+      : allRuns;
+  // Build a derived state with only the filtered runs for views (like
+  // dashboardView) that read state.runs internally.
+  const filteredRunsMap = {};
+  for (const r of runs) filteredRunsMap[r.id] = r;
+  const viewState = { ...state, runs: filteredRunsMap };
 
   // Beads section: two-level routing (must be checked before generic runId)
   if (route.section === 'beads') {
@@ -1429,7 +1453,7 @@ function mainContentView() {
         onStartIssue: handleStartBeadsIssue,
         onDismissError: handleDismissBeadsError,
         loading: beadsRunLoading,
-        run: state.runs[route.runId],
+        run: viewState.runs[route.runId],
         runId: route.runId,
       });
     }
@@ -1440,7 +1464,13 @@ function mainContentView() {
   }
 
   if (route.runId) {
-    const run = state.runs[route.runId];
+    const run = viewState.runs[route.runId];
+    // If the run doesn't belong to the current project (e.g. after a project
+    // switch), redirect to the section root instead of showing a stale view.
+    if (!run && currentProjectId && (state.projects || []).length > 1) {
+      navigate(route.section, null, route.projectId);
+      return html``;
+    }
     // Compute iteration counts per stage from run status
     const stageIterations = {};
     if (run?.stages) {
@@ -1514,7 +1544,7 @@ function mainContentView() {
 
   if (route.section === 'costs') {
     if (!costsFetched) fetchCostsData();
-    return tokenCostsView(state, {
+    return tokenCostsView(viewState, {
       expandedRun: costsExpanded,
       tokenData: costsTokenData,
       onToggleRun: handleToggleCostRun,
@@ -1607,7 +1637,7 @@ function mainContentView() {
   }
 
   return html`
-    ${dashboardView(state, {
+    ${dashboardView(viewState, {
       onSelectRun: (runId) => navigate('active', runId, route.projectId),
       onNavigate: (section, secondArg, thirdArg) => {
         if (

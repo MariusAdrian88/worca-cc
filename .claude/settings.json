@@ -82,6 +82,7 @@
       "Bash(grep:*)",
       "Bash(jq:*)",
       "Bash(ls:*)",
+      "Bash(npx vitest run:*)",
       "Bash(pytest *)",
       "Bash(rg:*)",
       "Bash(test:*)",
