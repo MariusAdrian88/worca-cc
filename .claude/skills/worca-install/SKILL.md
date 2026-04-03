@@ -35,7 +35,7 @@ DEST=<target-project-path>
 
 Validate:
 - `$WORCA_ROOT/.claude/worca/` exists (confirms it's actually worca-cc)
-- `$DEST` exists and is a git repository
+- `$DEST` exists and is a git repository (including worktrees — use `git -C "$DEST" rev-parse --show-toplevel`, NOT `test -d "$DEST/.git"` which fails for worktrees that have a `.git` file instead of a directory)
 - `$DEST/.claude/worca/` does NOT exist (this is install, not sync — if it exists, suggest `/worca-sync` instead)
 
 ### Step 2: Copy .claude/ directory
