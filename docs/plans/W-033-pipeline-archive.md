@@ -23,8 +23,9 @@ Add two optional fields to the run's `status.json`:
 
 - `archived: true` — marks the run as archived
 - `archived_at` — ISO 8601 timestamp of when it was archived
-- Unarchiving removes both fields (or sets `archived: false`)
+- Unarchiving removes both fields (never sets `archived: false` — the field must be absent, not falsy, to avoid ambiguity between `false` and `undefined` in downstream checks)
 - No file moves — the run stays in `.worca/runs/` or `.worca/results/`
+- **Archive age limit (default 90 days):** `setRunsBulk` skips archived runs whose `archived_at` is older than 90 days — they remain on disk but are not loaded into `state.archivedRuns`. This prevents unbounded growth of the archived runs map. The threshold is a constant in `state.js` (`MAX_ARCHIVED_AGE_MS = 90 * 24 * 60 * 60 * 1000`).
 
 ### Server API
 
@@ -33,7 +34,7 @@ Two new POST endpoints in `worca-ui/server/project-routes.js`:
 **`POST /api/projects/:projectId/runs/:id/archive`**
 - Locates the run's `status.json` (in `.worca/runs/{id}/` or `.worca/results/{id}/`)
 - Sets `archived: true` and `archived_at` to current UTC ISO timestamp
-- Writes atomically using `writeFileSync` to a temp file + `renameSync` to the target path (the existing server code uses direct `writeFileSync` without temp+rename — the archive endpoints should introduce this safer pattern)
+- Writes atomically using `writeFileSync` to a temp file + `renameSync` to the target path (the existing server code uses direct `writeFileSync` without temp+rename — the archive endpoints should introduce this safer pattern). **Important:** the temp file must be created in the same directory as the target (same filesystem) to avoid cross-device rename failures.
 - Returns `{ ok: true }`
 - 404 if run not found
 - On error, returns `{ ok: false, error: "message" }` (matching existing error response format)
@@ -44,7 +45,7 @@ Two new POST endpoints in `worca-ui/server/project-routes.js`:
 - Returns `{ ok: true }`
 - 404 if run not found
 
-After successful archive/unarchive, the endpoint should trigger a WebSocket broadcast (e.g., `run-archived` / `run-unarchived` with `{ runId }`) so other connected clients update in real time, consistent with existing action endpoints that broadcast `run-stopped`, `run-started`, etc.
+After successful archive/unarchive, the endpoint should trigger a WebSocket broadcast (e.g., `run-archived` / `run-unarchived` with `{ runId }`) so other connected clients update in real time, consistent with existing action endpoints that broadcast `run-stopped`, `run-started`, etc. The client must define WS handlers for these events (see main.js Step 3).
 
 Both endpoints must call `validateRunId(req.params.id)` (existing guard at `project-routes.js:44-52`) and use the `requireWorcaDir` middleware, consistent with all existing run-action routes.
 
@@ -84,9 +85,9 @@ Add two new handler functions:
 
 Thread `onArchive` and `onUnarchive` callbacks through to `runCardView` call sites.
 
-**ID-based lookups:** Seven sites in main.js do `state.runs[route.runId]` or `store.getState().runs[route.runId]` (lines ~803, ~1201, ~1231, ~1267, ~1281, ~1432, ~1443). Each needs a fallback: `state.runs[id] ?? state.archivedRuns[id]` (use `??` not `||` to avoid falsy-value bugs). This only affects the run-detail render paths in main.js, not the views themselves.
+**ID-based lookups:** Seven sites in main.js do `state.runs[route.runId]` or `store.getState().runs[route.runId]` (lines ~803, ~1201, ~1231, ~1267, ~1281, ~1432, ~1443). Each should call `store.getRunById(id)` — a centralized helper in `state.js` (see Step 2) that returns `state.runs[id] ?? state.archivedRuns[id]`. This avoids repeating the fallback pattern at 7 sites and prevents inconsistent `||` vs `??` usage. This only affects the run-detail render paths in main.js, not the views themselves.
 
-**Notification suppression:** The `run-snapshot` and `run-update` WS handlers call `notificationManager.handleRunUpdate` before `setRun`. If a snapshot arrives for an archived run (e.g., watcher re-reads its status.json), skip the notification — the user explicitly dismissed it. Check `data.archived === true` before notifying.
+**Notification suppression:** The `run-snapshot` and `run-update` WS handlers call `notificationManager.handleRunUpdate` before `setRun`. If a snapshot arrives for an archived run (e.g., watcher re-reads its status.json), skip the notification — the user explicitly dismissed it. Check both the incoming payload (`data.archived === true`) AND current state (`store.getState().archivedRuns[data.id]`) before notifying — the incoming payload may not carry the `archived` flag if it's a regular status update for a run that was archived via a different path.
 
 ### UI Changes
 
@@ -105,8 +106,7 @@ Button styling:
 #### Confirmation Dialog
 
 Reuse the existing `showConfirm()` helper from `utils/confirm-dialog.js` (already imported in main.js). On Archive button click:
-- Call `showConfirm({ title: "Archive Pipeline Run", message: "This run will be hidden from the dashboard and history. You can find it later using the 'archived' filter.", confirmLabel: "Archive", variant: "danger" })`
-- On confirm → call `onArchive(run.id)`
+- Call `showConfirm({ label: "Archive Pipeline Run", message: "This run will be hidden from the dashboard and history. You can find it later using the 'archived' filter.", confirmLabel: "Archive", confirmVariant: "danger", onConfirm: () => onArchive(run.id) }, rerender)` — note: the API uses `label` (not `title`), `confirmVariant` (not `variant`), requires `onConfirm` in the options object, and takes a `rerender` callback as the second argument. See existing usage in `handleStopPipeline` for the correct pattern.
 - No confirmation for Unarchive (safe, instantly reversible)
 
 No new dialog component needed — the existing `confirmDialogTemplate` + `showConfirm` pattern handles this.
@@ -130,7 +130,7 @@ No changes needed — reads `state.runs` which already excludes archived runs. `
 
 #### token-costs.js
 
-One-line change: the run list should include both visible and archived runs, since costs represent real spend regardless of archive status. Use `[...Object.values(state.runs), ...Object.values(state.archivedRuns)]` for the runs input. The `tokenData` from the server-side `/costs` endpoint already includes all runs.
+The costs view should include both visible and archived runs, since costs represent real spend regardless of archive status. Currently `tokenCostsView` reads `Object.values(state.runs)` internally — it does not receive runs as a parameter. Either: (a) change the caller in main.js to pass a merged runs array and update `tokenCostsView` to accept it as a parameter, or (b) have `tokenCostsView` read both `state.runs` and `state.archivedRuns` and merge them internally. Option (b) is simpler. The `tokenData` from the server-side `/costs` endpoint already includes all runs.
 
 ## Implementation Plan
 
@@ -169,12 +169,15 @@ One-line change: the run list should include both visible and archived runs, sin
    - If `data.archived === true`: set in `archivedRuns`, delete from `runs` if present
    - Otherwise: set in `runs`, delete from `archivedRuns` if present
 4. Add `archivedRuns` to the equality check in `setState()` to prevent unnecessary re-renders
-5. Add unit tests for `state.js`:
+5. Add `getRunById(id)` helper method: `return state.runs[id] ?? state.archivedRuns[id]` — centralizes the ID-lookup fallback used at 7+ sites in main.js
+6. Add unit tests for `state.js`:
    - `setRunsBulk` partitions correctly (mix of archived + non-archived)
    - `setRunsBulk([])` clears both maps
    - `setRun` routes archived run to `archivedRuns`
    - `setRun` moves run between maps when `archived` flag changes
    - `setRun` with non-archived data removes from `archivedRuns` if present
+   - `getRunById` returns from `runs` first, falls back to `archivedRuns`
+   - `getRunById` returns `undefined` for unknown IDs
 
 ### Step 3: main.js — use setRunsBulk + add handlers
 
@@ -183,9 +186,14 @@ One-line change: the run list should include both visible and archived runs, sin
 1. Replace the **simple** bulk loops (~4-5 sites) with `store.setRunsBulk(payload.runs || [])`. Leave the multi-project merge loops (runs-list handler ~line 250, fetchAllProjectRuns ~line 524) as manual loops — they do merge-with-pruning that `setRunsBulk` can't express. Add `if (run.archived)` routing to `archivedRuns` in those manual loops.
 2. Add `archiveRun(runId)` handler — POST to `/api/projects/{pid}/runs/{runId}/archive`, with error handling: show user feedback on failure (e.g., console warning or toast), then trigger runs refresh
 3. Add `unarchiveRun(runId)` handler — POST to `/api/projects/{pid}/runs/{runId}/unarchive`, same error handling, then trigger runs refresh
-4. Add ID-lookup fallback for run-detail: `state.runs[id] ?? state.archivedRuns[id]` (use `??` not `||`) in all 7 render paths (~lines 803, 1201, 1231, 1267, 1281, 1432, 1443)
-5. In `run-snapshot` and `run-update` handlers: skip `notificationManager.handleRunUpdate` when `data.archived === true` to avoid notifications for dismissed runs
-6. Thread `onArchive`/`onUnarchive` callbacks through to `runCardView` call sites
+4. Replace all 7 ID-based run lookups (~lines 803, 1201, 1231, 1267, 1281, 1432, 1443) with `store.getRunById(id)` (the centralized helper from Step 2)
+5. In `run-snapshot` and `run-update` handlers: skip `notificationManager.handleRunUpdate` when the run is archived — check both `data.archived === true` (incoming payload) AND `store.getState().archivedRuns[data.id]` (current state) to catch runs archived via a different path whose updates don't carry the `archived` flag
+6. Add WS handlers for `run-archived` and `run-unarchived` events (broadcast by server after archive/unarchive):
+   - `run-archived`: move the run from `state.runs` to `state.archivedRuns` (use `store.setRun(runId, { ...existingRun, archived: true, archived_at: payload.archived_at })`)
+   - `run-unarchived`: move the run from `state.archivedRuns` to `state.runs` (use `store.setRun(runId, { ...existingRun })` with `archived`/`archived_at` fields removed)
+   - This ensures other connected clients update in real time without waiting for the next watcher poll
+7. In `handleProjectSwitch` / `resetProjectState`: clear `archivedRuns` alongside `runs` to prevent stale archived runs from a previous project persisting
+8. Thread `onArchive`/`onUnarchive` callbacks through to `runCardView` call sites
 
 ### Step 4: UI — run-card Archive/Unarchive buttons
 
@@ -201,10 +209,9 @@ One-line change: the run list should include both visible and archived runs, sin
 
 **Files:** `.claude/worca-ui/app/main.js` (uses existing `utils/confirm-dialog.js`)
 
-1. In the `onArchive` handler (before calling the API), call `showConfirm()` from existing `utils/confirm-dialog.js`
-2. On confirm → proceed with archive API call
-3. On cancel → no-op
-4. No new dialog component needed — reuses existing `confirmDialogTemplate` + `showConfirm` pattern already in the project
+1. In the `onArchive` handler (before calling the API), call `showConfirm()` from existing `utils/confirm-dialog.js` using the correct API: `showConfirm({ label, message, confirmLabel, confirmVariant, onConfirm }, rerender)` — see `handleStopPipeline` for the existing usage pattern
+2. On cancel → no-op (handled by `showConfirm` internally)
+3. No new dialog component needed — reuses existing `confirmDialogTemplate` + `showConfirm` pattern already in the project
 
 ### Step 6: UI — run-list archived chip
 
@@ -220,8 +227,9 @@ One-line change: the run list should include both visible and archived runs, sin
 
 **Files:** `.claude/worca-ui/app/views/token-costs.js`
 
-1. Change the runs input from `Object.values(state.runs)` to `[...Object.values(state.runs), ...Object.values(state.archivedRuns)]`
-2. Costs represent real spend regardless of archive status
+1. `tokenCostsView` currently reads `Object.values(state.runs)` internally — update it to also read `state.archivedRuns` and merge: `[...Object.values(state.runs), ...Object.values(state.archivedRuns)]`
+2. This requires reading `state.archivedRuns` inside the view (not a one-line caller change — the view must be aware of both maps)
+3. Costs represent real spend regardless of archive status
 
 ### Step 8: Build and test
 
@@ -234,10 +242,14 @@ One-line change: the run list should include both visible and archived runs, sin
 
 - **No migration needed**: existing runs without `archived` field are treated as not archived (`run.archived === true` is false for `undefined`)
 - **Minimal view changes**: by filtering in the state layer (`state.js`), dashboard.js, sidebar.js, and most view consumers need zero changes — they read `state.runs` which never contains archived runs
-- **Key files changed**: `state.js` (new `setRunsBulk` + routing logic + tests), `main.js` (replace simple bulk loops + archive handlers + ID fallbacks + notification suppression), `run-card.js` (archive/unarchive buttons), `run-list.js` (archived chip), `project-routes.js` (API endpoints + WS broadcast), `token-costs.js` (one-line: include archived in cost totals)
+- **Key files changed**: `state.js` (new `setRunsBulk` + `getRunById` + routing logic + archive-age pruning + tests), `main.js` (replace simple bulk loops + archive handlers + `getRunById` usage + WS handlers for `run-archived`/`run-unarchived` + notification suppression + project-switch cleanup), `run-card.js` (archive/unarchive buttons), `run-list.js` (archived chip), `project-routes.js` (API endpoints + WS broadcast), `token-costs.js` (include archived in cost totals by reading both state maps)
 - **Atomic writes**: archive/unarchive introduce temp file + `renameSync` pattern (the existing server code uses direct `writeFileSync` — this is an improvement)
 - **WebSocket events**: archive/unarchive broadcast `run-archived`/`run-unarchived` events so other connected clients update in real time
 - **Cost dashboard**: archived runs ARE included in cost totals — costs represent real spend regardless of archive status
 - **Idempotent operations**: re-archiving or re-unarchiving returns `{ ok: true }` as a no-op
 - **Multi-project merge loops**: the complex merge/pruning loops in main.js (~2 sites) remain manual with an added `archived` check; only simple bulk loops use `setRunsBulk`
+- **Archive age limit**: archived runs older than 90 days are excluded from `state.archivedRuns` during `setRunsBulk` to prevent unbounded memory growth; data remains on disk
+- **Centralized ID lookup**: `store.getRunById(id)` replaces 7 ad-hoc `state.runs[id] ?? state.archivedRuns[id]` patterns, reducing inconsistency risk
+- **WS handlers for archive events**: `run-archived`/`run-unarchived` WS events are handled client-side to keep multi-client state in sync
+- **Project switch cleanup**: `archivedRuns` is cleared alongside `runs` on project switch
 - **No Python changes**: the archive feature is purely UI/server-side. The Python orchestrator and hooks are unaffected. The `archived` field in `status.json` is ignored by the pipeline runner.
